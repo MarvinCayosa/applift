@@ -966,7 +966,7 @@ You acknowledge the system's limits (e.g., single IMU, equipment-based sensing) 
           <p style={{ fontSize: 'clamp(0.7rem, 2.5vw, 0.75rem)', color: 'rgba(238,235,217,0.7)', marginBottom: 'clamp(0.5rem, 1.5vh, 0.75rem)', marginTop: 0 }}>
             By proceeding to use AppLift, you confirm that you have read, understood, and agreed to the Terms and Conditions of the application.
           </p>
-          <div className="relative rounded-lg border border-white/10 bg-black/30 overflow-hidden" style={{ height: 'clamp(10rem, 25vh, 14rem)' }}>
+          <div className="relative rounded-lg bg-black/30 overflow-hidden" style={{ height: 'clamp(10rem, 25vh, 14rem)' }}>
             <div 
               ref={termsContentRef}
               className="h-full overflow-y-auto leading-relaxed" 
@@ -1000,7 +1000,7 @@ You acknowledge the system's limits (e.g., single IMU, equipment-based sensing) 
           <p style={{ fontSize: 'clamp(0.7rem, 2.5vw, 0.75rem)', color: 'rgba(238,235,217,0.7)', marginBottom: 'clamp(0.5rem, 1.5vh, 0.75rem)', marginTop: 0 }}>
             By using AppLift, you consent to the collection and use of your data to provide personalized insights and ensure user safety. AppLift does not replace professional medical or fitness advice.
           </p>
-          <div className="relative rounded-lg border border-white/10 bg-black/30 overflow-hidden" style={{ height: 'clamp(10rem, 25vh, 14rem)' }}>
+          <div className="relative rounded-lg bg-black/30 overflow-hidden" style={{ height: 'clamp(10rem, 25vh, 14rem)' }}>
             <div 
               ref={consentContentRef}
               className="h-full overflow-y-auto leading-relaxed" 
@@ -1425,7 +1425,7 @@ You acknowledge the system's limits (e.g., single IMU, equipment-based sensing) 
               We’ll use this to tailor weights, sets, reps, and focus on form or progression.
             </div>
           </div>
-          <div className="space-y-2 rounded-2xl border border-white/10 bg-black/20 p-4">
+          <div className="space-y-2 rounded-2xl bg-black/20 p-4">
             <div className="flex justify-between text-sm" style={{ color: 'var(--app-white)' }}>
               <span className="flex items-center gap-2">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" fill="currentColor" style={{ width: '16px', height: '16px' }}>
@@ -1526,7 +1526,7 @@ You acknowledge the system's limits (e.g., single IMU, equipment-based sensing) 
           { label: 'Training Priority', value: getStep5Label('trainingPriority', questionAnswers.trainingPriority), jump: 5 },
         ]
           .map((item) => (
-            <div key={item.label} className="flex items-center justify-between rounded-2xl border border-white/10 bg-black/30 px-4 py-3">
+            <div key={item.label} className="flex items-center justify-between rounded-2xl bg-black/30 px-4 py-3">
               <div>
                 <div className="text-xs" style={{ color: 'rgba(238,235,217,0.65)' }}>{item.label}</div>
                 <div className="text-sm" style={{ color: 'var(--app-white)' }}>{item.value || 'Not set'}</div>
@@ -1650,7 +1650,7 @@ You acknowledge the system's limits (e.g., single IMU, equipment-based sensing) 
 
       <div className="auth-wrapper relative w-full mx-auto">
 
-          <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-[36px] shadow-2xl" style={{
+          <div className="bg-white/5 backdrop-blur-md rounded-[36px] shadow-2xl" style={{
             padding: 'clamp(1rem, 3vh, 2rem)',
             display: 'flex',
             flexDirection: 'column',

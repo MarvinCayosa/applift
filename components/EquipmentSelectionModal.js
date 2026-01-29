@@ -50,7 +50,7 @@ export default function EquipmentSelectionModal({ isOpen, onClose, onSelect, con
         onClick={onClose}
       >
         <div 
-          className="relative max-w-md w-full p-8 rounded-3xl bg-[#1a1a1a] border border-white/10"
+          className="relative max-w-md w-full p-8 rounded-3xl bg-[#1a1a1a]"
           style={{
             boxShadow: '0 20px 60px rgba(0, 0, 0, 0.6)',
           }}
@@ -97,7 +97,7 @@ export default function EquipmentSelectionModal({ isOpen, onClose, onSelect, con
       onClick={onClose}
     >
       <div 
-        className="relative max-w-md w-full p-8 rounded-[28px] bg-[#1c1c1e] border border-white/10"
+        className="relative max-w-md w-full p-8 rounded-[28px] bg-[#1c1c1e]"
         style={{
           boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.05)',
           backdropFilter: 'blur(20px)',

@@ -20,7 +20,7 @@ export default function WorkoutCard({ workout }) {
 
   return (
     <div
-      className="flex items-center gap-3 p-3 rounded-2xl bg-white/5 hover:bg-white/10 active:opacity-70 transition-all duration-200 border border-white/10 cursor-pointer"
+      className="flex items-center gap-3 p-3 rounded-2xl bg-white/5 hover:bg-white/10 active:opacity-70 transition-all duration-200 cursor-pointer"
       role="button"
       aria-label={`Open history for ${workout.exercise}`}
       onClick={handleClick}

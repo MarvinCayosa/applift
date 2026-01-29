@@ -13,7 +13,7 @@ import { useAuth } from '../context/AuthContext';
 import ActivityOverview from '../components/ActivityOverview';
 import { useBluetooth } from '../context/BluetoothProvider';
 import { shouldUseAppMode } from '../utils/pwaInstalled';
-import { getUserAvatarColorStyle } from '../utils/colorUtils';
+import { getUserAvatarColorStyle, getUserTextColor, getFirstWord } from '../utils/colorUtils';
 
 export default function Dashboard() {
   const { profile } = useUserProfile();
@@ -258,14 +258,11 @@ export default function Dashboard() {
     }
   };
 
-  // Sample recent workouts data (in production, from backend)
+  // Sample recent workouts data (empty by default - will be populated from backend)
   const recentWorkouts = [
-    { id: 1, exercise: 'Concentration Curls', equipment: 'Dumbbell', weight: 15, reps: 10, date: '2 days ago' },
-    { id: 2, exercise: 'Overhead Extension', equipment: 'Dumbbell', weight: 18, reps: 12, date: '2 days ago' },
-    { id: 3, exercise: 'Bench Press', equipment: 'Barbell', weight: 80, reps: 5, date: '1 day ago' },
-    { id: 4, exercise: 'Front Squat', equipment: 'Barbell', weight: 70, reps: 8, date: '1 day ago' },
-    { id: 5, exercise: 'Lateral Pulldown', equipment: 'Weight Stack', weight: 65, reps: 10, date: '3 days ago' },
-    { id: 6, exercise: 'Leg Extensions', equipment: 'Weight Stack', weight: 90, reps: 12, date: '3 days ago' },
+    // Example structure for when data is available:
+    // { id: 1, exercise: 'Concentration Curls', equipment: 'Dumbbell', weight: 15, reps: 10, date: '2 days ago' },
+    // { id: 2, exercise: 'Overhead Extension', equipment: 'Dumbbell', weight: 18, reps: 12, date: '2 days ago' },
   ];
 
   // expose a UI-facing disconnect that also clears UI state
@@ -285,22 +282,20 @@ export default function Dashboard() {
     }
   };
 
-  // Sample workout history data - in production, this would come from a backend/database
-  const hasWorkoutHistory = true; // Toggle this for new users
+  // Real workout history data - empty by default, will be populated from backend/database
   const workoutHistory = {
-    // Store workout days per month for the last 3 months
+    // Store workout days per month for the last 3 months (empty by default)
     workoutDaysByMonth: {
-      10: [2, 7, 12, 17, 22, 27], // November
-      0: [2, 5, 8, 12, 15, 18, 22, 25], // January (current month)
-      1: [3, 7, 10, 14, 17, 21, 24, 28], // February
+      // 10: [], // November - no workouts logged
+      // 0: [],  // January - no workouts logged  
+      // 1: [],  // February - no workouts logged
     },
-    lastWorkout: {
-      exercise: 'Bicep Curls',
-      equipment: 'Dumbbell',
-      weight: 12,
-      date: new Date(),
-    },
+    lastWorkout: null, // No last workout yet
   };
+
+  // Check if user has any workout history
+  const hasWorkoutHistory = Object.values(workoutHistory.workoutDaysByMonth).some(days => days && days.length > 0);
+  const hasRecentWorkouts = recentWorkouts && recentWorkouts.length > 0;
 
   // Generate 3-month mini calendar data
   const generate3MonthCalendar = () => {
@@ -392,38 +387,38 @@ export default function Dashboard() {
 
   const currentWeek = generateCurrentWeek();
 
-  // Load lifted data for different time periods
+  // Load lifted data for different time periods (sample data with days of week for empty state)
   const loadLiftedDataByPeriod = {
     day: [
-      { time: '6 AM', load: 0 },
-      { time: '9 AM', load: 12 },
-      { time: '12 PM', load: 18 },
-      { time: '3 PM', load: 25 },
-      { time: '6 PM', load: 22 },
-      { time: '9 PM', load: 15 },
+      // Empty by default - no workout data logged yet
+      // Example structure:
+      // { time: '6 AM', load: 0 },
+      // { time: '9 AM', load: 12 },
     ],
     week: [
-      { day: 'Mon', load: 12 },
-      { day: 'Tue', load: 18 },
-      { day: 'Wed', load: 25 },
-      { day: 'Thu', load: 22 },
-      { day: 'Fri', load: 30.5 },
-      { day: 'Sat', load: 28 },
-      { day: 'Sun', load: 15 },
+      // Sample data to show axes with days of the week
+      { day: 'Mon', load: 0 },
+      { day: 'Tue', load: 0 },
+      { day: 'Wed', load: 0 },
+      { day: 'Thu', load: 0 },
+      { day: 'Fri', load: 0 },
+      { day: 'Sat', load: 0 },
+      { day: 'Sun', load: 0 },
     ],
     month: [
-      { week: 'W1', load: 85 },
-      { week: 'W2', load: 92 },
-      { week: 'W3', load: 105 },
-      { week: 'W4', load: 98 },
+      // Empty by default - no workout data logged yet
+      // Example structure:
+      // { week: 'W1', load: 85 },
+      // { week: 'W2', load: 92 },
     ],
   };
 
   // Get data based on current view
-  const currentLoadData = loadLiftedDataByPeriod[liftViewType];
+  const currentLoadData = loadLiftedDataByPeriod[liftViewType] || [];
   const dataKey = liftViewType === 'day' ? 'time' : liftViewType === 'week' ? 'day' : 'week';
-  const totalLoad = currentLoadData.reduce((sum, item) => sum + item.load, 0);
-  const maxLoad = Math.max(...currentLoadData.map(item => item.load));
+  const totalLoad = currentLoadData.length > 0 ? currentLoadData.reduce((sum, item) => sum + item.load, 0) : 0;
+  const maxLoad = currentLoadData.length > 0 ? Math.max(...currentLoadData.map(item => item.load)) : 0;
+  const hasChartData = currentLoadData.length > 0 && currentLoadData.some(item => item.load > 0);
 
   // Equipment icon mapper
   const getEquipmentIcon = (equipment) => {
@@ -497,7 +492,7 @@ export default function Dashboard() {
                     {/* Dropdown menu */}
                     {profileOpen && (
                       <div
-                        className="absolute top-14 left-0 z-50 min-w-[180px] rounded-2xl bg-[#1f1f2a] border border-white/15 shadow-2xl modal-content-fade-in"
+                        className="absolute top-14 left-0 z-50 min-w-[180px] rounded-2xl bg-[#00000066] border border-white/15 shadow-2xl modal-content-fade-in"
                         style={{
                           backdropFilter: 'blur(14px)',
                           WebkitBackdropFilter: 'blur(14px)',
@@ -511,11 +506,11 @@ export default function Dashboard() {
                           className="w-full px-4 py-3 text-left text-red-400 hover:text-red-300 hover:bg-white/8 transition-colors rounded-2xl text-sm font-semibold first:rounded-t-2xl last:rounded-b-2xl flex items-center justify-between"
                         >
                           <span>Sign out</span>
-                          <img
-                        src="/images/icons/signout-icon.png"
-                        alt=""
-                        className="w-4 h-4 opacity-90"
-                      />
+                          <svg className="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M21 12L13 12" />
+                            <path d="M18 15L20.913 12.087V12.087C20.961 12.039 20.961 11.961 20.913 11.913V11.913L18 9" />
+                            <path d="M16 5V4.5V4.5C16 3.67157 15.3284 3 14.5 3H5C3.89543 3 3 3.89543 3 5V19C3 20.1046 3.89543 21 5 21H14.5C15.3284 21 16 20.3284 16 19.5V19.5V19" />
+                          </svg>
                     </button>
                   </div>
                 )}
@@ -523,7 +518,11 @@ export default function Dashboard() {
 
               {/* Greetings on upper-left */}
               <div className="flex flex-col leading-tight">
-                <span className="text-2xl sm:text-3xl font-bold text-white">Hello, <span className="text-purple-300">{userProfile?.username || profile?.username || user?.displayName || 'User'}</span>!</span>
+                <span className="text-2xl sm:text-3xl font-bold text-white">
+                  Hello, <span style={{ color: getUserTextColor(user?.uid) }}>
+                    {getFirstWord(userProfile?.username || profile?.username || user?.displayName || 'User')}
+                  </span>!
+                </span>
               </div>
             </div>
 
@@ -549,144 +548,198 @@ export default function Dashboard() {
           </div>
 
           {/* Overview label outside the carousel */}
-          <div className="flex items-center justify-between mb-5 md:mb-6 content-fade-up-2">
+          <div className="flex items-center justify-between mb-2 md:mb-6 content-fade-up-2">
             <h2 className="text-lg sm:text-xl font-semibold text-white">Overview</h2>
           </div>
 
           {/* Overview Card Carousel */}
           <section className="mb-8 md:mb-10 content-fade-up-3 -mx-4 sm:mx-0">
-            {hasWorkoutHistory ? (
-              <div>
-                {/* Mobile Carousel - Scroll-snap centered with peek */}
-                <div className="block md:hidden mb-6">
-                  <div
-                    ref={carouselRef}
-                    className="flex gap-4 overflow-x-auto pb-2 snap-x snap-mandatory snap-center scrollbar-hide scroll-smooth px-4"
-                  >
-                    {/* Card 1: Activity Overview */}
-                    <article className="min-w-[calc(100vw-24px)] w-[calc(100vw-24px)] max-w-[384px] shrink-0 snap-center rounded-3xl bg-white/10 border border-white/20 p-5 shadow-2xl h-[320px] flex flex-col">
-                      <ActivityOverview
-                        currentWeek={currentWeek}
-                        calendar3Months={calendar3Months}
-                        onDaySelect={(day) => router.push(`/history?day=${day.day}`)}
-                        onMonthSelect={(month, year) => router.push(`/history?month=${month}&year=${year}`)}
-                        variant="mobile"
-                      />
-                    </article>
-
-                    {/* Card 2: Recent Workouts */}
-                    <article className="min-w-[calc(100vw-24px)] w-[calc(100vw-24px)] max-w-[384px] shrink-0 snap-center rounded-3xl bg-white/10 border border-white/20 p-5 shadow-2xl h-[320px] flex flex-col">
-                      <h3 className="text-sm font-semibold text-white/90 mb-4">Recent Workouts</h3>
-                      <div className="flex-1 overflow-y-auto scrollbar-hide space-y-2.5">
-                        {recentWorkouts.slice(0, 5).map((workout) => (
-                          <WorkoutCard key={workout.id} workout={workout} />
-                        ))}
-                      </div>
-                    </article>
-                  </div>
-
-                  {/* Indicator dots (clickable) */}
-                  <div className="flex justify-center gap-2.5 mt-6">
-                    {Array.from({ length: Math.max(cardCount || 2, 2) }).map((_, index) => (
-                      <button
-                        key={index}
-                        onClick={() => scrollToMobileIndex(index)}
-                        className={`${index === carouselIndex ? 'bg-white h-2 w-8' : 'bg-white/30 h-2 w-2'} rounded-full transition-all duration-300`}
-                        aria-label={`Go to slide ${index + 1}`}
-                      />
-                    ))}
-                  </div>
-                </div>
-
-                {/* Desktop/Tablet View - Two Cards Side by Side */}
-                <div className="hidden md:grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div>
+              {/* Mobile Carousel - Scroll-snap centered with peek */}
+              <div className="block md:hidden mb-6">
+                <div
+                  ref={carouselRef}
+                  className="flex gap-4 overflow-x-auto pb-2 snap-x snap-mandatory snap-center scrollbar-hide scroll-smooth px-4"
+                >
                   {/* Card 1: Activity Overview */}
-                  <div className="backdrop-blur-md bg-white/10 border border-white/20 rounded-3xl p-6 shadow-2xl hover:shadow-3xl transition-all duration-300 h-[320px] flex flex-col">
+                  <article className="min-w-[calc(100vw-24px)] w-[calc(100vw-24px)] max-w-[384px] shrink-0 snap-center rounded-3xl bg-white/10 p-5 shadow-2xl h-[320px] flex flex-col">
                     <ActivityOverview
                       currentWeek={currentWeek}
                       calendar3Months={calendar3Months}
                       onDaySelect={(day) => router.push(`/history?day=${day.day}`)}
                       onMonthSelect={(month, year) => router.push(`/history?month=${month}&year=${year}`)}
-                      variant="desktop"
+                      variant="mobile"
                     />
-                  </div>
+                  </article>
 
                   {/* Card 2: Recent Workouts */}
-                  <div className="backdrop-blur-md bg-white/10 border border-white/20 rounded-3xl p-6 shadow-2xl hover:shadow-3xl transition-all duration-300 h-[320px] flex flex-col">
-                    <h3 className="text-sm font-semibold text-white/90 mb-5 uppercase tracking-wide">Recent Workouts</h3>
-                    <div className="flex-1 overflow-y-auto scrollbar-hide space-y-3">
-                      {recentWorkouts.slice(0, 5).map((workout) => (
-                        <WorkoutCard key={workout.id} workout={workout} />
-                      ))}
+                  <article className="min-w-[calc(100vw-24px)] w-[calc(100vw-24px)] max-w-[384px] shrink-0 snap-center rounded-3xl bg-white/10 p-5 shadow-2xl h-[320px] flex flex-col">
+                    <h3 className="text-sm font-semibold text-white/90 mb-4">Recent Workouts</h3>
+                    <div className="flex-1 overflow-y-auto scrollbar-hide">
+                      {hasRecentWorkouts ? (
+                        <div className="space-y-2.5">
+                          {recentWorkouts.slice(0, 5).map((workout) => (
+                            <WorkoutCard key={workout.id} workout={workout} />
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center h-full text-center">
+                          <svg 
+                            fill="rgba(255,255,255,0.4)" 
+                            width="48" 
+                            height="48" 
+                            viewBox="0 0 24 24" 
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="mb-4"
+                          >
+                            <g data-name="Layer 2">
+                              <g data-name="plus-circle">
+                                <rect width="24" height="24" opacity="0"/>
+                                <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z"/>
+                                <path d="M15 11h-2V9a1 1 0 0 0-2 0v2H9a1 1 0 0 0 0 2h2v2a1 1 0 0 0 2 0v-2h2a1 1 0 0 0 0-2z"/>
+                              </g>
+                            </g>
+                          </svg>
+                          <button 
+                            onClick={() => router.push('/workouts')}
+                            className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-full transition-colors"
+                          >
+                            Add a Workout
+                          </button>
+                        </div>
+                      )}
                     </div>
+                  </article>
+                </div>
+
+                {/* Indicator dots (clickable) */}
+                <div className="flex justify-center gap-2.5 mt-6">
+                  {Array.from({ length: 2 }).map((_, index) => (
+                    <button
+                      key={index}
+                      onClick={() => scrollToMobileIndex(index)}
+                      className={`${index === carouselIndex ? 'bg-white h-2 w-8' : 'bg-white/30 h-2 w-2'} rounded-full transition-all duration-300`}
+                      aria-label={`Go to slide ${index + 1}`}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Desktop/Tablet View - Two Cards Side by Side */}
+              <div className="hidden md:grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* Card 1: Activity Overview */}
+                <div className="backdrop-blur-md bg-white/10 rounded-3xl p-6 shadow-2xl hover:shadow-3xl transition-all duration-300 h-[320px] flex flex-col">
+                  <ActivityOverview
+                    currentWeek={currentWeek}
+                    calendar3Months={calendar3Months}
+                    onDaySelect={(day) => router.push(`/history?day=${day.day}`)}
+                    onMonthSelect={(month, year) => router.push(`/history?month=${month}&year=${year}`)}
+                    variant="desktop"
+                  />
+                </div>
+
+                {/* Card 2: Recent Workouts */}
+                <div className="backdrop-blur-md bg-white/10 rounded-3xl p-6 shadow-2xl hover:shadow-3xl transition-all duration-300 h-[320px] flex flex-col">
+                  <h3 className="text-sm font-semibold text-white/90 mb-5 uppercase tracking-wide">Recent Workouts</h3>
+                  <div className="flex-1 overflow-y-auto scrollbar-hide">
+                    {hasRecentWorkouts ? (
+                      <div className="space-y-3">
+                        {recentWorkouts.slice(0, 5).map((workout) => (
+                          <WorkoutCard key={workout.id} workout={workout} />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center h-full text-center">
+                        <svg 
+                          fill="rgba(255,255,255,0.4)" 
+                          width="56" 
+                          height="56" 
+                          viewBox="0 0 24 24" 
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="mb-4"
+                        >
+                          <g data-name="Layer 2">
+                            <g data-name="plus-circle">
+                              <rect width="24" height="24" opacity="0"/>
+                              <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z"/>
+                              <path d="M15 11h-2V9a1 1 0 0 0-2 0v2H9a1 1 0 0 0 0 2h2v2a1 1 0 0 0 2 0v-2h2a1 1 0 0 0 0-2z"/>
+                            </g>
+                          </g>
+                        </svg>
+                        <button 
+                          onClick={() => router.push('/workouts')}
+                          className="px-6 py-2.5 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-full transition-colors"
+                        >
+                          Add a Workout
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
-            ) : (
-              /* New User Card */
-              <div className="w-full bg-gradient-to-br from-white/8 to-white/4 rounded-2xl p-6 sm:p-8 border border-white/10 text-center">
-                <div className="text-4xl mb-4">💪</div>
-                <h2 className="text-xl sm:text-2xl font-semibold text-white mb-3">No workouts yet</h2>
-                <p className="text-sm text-white/60 mb-6">Let's get started! Start your first workout today.</p>
-                <button className="px-6 py-3 bg-green-500 text-white rounded-full font-medium hover:bg-green-600 transition">
-                  Start a Workout
-                </button>
-              </div>
-            )}
+            </div>
           </section>
 
           {/* Load Lifted Section */}
-          {hasWorkoutHistory && (
-            <section className="mb-8 md:mb-10 content-fade-up-4">
-              <div className="bg-black rounded-3xl p-6 sm:p-8 shadow-2xl">
-                {/* Header with title and stats */}
-                <div className="flex items-start justify-between mb-6">
-                  <div>
-                    <h3 className="text-lg font-semibold text-white mb-2">Workout</h3>
-                    <p className="text-xs text-white/60 capitalize">{liftViewType === 'day' ? 'Today' : liftViewType === 'week' ? 'Last 7 Days' : 'Last 4 Weeks'}</p>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-2xl sm:text-3xl font-bold text-yellow-300">{totalLoad.toFixed(1)} kg</div>
-                    <div className="text-xs text-white/60">Total</div>
-                  </div>
+          <section className="mb-8 md:mb-10 content-fade-up-4">
+            <div className="bg-black rounded-3xl p-6 sm:p-8 shadow-2xl">
+              {/* Header with title and stats */}
+              <div className="flex items-start justify-between mb-6">
+                <div>
+                  <h3 className="text-lg font-semibold text-white mb-2">Workout</h3>
+                  <p className="text-xs text-white/60 capitalize">
+                    {hasChartData 
+                      ? (liftViewType === 'day' ? 'Today' : liftViewType === 'week' ? 'Last 7 Days' : 'Last 4 Weeks')
+                      : 'No data available'
+                    }
+                  </p>
                 </div>
-
-                {/* Toggle removed: Always showing last 7 days */}
-
-                {/* Line Chart */}
-                <div className="w-full h-64 sm:h-72 md:h-80 -mx-4 sm:-mx-6">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={currentLoadData} margin={{ top: 10, right: 20, left: -20, bottom: 20 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                      <XAxis dataKey={dataKey} stroke="rgba(255,255,255,0.5)" style={{ fontSize: '12px' }} />
-                      <YAxis stroke="rgba(255,255,255,0.5)" style={{ fontSize: '12px' }} />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: 'rgba(0,0,0,0.9)',
-                          border: '1px solid rgba(255,255,255,0.2)',
-                          borderRadius: '12px',
-                          padding: '12px 16px',
-                        }}
-                        labelStyle={{ color: '#fef08a' }}
-                        formatter={(value) => [`${value} kg`, 'Load']}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="load"
-                        stroke="#fef08a"
-                        strokeWidth={3}
-                        dot={{ fill: '#fef08a', r: 6 }}
-                        activeDot={{ r: 8, fill: '#fef08a' }}
-                        isAnimationActive={true}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
+                <div className="text-right">
+                  <div className={`text-2xl sm:text-3xl font-bold ${hasChartData ? 'text-yellow-300' : 'text-white/30'}`}>
+                    {totalLoad.toFixed(1)} kg
+                  </div>
+                  <div className="text-xs text-white/60">Total</div>
                 </div>
-
-                {/* Stats removed per request */}
               </div>
-            </section>
-          )}
+
+              {/* Line Chart - Always shown with axes */}
+              <div className="w-full h-64 sm:h-72 md:h-80 relative">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={currentLoadData} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                    <XAxis 
+                      dataKey={dataKey} 
+                      stroke="rgba(255,255,255,0.5)" 
+                      style={{ fontSize: '12px' }}
+                      axisLine={true}
+                      tickLine={false}
+                      interval={0}
+                      tick={{ fill: 'rgba(255,255,255,0.5)' }}
+                    />
+                    <YAxis 
+                      stroke="rgba(255,255,255,0.5)" 
+                      style={{ fontSize: '12px' }}
+                      domain={[0, hasChartData ? 'dataMax' : 100]}
+                      axisLine={true}
+                      tickLine={false}
+                      width={35}
+                      tick={{ fill: 'rgba(255,255,255,0.5)' }}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: 'rgba(0,0,0,0.9)',
+                        border: '1px solid rgba(255,255,255,0.2)',
+                        borderRadius: '12px',
+                        padding: '12px 16px',
+                      }}
+                      labelStyle={{ color: '#fef08a' }}
+                      formatter={(value) => [`${value} kg`, 'Load']}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </section>
 
           {/* Spacer for bottom nav */}
           <div className="h-4" />
@@ -714,30 +767,35 @@ export default function Dashboard() {
           onClick={() => setShowSignOutModal(false)}
         >
           <div
-            className="relative max-w-sm w-full p-6 rounded-3xl bg-[#1f1f2a] border border-white/15 shadow-2xl modal-content-fade-in"
+            className="relative max-w-xs w-full p-6 rounded-2xl bg-white/10 shadow-xl modal-content-fade-in"
             style={{
-              boxShadow: '0 20px 60px rgba(0, 0, 0, 0.6)',
+              boxShadow: '0 10px 40px #00000066',
               backdropFilter: 'blur(20px)',
               WebkitBackdropFilter: 'blur(20px)',
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-lg font-semibold text-white mb-2">Sign out?</h3>
-            <p className="text-sm text-white/70 mb-6">You will return to the splash screen.</p>
+            <div className="text-center">
+              <h3 className="text-lg font-medium text-white mb-3">Sign Out</h3>
+              <p className="text-sm text-white/70 mb-6 leading-relaxed">
+                Are you sure you would like to sign out?
+              </p>
+            </div>
+            
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setShowSignOutModal(false)}
-                className="flex-1 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white font-medium transition-colors modal-element-fade-in"
+                className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/90 font-medium transition-colors modal-element-fade-in border border-white/10"
                 style={{ animationDelay: '50ms' }}
               >
                 Cancel
               </button>
               <button
                 onClick={handleSignOutConfirm}
-                className="flex-1 px-4 py-2.5 rounded-xl bg-red-500 hover:bg-red-400 text-white font-semibold transition-colors shadow-lg shadow-red-900/30 modal-element-fade-in"
+                className="flex-1 px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-medium transition-colors modal-element-fade-in"
                 style={{ animationDelay: '120ms' }}
               >
-                Yes, sign out
+                Confirm
               </button>
             </div>
           </div>

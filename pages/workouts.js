@@ -301,9 +301,10 @@ export default function Workouts() {
         <title>Workouts — AppLift</title>
       </Head>
 
-      <main className="mx-auto w-full max-w-4xl px-3 sm:px-4 md:px-6 pt-6 sm:pt-8 md:pt-10 space-y-4 sm:space-y-5 md:space-y-6">
+      <main className="w-full px-4 sm:px-6 md:px-8 pt-10 sm:pt-10 pb-4 md:pb-6">
+        <div className="mx-auto w-full max-w-4xl space-y-4 sm:space-y-5 md:space-y-6">
         {/* Connection status pill */}
-        <div className="flex justify-center content-fade-up-1 px-1 sm:px-0">
+        <div className="flex justify-center content-fade-up-1">
           <ConnectPill 
             connected={connected}
             device={device}
@@ -380,7 +381,7 @@ export default function Workouts() {
               </div>
             ) : (
               <div 
-                className="relative rounded-2xl px-4 py-8 flex flex-col gap-4 bg-white/5 border border-white/10 min-h-[190px] items-center justify-center overflow-hidden"
+                className="relative rounded-2xl px-4 py-8 flex flex-col gap-4 bg-white/5 min-h-[190px] items-center justify-center overflow-hidden"
                 style={{
                   backdropFilter: 'blur(8px)',
                   WebkitBackdropFilter: 'blur(8px)',
@@ -603,6 +604,7 @@ export default function Workouts() {
           </div>
         </section>
         )}
+        </div>
       </main>
 
       {/* Modals */}

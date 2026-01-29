@@ -216,7 +216,7 @@ export default function Login() {
       </button>
       
       <div className="auth-wrapper relative w-full">
-        <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-[36px] shadow-2xl" style={{
+        <div className="bg-white/5 backdrop-blur-md rounded-[36px] shadow-2xl" style={{
           padding: 'clamp(1rem, 3vh, 2rem)',
           display: 'flex',
           flexDirection: 'column',

@@ -81,7 +81,7 @@ export default function RecommendedSetCard({
           <div key={idx} className="min-w-full shrink-0 snap-center">
             {/* Main workout card with outer container */}
             <div
-              className="rounded-3xl p-1 border border-white/20 shadow-lg shadow-black/30"
+              className="rounded-3xl p-1 shadow-lg shadow-black/30"
               style={{
                 backgroundColor: darkenColor(equipmentColor, 0.14),
               }}
@@ -203,7 +203,7 @@ export default function RecommendedSetCard({
           <div key={idx}>
             {/* Main workout card with outer container */}
             <div
-              className="rounded-3xl p-1 border border-white/20 shadow-lg shadow-black/30"
+              className="rounded-3xl p-1 shadow-lg shadow-black/30"
               style={{
                 backgroundColor: darkenColor(equipmentColor, 0.14),
               }}

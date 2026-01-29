@@ -1,10 +1,12 @@
 import Head from 'next/head';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
+import { useAuth } from '../context/AuthContext';
 
 export default function Home() {
   const [stage, setStage] = useState('initial');
   const [isAnimationComplete, setIsAnimationComplete] = useState(false);
+  const { user, loading, isAuthenticated, isOnboardingComplete } = useAuth();
   
   // Timing constants
   const initialHold = 1000;
@@ -45,8 +47,27 @@ export default function Home() {
       setTimeout(
         () => {
           setIsAnimationComplete(true);
-          // Always go to splash - let users choose to sign in from there
-          router.replace('/splash');
+          
+          // Function to determine where to redirect based on auth state
+          const redirectUser = () => {
+            if (loading) {
+              // Auth is still loading, wait a bit more
+              setTimeout(redirectUser, 100);
+              return;
+            }
+            
+            if (isAuthenticated && isOnboardingComplete) {
+              // User is already logged in - skip splash slides and go to dashboard
+              console.log('🏠 User already authenticated, going to dashboard');
+              router.replace('/dashboard');
+            } else {
+              // User is not authenticated or hasn't completed onboarding - show splash slides
+              console.log('🏠 User not authenticated, going to splash');
+              router.replace('/splash');
+            }
+          };
+          
+          redirectUser();
         },
         totalAnimationTime
       )
@@ -55,7 +76,7 @@ export default function Home() {
     return () => {
       timers.forEach(clearTimeout);
     };
-  }, [isAnimationComplete, initialHold, revealDuration, finalHold, reverseDuration, zoomDuration, blackHold, router]);
+  }, [isAnimationComplete, loading, isAuthenticated, isOnboardingComplete, initialHold, revealDuration, finalHold, reverseDuration, zoomDuration, blackHold, router]);
 
   // Calculate responsive logo size (scales with viewport)
   const getResponsiveLogoSize = () => {

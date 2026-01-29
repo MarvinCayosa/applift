@@ -1,9 +1,11 @@
 import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { useState, useRef, useEffect } from 'react'
+import { useAuth } from '../context/AuthContext'
 
 export default function Splash() {
   const router = useRouter()
+  const { user, loading, isAuthenticated, isOnboardingComplete } = useAuth()
   const [currentSlide, setCurrentSlide] = useState(0)
   const touchStartX = useRef(0)
   const touchEndX = useRef(0)
@@ -60,6 +62,16 @@ export default function Splash() {
       highlightOnNewLine: false,
     },
   ]
+
+  // Check for authentication and redirect to dashboard if user is logged in
+  useEffect(() => {
+    if (loading) return // Wait for auth to be determined
+    
+    if (isAuthenticated && isOnboardingComplete) {
+      // User is authenticated and has completed onboarding, redirect to dashboard
+      router.replace('/dashboard')
+    }
+  }, [loading, isAuthenticated, isOnboardingComplete, router])
 
   useEffect(() => {
     if (typeof window === 'undefined') return

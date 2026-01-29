@@ -3,9 +3,9 @@
  * Handles user authentication, login, signup, and token management
  */
 
-import httpClient from './httpClient'
+import httpClient from '../api/httpClient'
 import { ENDPOINTS } from '../config/api'
-import { handleApiError } from './errorHandler'
+import { handleApiError } from '../api/errorHandler'
 
 const AUTH_TOKEN_KEY = 'auth_token'
 const REFRESH_TOKEN_KEY = 'refresh_token'

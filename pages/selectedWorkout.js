@@ -121,7 +121,8 @@ export default function SelectedWorkout() {
         <title>{workout} — AppLift</title>
       </Head>
 
-      <main ref={mainRef} className="mx-auto w-full max-w-4xl px-3 sm:px-4 md:px-6 pt-4 sm:pt-6 pb-24 sm:pb-28 md:pb-32 space-y-4 sm:space-y-5 md:space-y-6 h-screen overflow-y-auto scrollbar-hide">
+      <main ref={mainRef} className="w-full px-4 sm:px-6 md:px-8 pt-10 sm:pt-10 pb-24 sm:pb-28 md:pb-32 h-screen overflow-y-auto scrollbar-hide">
+        <div className="mx-auto w-full max-w-4xl space-y-4 sm:space-y-5 md:space-y-6">
         {/* Header with back button and connection pill */}
         <div className="flex items-center justify-between content-fade-up-1">
           {/* Back button */}
@@ -163,7 +164,7 @@ export default function SelectedWorkout() {
         </div>
 
         {/* Target Muscles - Separate Container */}
-        <div className="content-fade-up-2 rounded-xl sm:rounded-2xl bg-white/5 p-3 sm:p-4 border border-white/10 flex items-center gap-2 sm:gap-3" style={{ animationDelay: '0.15s' }}>
+        <div className="content-fade-up-2 rounded-xl sm:rounded-2xl bg-white/5 p-3 sm:p-4 flex items-center gap-2 sm:gap-3" style={{ animationDelay: '0.15s' }}>
           <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-white/10 flex items-center justify-center shrink-0">
             <svg className="w-5 h-5 sm:w-6 sm:h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -222,6 +223,7 @@ export default function SelectedWorkout() {
         {/* Warm Up Banner */}
         <div className="content-fade-up-3 mb-16 sm:mb-20" style={{ animationDelay: '0.35s' }}>
           <WarmUpBanner />
+        </div>
         </div>
       </main>
 

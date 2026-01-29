@@ -85,8 +85,43 @@ export function getUserAvatarColorStyle(uid) {
   };
 }
 
+/**
+ * Get text color that matches the user's avatar gradient
+ * @param {string} uid - User's Firebase UID
+ * @returns {string} RGB color string for text
+ */
+export function getUserTextColor(uid) {
+  const colors = getUserAvatarColor(uid);
+  const textColorMap = {
+    'from-purple-400': '#c4b5fd', // purple-300
+    'from-blue-400': '#93c5fd',   // blue-300
+    'from-pink-400': '#f9a8d4',   // pink-300
+    'from-green-400': '#86efac',  // green-300
+    'from-orange-400': '#fdba74', // orange-300
+    'from-cyan-400': '#67e8f9',   // cyan-300
+    'from-indigo-400': '#a5b4fc', // indigo-300
+    'from-rose-400': '#fda4af',   // rose-300
+    'from-amber-400': '#fcd34d',  // amber-300
+    'from-lime-400': '#bef264',   // lime-300
+  };
+  
+  return textColorMap[colors.from] || '#c4b5fd'; // Default to purple-300
+}
+
+/**
+ * Extract first word from a name/username
+ * @param {string} name - Full name or username
+ * @returns {string} First word of the name
+ */
+export function getFirstWord(name) {
+  if (!name) return '';
+  return name.trim().split(' ')[0];
+}
+
 export default {
   getUserAvatarColor,
   getUserAvatarColorClass,
   getUserAvatarColorStyle,
+  getUserTextColor,
+  getFirstWord,
 };

@@ -167,7 +167,7 @@ export default function ConnectPill({
             {connected && device ? (
               // Connected State
               <div className="space-y-3">
-                <div className="rounded-2xl bg-white/10 border border-white/20 p-4">
+                <div className="rounded-2xl bg-white/10 p-4">
                   <div className="text-xs text-white/60 mb-1">Connected Device</div>
                   <div className="text-sm font-semibold text-white">{device.name ?? device.id ?? 'Unknown Device'}</div>
                 </div>
@@ -207,7 +207,7 @@ export default function ConnectPill({
                       <button
                         key={dev.id}
                         onClick={() => handleConnect(dev)}
-                        className="w-full px-4 py-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-left transition-colors"
+                        className="w-full px-4 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-left transition-colors"
                       >
                         <div className="text-sm font-medium text-white">
                           {dev.name ?? dev.id ?? 'Unknown Device'}

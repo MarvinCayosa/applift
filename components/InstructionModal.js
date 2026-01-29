@@ -77,7 +77,7 @@ export default function InstructionModal({ isOpen, onClose }) {
           </div>
 
           {/* Alternative */}
-          <div className="mt-6 p-4 rounded-xl bg-white/5 border border-white/10">
+          <div className="mt-6 p-4 rounded-xl bg-white/5">
             <h3 className="text-base font-semibold text-white mb-2 flex items-center gap-2">
               <span>💡</span> Manual Entry
             </h3>
