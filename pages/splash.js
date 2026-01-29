@@ -205,7 +205,7 @@ export default function Splash() {
 
   return (
     <div 
-      className="min-h-screen relative bg-black text-white overflow-hidden"
+      className="min-h-screen h-screen fixed inset-0 bg-black text-white overflow-hidden"
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
@@ -266,13 +266,15 @@ export default function Splash() {
 
       {/* Content */}
       <div 
-        key={`slide-content-${currentSlide}`}
         className="absolute bottom-0 left-0 right-0 z-10 px-6 pb-12 sm:px-8 sm:pb-16 md:pb-20"
+        style={{
+          paddingBottom: 'max(3rem, env(safe-area-inset-bottom, 3rem))'
+        }}
       >
         <div className="w-full max-w-2xl mx-auto">
           {/* Large logo on final slide */}
           {currentSlideData.isFinal && !currentSlideData.hideLogo && (
-            <div className="flex justify-center mb-16 sm:mb-20 md:mb-24 logo-zoom">
+            <div className="flex justify-center mb-16 sm:mb-20 md:mb-24">
               <img
                 src="/images/applift-logo/AppLift_Logo_White.png"
                 alt="AppLift"
@@ -285,12 +287,12 @@ export default function Splash() {
             </div>
           )}
 
-          <div className="content-fade-up-1">{renderTextContent()}</div>
-          <div className="content-fade-up-2">{renderIndicators()}</div>
+          <div>{renderTextContent()}</div>
+          <div>{renderIndicators()}</div>
 
           {/* Buttons - Only on final slide */}
           {currentSlideData.isFinal ? (
-            <div className="space-y-4 content-fade-up-3">
+            <div className="space-y-4">
               <button
                 onClick={() => router.push('/signup')}
                 className="w-full px-8 py-4 rounded-full font-semibold shadow-lg transition-all duration-300 hover:scale-105 animated-purple-gradient text-white"

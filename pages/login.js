@@ -136,8 +136,8 @@ export default function Login() {
   const handleBackToSplash = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    // Go to splash page (no slide param - will show first slide)
-    window.location.href = '/splash';
+    // Go to splash page final slide (slide 3 = index 3 with Create Account/Sign In buttons)
+    window.location.href = '/splash?slide=3';
   }
 
   // Show loading state while checking authentication
