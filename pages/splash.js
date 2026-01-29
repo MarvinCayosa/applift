@@ -111,10 +111,7 @@ export default function Splash() {
   const currentSlideData = slides[currentSlide]
 
   const renderTextContent = () => (
-    <div 
-      key={`slide-${currentSlide}`}
-      className="mb-6"
-    >
+    <div className="mb-6">
       <h1 
         className="leading-tight mb-3 font-bold"
         style={{ 

@@ -7,6 +7,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { useAuth } from '../context/AuthContext';
+import LoadingScreen from './LoadingScreen';
 
 // Pages that don't require authentication
 const PUBLIC_ROUTES = ['/login', '/signup', '/splash', '/'];
@@ -64,13 +65,7 @@ export function ProtectedRoute({ children }) {
 
   // Show nothing while checking auth/redirecting
   if (loading || !isReady) {
-    return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="animate-pulse">
-          <div className="w-16 h-16 border-4 border-[#8b5cf6] border-t-transparent rounded-full animate-spin" />
-        </div>
-      </div>
-    );
+    return <LoadingScreen message="Checking authentication..." showLogo={false} />;
   }
 
   return children;

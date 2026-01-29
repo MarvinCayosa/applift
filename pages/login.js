@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import { useAuth } from '../context/AuthContext'
 import { shouldUseAppMode } from '../utils/pwaInstalled'
+import LoadingScreen from '../components/LoadingScreen'
 
 export default function Login() {
   const router = useRouter()
@@ -142,23 +143,12 @@ export default function Login() {
 
   // Show loading state while checking authentication
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-black">
-        <div className="text-white text-xl">Loading...</div>
-      </div>
-    )
+    return <LoadingScreen message="Loading..." />
   }
 
   // Show signing in loading screen
   if (isSigningIn) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-black">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-[#8b5cf6] border-t-transparent rounded-full animate-spin"></div>
-          <div className="text-white text-lg font-medium">Signing you in...</div>
-        </div>
-      </div>
-    )
+    return <LoadingScreen message="Signing you in..." />
   }
 
   // Don't render login form if already authenticated

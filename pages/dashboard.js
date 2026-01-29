@@ -6,6 +6,7 @@ import BottomNav from '../components/BottomNav';
 import ConnectPill from '../components/ConnectPill';
 import EquipmentIcon from '../components/EquipmentIcon';
 import WorkoutCard from '../components/WorkoutCard';
+import LoadingScreen from '../components/LoadingScreen';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useUserProfile } from '../utils/userProfileStore';
 import { useAuth } from '../context/AuthContext';
@@ -52,6 +53,8 @@ export default function Dashboard() {
 
   // Protect the dashboard - redirect if not authenticated and auth is done loading
   useEffect(() => {
+    console.log('🔒 Dashboard auth check:', { loading, isAuthenticated, user: !!user, userProfile: !!userProfile });
+    
     if (!loading && !isAuthenticated) {
       console.warn('User not authenticated, redirecting to splash');
       
@@ -453,6 +456,16 @@ export default function Dashboard() {
     };
     return map[goal] || 'Not Set';
   };
+
+  // Show loading screen while auth is being determined
+  if (loading) {
+    return <LoadingScreen message="Loading..." />;
+  }
+
+  // Don't render dashboard if not authenticated (redirect will happen via useEffect)
+  if (!isAuthenticated) {
+    return <LoadingScreen message="Redirecting..." />;
+  }
 
   return (
     <div className="min-h-screen bg-black text-white pb-32">

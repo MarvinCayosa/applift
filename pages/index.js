@@ -45,6 +45,7 @@ export default function Home() {
       setTimeout(
         () => {
           setIsAnimationComplete(true);
+          // Always go to splash - let users choose to sign in from there
           router.replace('/splash');
         },
         totalAnimationTime

@@ -19,22 +19,6 @@ export default function AccelerationChart({ timeData, rawData, filteredData, thr
         chartRef.current.destroy();
       }
 
-      // Create gradient for the filtered line (purple gradient)
-      // More evident purple gradient stroke
-      const gradientStroke = ctx.createLinearGradient(0, 0, ctx.canvas.width, 0);
-      gradientStroke.addColorStop(0, 'rgba(192, 132, 252, 1)'); // #c084fc
-      gradientStroke.addColorStop(0.3, 'rgba(168, 85, 247, 1)');
-      gradientStroke.addColorStop(0.7, 'rgba(147, 51, 234, 1)');
-      gradientStroke.addColorStop(1, 'rgba(139, 92, 246, 1)'); // #8b5cf6
-
-      // More obvious, soft, airy vertical gradient fill
-      const gradientFill = ctx.createLinearGradient(0, 0, 0, ctx.canvas.height);
-      gradientFill.addColorStop(0, 'rgba(168, 85, 247, 0.45)'); // Top: solid primary
-      gradientFill.addColorStop(0.15, 'rgba(168, 85, 247, 0.25)');
-      gradientFill.addColorStop(0.4, 'rgba(168, 85, 247, 0.13)');
-      gradientFill.addColorStop(0.7, 'rgba(168, 85, 247, 0.07)');
-      gradientFill.addColorStop(1, 'rgba(168, 85, 247, 0)'); // Bottom: transparent
-
       chartRef.current = new Chart(ctx, {
         type: 'line',
         data: {
@@ -44,27 +28,34 @@ export default function AccelerationChart({ timeData, rawData, filteredData, thr
             {
               label: 'Filtered (Kalman)',
               data: filteredData,
-              borderColor: gradientStroke,
-              backgroundColor: gradientFill,
-              borderWidth: 7,
+              borderColor: '#8b5cf6',
+              backgroundColor: function(context) {
+                const chart = context.chart;
+                const {ctx, chartArea} = chart;
+                
+                if (!chartArea) {
+                  // This case happens on initial chart load
+                  return null;
+                }
+                
+                // Create gradient
+                const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+                gradient.addColorStop(0, 'rgba(139, 92, 246, 0.8)');    // Top: solid violet
+                gradient.addColorStop(0.2, 'rgba(139, 92, 246, 0.6)');
+                gradient.addColorStop(0.4, 'rgba(139, 92, 246, 0.4)');
+                gradient.addColorStop(0.6, 'rgba(139, 92, 246, 0.2)');
+                gradient.addColorStop(0.8, 'rgba(139, 92, 246, 0.1)');
+                gradient.addColorStop(1, 'rgba(139, 92, 246, 0)');      // Bottom: transparent
+                return gradient;
+              },
+              borderWidth: 3,
               pointRadius: 0,
               tension: 0.4, // Smooth curves
-              fill: true,
+              fill: 'origin', // Fill to the x-axis
               shadowOffsetX: 0,
               shadowOffsetY: 0,
-              shadowBlur: 48,
-              shadowColor: 'rgba(168, 85, 247, 0.85)', // Stronger purple glow effect
-              segment: {
-                borderColor: ctx => {
-                  // Re-create gradient for each segment to maintain smooth gradient
-                  const gradient = ctx.chart.ctx.createLinearGradient(0, 0, ctx.chart.width, 0);
-                  gradient.addColorStop(0, 'rgba(192, 132, 252, 1)');
-                  gradient.addColorStop(0.3, 'rgba(168, 85, 247, 1)');
-                  gradient.addColorStop(0.7, 'rgba(147, 51, 234, 1)');
-                  gradient.addColorStop(1, 'rgba(139, 92, 246, 1)');
-                  return gradient;
-                }
-              }
+              shadowBlur: 20,
+              shadowColor: 'rgba(139, 92, 246, 0.6)', // Violet glow effect
             },
             {
               label: 'High Threshold',

@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext'
 import { shouldUseAppMode } from '../utils/pwaInstalled'
 import GoogleSignInButton from '../components/GoogleSignInButton'
 import AuthErrorAlert from '../components/AuthErrorAlert'
+import LoadingScreen from '../components/LoadingScreen'
 
 const steps = [
   { id: 1, label: 'Terms' },
@@ -200,41 +201,6 @@ export default function Signup() {
   const [localError, setLocalError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    setIsAppMode(shouldUseAppMode())
-  }, [])
-
-  // Handle step from URL query for Google users coming from login page
-  useEffect(() => {
-    if (queryStep && provider === 'google') {
-      const stepNum = parseInt(queryStep, 10)
-      // If coming from login with Google, start at step 3 (birthday)
-      // This skips Terms (step 1) and Account creation (step 2) since Google provides auth
-      if (stepNum >= 3 && stepNum <= totalSteps) {
-        setStep(stepNum)
-      }
-    }
-  }, [queryStep, provider, totalSteps])
-
-  // Pre-fill email for Google users
-  useEffect(() => {
-    if (isGoogleUser && userProfile?.email && !email) {
-      setEmail(userProfile.email)
-      if (userProfile.displayName) {
-        setUsername(userProfile.displayName)
-      }
-    }
-  }, [isGoogleUser, userProfile])
-
-  // Redirect if onboarding is already complete
-  useEffect(() => {
-    if (loading) return
-    if (isAuthenticated && isOnboardingComplete) {
-      router.replace('/dashboard')
-    }
-  }, [isAuthenticated, isOnboardingComplete, loading, router])
-
   // Step 1: Terms (session-based only, never persisted from profile)
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [consentAccepted, setConsentAccepted] = useState(false)
@@ -244,7 +210,7 @@ export default function Signup() {
   const termsContentRef = useRef(null)
   const consentContentRef = useRef(null)
 
-  // Step 2: Account
+  // Step 2: Account - MOVED BEFORE useEffects that reference these variables
   const [username, setUsername] = useState(profile.username || '')
   const [email, setEmail] = useState(profile.email || '')
   const [password, setPassword] = useState('')
@@ -287,6 +253,41 @@ export default function Signup() {
   const [step5QuestionIndex, setStep5QuestionIndex] = useState(0)
 
   const [errors, setErrors] = useState([])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    setIsAppMode(shouldUseAppMode())
+  }, [])
+
+  // Handle step from URL query for Google users coming from login page
+  useEffect(() => {
+    if (queryStep && provider === 'google') {
+      const stepNum = parseInt(queryStep, 10)
+      // If coming from login with Google, start at step 3 (birthday)
+      // This skips Terms (step 1) and Account creation (step 2) since Google provides auth
+      if (stepNum >= 3 && stepNum <= totalSteps) {
+        setStep(stepNum)
+      }
+    }
+  }, [queryStep, provider, totalSteps])
+
+  // Pre-fill email for Google users
+  useEffect(() => {
+    if (isGoogleUser && userProfile?.email && !email) {
+      setEmail(userProfile.email)
+      if (userProfile.displayName) {
+        setUsername(userProfile.displayName)
+      }
+    }
+  }, [isGoogleUser, userProfile, email])
+
+  // Redirect if onboarding is already complete
+  useEffect(() => {
+    if (loading) return
+    if (isAuthenticated && isOnboardingComplete) {
+      router.replace('/dashboard')
+    }
+  }, [isAuthenticated, isOnboardingComplete, loading, router])
 
   function genUserId() {
     if (profile.userId) return profile.userId
@@ -540,6 +541,11 @@ export default function Signup() {
   // Check if email already exists in Firebase
   async function checkEmailExists(emailToCheck) {
     try {
+      // Temporarily disable email checking due to Firebase Admin config issues
+      // TODO: Fix Firebase Admin configuration and re-enable this check
+      console.log('Email checking disabled - Firebase Admin not configured');
+      return false;
+      
       // Use the Firebase REST API to check if user exists
       const response = await fetch('/api/check-email', {
         method: 'POST',
@@ -787,14 +793,19 @@ export default function Signup() {
     };
     
     try {
+      console.log('📝 Starting account creation...');
+      
       if (isGoogleUser) {
         // Google user completing onboarding - just update profile
+        console.log('🔄 Completing Google onboarding...');
         await completeOnboarding(profileData);
       } else {
         // Email signup - create account with full profile data
-        // signUpWithEmail includes onboardingCompleted in profileData
+        console.log('📧 Creating email account...');
         await signUpWithEmail(email, password, profileData);
       }
+      
+      console.log('✅ Account created successfully!');
       
       // Clear sensitive data
       setPassword('');
@@ -807,8 +818,13 @@ export default function Signup() {
         onboardingCompleted: true,
       });
       
-      // Redirect happens automatically via useEffect when onboardingCompleted updates
+      console.log('🚀 Redirecting to dashboard...');
+      
+      // Use window.location.href for a hard redirect to ensure it works
+      window.location.href = '/dashboard';
+      
     } catch (err) {
+      console.error('❌ Account creation error:', err);
       setLocalError(err.message);
       setErrors([err.message]);
       setIsSubmitting(false);
@@ -1604,14 +1620,9 @@ You acknowledge the system's limits (e.g., single IMU, equipment-based sensing) 
       
       {/* Show loading screen when submitting */}
       {isSubmitting && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black">
-          <div className="flex flex-col items-center gap-4">
-            <div className="w-12 h-12 border-4 border-[#8b5cf6] border-t-transparent rounded-full animate-spin"></div>
-            <div className="text-white text-lg font-medium">
-              {step === reviewStep ? 'Creating your account...' : 'Please wait...'}
-            </div>
-          </div>
-        </div>
+        <LoadingScreen 
+          message={step === reviewStep ? 'Creating your account...' : 'Please wait...'} 
+        />
       )}
       
       {/* Back button - positioned fixed outside auth-container to work in PWA */}
@@ -1740,7 +1751,7 @@ You acknowledge the system's limits (e.g., single IMU, equipment-based sensing) 
                       : step === 5 && step5Phase === 'intro'
                         ? 'Continue'
                         : step === 5 && step5Phase === 'summary'
-                          ? 'Review Details'
+                          ?  'Confirm'
                           : 'Next'}
                   </button>
                 )}
