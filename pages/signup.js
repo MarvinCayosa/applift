@@ -847,9 +847,11 @@ export default function Signup() {
   }
 
   // Handle back to splash page
-  const handleBackToSplash = () => {
+  const handleBackToSplash = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
     // Go to splash page (no slide param - will show first slide)
-    router.push('/splash');
+    window.location.href = '/splash';
   }
 
   const StepHeader = (
@@ -1616,12 +1618,13 @@ You acknowledge the system's limits (e.g., single IMU, equipment-based sensing) 
       <button
         onClick={handleBackToSplash}
         type="button"
-        className="fixed p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
+        className="fixed p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors touch-manipulation"
         style={{ 
           top: 'max(1rem, env(safe-area-inset-top))',
           left: 'max(1rem, env(safe-area-inset-left))',
-          zIndex: 100,
-          cursor: 'pointer'
+          zIndex: 9999,
+          cursor: 'pointer',
+          WebkitTapHighlightColor: 'transparent'
         }}
         aria-label="Go back to splash"
       >

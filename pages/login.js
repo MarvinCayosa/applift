@@ -133,9 +133,11 @@ export default function Login() {
   }
 
   // Handle back button to go to splash
-  const handleBackToSplash = () => {
+  const handleBackToSplash = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
     // Go to splash page (no slide param - will show first slide)
-    router.push('/splash');
+    window.location.href = '/splash';
   }
 
   // Show loading state while checking authentication
@@ -210,14 +212,17 @@ export default function Login() {
       {/* Back button */}
       <button
         onClick={handleBackToSplash}
-        className="absolute top-4 left-4 z-10 p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
+        className="fixed top-4 left-4 p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors touch-manipulation"
         style={{ 
           top: 'max(1rem, env(safe-area-inset-top))',
-          left: 'max(1rem, env(safe-area-inset-left))'
+          left: 'max(1rem, env(safe-area-inset-left))',
+          zIndex: 9999,
+          cursor: 'pointer',
+          WebkitTapHighlightColor: 'transparent'
         }}
         aria-label="Go back"
       >
-        <img src="/svg/back-arrow.svg" alt="" width="20" height="20" />
+        <img src="/svg/back-arrow.svg" alt="" width="20" height="20" style={{ pointerEvents: 'none' }} />
       </button>
       
       <div className="auth-wrapper relative w-full">

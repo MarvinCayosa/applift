@@ -25,7 +25,7 @@
   "categories": ["health", "fitness"],
   "screenshots": [
     {
-      "src": "/images/applift-logo/AppLift_Logo_White.png",
+      "src": "/images/applift-logo/applift-app-logo.png",
       "sizes": "540x720",
       "type": "image/png",
       "form_factor": "narrow"
