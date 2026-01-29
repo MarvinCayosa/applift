@@ -29,8 +29,8 @@ export function ProtectedRoute({ children }) {
     // Not authenticated
     if (!isAuthenticated) {
       if (!isPublicRoute) {
-        // Redirect to splash if trying to access protected route
-        router.replace('/splash');
+        // Redirect to login if trying to access protected route
+        router.replace('/login');
         return;
       }
       setIsReady(true);

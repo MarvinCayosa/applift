@@ -8,10 +8,10 @@ export default function Document() {
         {/* Manifest */}
         <link rel="manifest" href="/manifest.json" />
 
-        {/* Favicon / icons (ensure these files exist in /public/icons/) */}
-        <link rel="icon" href="/icons/applift-icon-192.png" />
-        <link rel="apple-touch-icon" href="/icons/applift-icon-192.png" />
-        <link rel="shortcut icon" href="/icons/applift-icon-192.png" />
+        {/* Favicon / icons */}
+        <link rel="icon" href="/images/applift-logo/applift-app-logo.png" />
+        <link rel="apple-touch-icon" href="/images/applift-logo/applift-app-logo.png" />
+        <link rel="shortcut icon" href="/images/applift-logo/applift-app-logo.png" />
 
         {/* Theme color for browser chrome (Android status bar) */}
         <meta name="theme-color" content="#000000" />
