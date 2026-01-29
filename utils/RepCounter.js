@@ -28,11 +28,11 @@ export class RepCounter {
     this.currentRep = null;
     this.lastRepEndTime = 0;
     
-    // Peak detection parameters - Made less sensitive to false positives
-    this.minPeakProminence = config.minPeakProminence || 0.35; // Increased from 0.15 to 0.35
-    this.minPeakDistance = config.minPeakDistance || 20; // Increased from 15 to 20 (1.0s at 20Hz)
-    this.minRepDuration = config.minRepDuration || 0.8; // Increased from 0.0 to 0.8 seconds
-    this.maxRepDuration = config.maxRepDuration || 8.0; // Decreased from 12.0 to 8.0 seconds
+    // Peak detection parameters
+    this.minPeakProminence = config.minPeakProminence || 0.15;
+    this.minPeakDistance = config.minPeakDistance || 15; // 0.75s at 20Hz
+    this.minRepDuration = config.minRepDuration || 0.0;
+    this.maxRepDuration = config.maxRepDuration || 12.0;
     
     // Dynamic threshold
     this.thresholdHigh = 10.5;
@@ -88,9 +88,9 @@ export class RepCounter {
     const variance = window.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / window.length;
     const stdDev = Math.sqrt(variance);
     
-    // More conservative threshold approach to reduce false positives
-    const rangeThreshold = Math.max(range * 0.30, 0.35); // Increased from 0.20 to 0.30 and 0.35
-    const stdThreshold = Math.max(stdDev * 0.8, 0.35);   // Increased from 0.6 to 0.8 and 0.35
+    // Fixed threshold approach
+    const rangeThreshold = Math.max(range * 0.20, 0.20);
+    const stdThreshold = Math.max(stdDev * 0.6, 0.20);
     const finalThreshold = Math.min(rangeThreshold, stdThreshold);
     
     // Update thresholds
@@ -106,14 +106,13 @@ export class RepCounter {
     const n = window.length;
     const currentGlobalIndex = this.accelBuffer.length - 1;
     
-    // Find all peaks (local maxima) - More stringent peak detection
+    // Find all peaks (local maxima)
     const peaks = [];
-    for (let i = 5; i < n - 5; i++) { // Increased from 3 to 5 for larger neighborhood
+    for (let i = 3; i < n - 3; i++) {
       let isPeak = true;
       const centerValue = window[i];
       
-      // Check larger neighborhood for more robust peak detection
-      for (let j = i - 5; j <= i + 5; j++) { // Increased from 3 to 5
+      for (let j = i - 3; j <= i + 3; j++) {
         if (j !== i && window[j] >= centerValue) {
           isPeak = false;
           break;
@@ -133,14 +132,13 @@ export class RepCounter {
       }
     }
     
-    // Find all valleys (local minima) - More stringent valley detection
+    // Find all valleys (local minima)
     const valleys = [];
-    for (let i = 5; i < n - 5; i++) { // Increased from 3 to 5 for larger neighborhood
+    for (let i = 3; i < n - 3; i++) {
       let isValley = true;
       const centerValue = window[i];
       
-      // Check larger neighborhood for more robust valley detection
-      for (let j = i - 5; j <= i + 5; j++) { // Increased from 3 to 5
+      for (let j = i - 3; j <= i + 3; j++) {
         if (j !== i && window[j] <= centerValue) {
           isValley = false;
           break;
@@ -194,15 +192,10 @@ export class RepCounter {
       }
       
       if (isValidRep) {
-        // Enhanced validation to reduce false positives
-        const timeSinceLastRep = (startPoint.time - this.lastRepEndTime) / 1000;
-        const minTimeBetweenReps = 0.5; // Minimum 0.5 seconds between reps
-        
+        // Validate rep
         if (repDuration >= this.minRepDuration && 
             repDuration <= this.maxRepDuration && 
-            prominence >= this.minPeakProminence &&
-            timeSinceLastRep >= minTimeBetweenReps && // Additional time validation
-            prominence > this.repHeight * 0.3) { // Prominence must be at least 30% of recent range
+            prominence >= this.minPeakProminence) {
           
           this.completeRep(startPoint, lastPeak, endPoint);
           
