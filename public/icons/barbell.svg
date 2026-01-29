@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <g transform="translate(0,-952.36218) scale(5.12,5.12)">
+    <rect y="1000.2441" x="19.484579" height="4.2362294" width="61.030842" fill="#ffffff" fill-opacity="1" stroke="none" />
+    <rect rx="2.2578685" ry="2.2578685" y="984.43146" x="13.663961" height="35.861401" width="4.5157371" fill="#ffffff" fill-opacity="1" stroke="none" />
+    <rect rx="1.9250531" width="3.8501062" height="23.204435" x="8.8996143" y="990.76001" ry="1.9250531" fill="#ffffff" fill-opacity="1" stroke="none" />
+    <path transform="matrix(0,0.11306406,-0.06098055,0,19.898133,1007.9586)" d="m -5.0507622,192.79179 a 44.446712,51.51778 0 1 1 -88.8830898,-1.1109" fill="#ffffff" fill-opacity="1" stroke="none" />
+    <rect transform="scale(-1,1)" width="4.5157371" height="35.861401" x="-86.336037" y="984.43146" ry="2.2578685" rx="2.2578685" fill="#ffffff" fill-opacity="1" stroke="none" />
+    <rect ry="1.9250531" y="990.76001" x="-91.10038" height="23.204435" width="3.8501062" rx="1.9250531" transform="scale(-1,1)" fill="#ffffff" fill-opacity="1" stroke="none" />
+    <path d="m -5.0507622,192.79179 a 44.446712,51.51778 0 1 1 -88.8830898,-1.1109" transform="matrix(0,0.11306406,0.06098055,0,80.101867,1007.9586)" fill="#ffffff" fill-opacity="1" stroke="none" />
+  </g>
+</svg>

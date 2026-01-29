@@ -1,0 +1,22 @@
+import EquipmentIcon from './EquipmentIcon'
+
+// Compact equipment badge for workout tags. Supports Dumbbell, Barbell, Weight Stack.
+export default function EquipmentTag({ equipment }) {
+  const getEquipmentColor = (type) => {
+    const map = {
+      Barbell: '#fbbf24', // yellow
+      Dumbbell: '#3b82f6', // blue
+      'Weight Stack': '#f97316', // orange
+    }
+    return map[type] || '#7c3aed'
+  }
+
+  return (
+    <div
+      className="w-10 h-10 flex items-center justify-center flex-shrink-0 rounded-xl text-white"
+      style={{ backgroundColor: getEquipmentColor(equipment) }}
+    >
+      <EquipmentIcon type={equipment} className="w-6 h-6" />
+    </div>
+  )
+}
