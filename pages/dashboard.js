@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import BottomNav from '../components/BottomNav';
+import { isPWA } from '../utils/pwaDetection';
 import ConnectPill from '../components/ConnectPill';
 import EquipmentIcon from '../components/EquipmentIcon';
 import WorkoutCard from '../components/WorkoutCard';
@@ -469,7 +470,7 @@ export default function Dashboard() {
         <meta name="theme-color" content="#0b0b0d" />
       </Head>
 
-      <BottomNav />
+      {isPWA() && <BottomNav />}
 
       <main className="w-full px-4 sm:px-6 md:px-8 pt-10 sm:pt-10 pb-4 md:pb-6">
             <div className="w-full max-w-4xl mx-auto space-y-6">

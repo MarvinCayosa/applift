@@ -61,8 +61,8 @@ export default function WorkoutMonitor() {
   const [lastRepNotification, setLastRepNotification] = useState(null);
   
   // Workout tracking - Backend integration ready
-  const [recommendedSets] = useState(2); // Placeholder - will be from backend
-  const [recommendedReps] = useState(5); // Placeholder - will be from backend
+  const [recommendedSets] = useState(4); // Placeholder - will be from backend
+  const [recommendedReps] = useState(2); // Placeholder - will be from backend
   
   // Use the workout session hook for all algorithm logic
   const {
@@ -127,6 +127,7 @@ export default function WorkoutMonitor() {
           timeData: JSON.stringify(chartData.timeData),
           setsData: JSON.stringify(finalStats.setData), // Pass all sets data
           recommendedSets: recommendedSets, // Pass recommended sets
+          recommendedReps: recommendedReps, // Pass recommended reps per set
           hasCSV: 'true'
         }
       });
