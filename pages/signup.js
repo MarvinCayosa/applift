@@ -767,21 +767,23 @@ export default function Signup() {
     setIsSubmitting(true);
     
     // Gather all profile data
+    // Always store standardized units: kg for weight, cm for height
+    const weightNum = parseInt(weight, 10) || 0;
+    const weightInKg = weightUnit === 'lbs' ? Math.round(weightNum * 0.453592) : weightNum;
+    const heightInCm = heightUnit === 'ft' 
+      ? Math.round((parseInt(heightFeet, 10) || 0) * 30.48 + (parseInt(heightInches, 10) || 0) * 2.54)
+      : parseInt(heightValue, 10) || null;
+
     const profileData = {
       username,
       gender,
       birthMonth,
       birthYear,
       age: parseInt(age, 10) || null,
-      weight: parseInt(weight, 10) || null,
-      weightUnit,
-      heightFeet,
-      heightInches,
-      heightValue,
-      heightUnit,
-      height: heightUnit === 'ft' 
-        ? Math.round((parseInt(heightFeet, 10) || 0) * 30.48 + (parseInt(heightInches, 10) || 0) * 2.54)
-        : parseInt(heightValue, 10) || null,
+      weight: weightInKg || null,  // Always stored in kg
+      weightUnit,                   // User's preferred display unit
+      height: heightInCm,           // Always stored in cm
+      heightUnit,                   // User's preferred display unit
       bmi,
       bmiCategory,
       ...questionAnswers,

@@ -73,6 +73,25 @@ export default function Splash() {
     }
   }, [loading, isAuthenticated, isOnboardingComplete, router])
 
+  // Prevent scrolling on splash screen
+  useEffect(() => {
+    // Prevent scrolling
+    document.body.style.overflow = 'hidden'
+    document.documentElement.style.overflow = 'hidden'
+    document.body.style.position = 'fixed'
+    document.body.style.width = '100%'
+    document.body.style.height = '100%'
+    
+    return () => {
+      // Cleanup: restore scrolling when component unmounts
+      document.body.style.overflow = ''
+      document.documentElement.style.overflow = ''
+      document.body.style.position = ''
+      document.body.style.width = ''
+      document.body.style.height = ''
+    }
+  }, [])
+
   useEffect(() => {
     if (typeof window === 'undefined') return
 
@@ -214,7 +233,8 @@ export default function Splash() {
 
   return (
     <div 
-      className="min-h-screen h-screen fixed inset-0 bg-black text-white overflow-hidden"
+      className="min-h-screen h-screen w-screen fixed inset-0 bg-black text-white overflow-hidden touch-none"
+      style={{ overscrollBehavior: 'none' }}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
