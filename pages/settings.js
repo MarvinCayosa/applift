@@ -1,6 +1,147 @@
 import Head from 'next/head';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
+
+// Birthday Picker - iOS-style wheel with center-based selection (same as signup)
+function BirthdayPicker({ months, years, selectedMonth, selectedYear, onMonthChange, onYearChange }) {
+  const monthRef = useRef(null);
+  const yearRef = useRef(null);
+  const scrollTimeoutRef = useRef(null);
+  const itemHeight = 44;
+
+  // Initialize scroll position on mount
+  useEffect(() => {
+    if (monthRef.current && selectedMonth !== undefined) {
+      const idx = months.indexOf(selectedMonth);
+      if (idx !== -1) monthRef.current.scrollTop = idx * itemHeight;
+    }
+    if (yearRef.current && selectedYear !== undefined) {
+      const idx = years.indexOf(selectedYear);
+      if (idx !== -1) yearRef.current.scrollTop = idx * itemHeight;
+    }
+  }, [selectedMonth, selectedYear, months, years]);
+
+  const handleScroll = (ref, items, setter, isMonth) => {
+    if (!ref.current) return;
+    if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+    scrollTimeoutRef.current = setTimeout(() => {
+      const scrollTop = ref.current.scrollTop;
+      const index = Math.round(scrollTop / itemHeight);
+      const clamped = Math.max(0, Math.min(items.length - 1, index));
+      const selected = items[clamped];
+      setter(selected);
+      ref.current.scrollTop = clamped * itemHeight;
+    }, 100);
+  };
+
+  const handleClickItem = (index, items, setter, isMonth) => {
+    const ref = isMonth ? monthRef : yearRef;
+    const selected = items[index];
+    setter(selected);
+    if (ref.current) ref.current.scrollTop = index * itemHeight;
+  };
+
+  return (
+    <div className="relative">
+      {/* Selection indicator */}
+      <div
+        className="absolute inset-x-0 z-10 pointer-events-none"
+        style={{
+          top: '50%',
+          transform: 'translateY(-50%)',
+          height: itemHeight,
+          backgroundColor: 'rgba(139, 92, 246, 0.1)',
+          borderTop: '1px solid rgba(238,235,217,0.2)',
+          borderBottom: '1px solid rgba(238,235,217,0.2)',
+        }}
+      />
+
+      {/* Top fade */}
+      <div
+        className="absolute inset-x-0 top-0 z-20 pointer-events-none"
+        style={{
+          height: '88px',
+          background: 'linear-gradient(to bottom, rgba(0,0,0,1), rgba(0,0,0,0))',
+        }}
+      />
+
+      {/* Bottom fade */}
+      <div
+        className="absolute inset-x-0 bottom-0 z-20 pointer-events-none"
+        style={{
+          height: '88px',
+          background: 'linear-gradient(to top, rgba(0,0,0,1), rgba(0,0,0,0))',
+        }}
+      />
+
+      <div className="flex gap-4">
+        {/* Month Picker */}
+        <div className="flex-1">
+          <div
+            ref={monthRef}
+            className="h-52 overflow-y-scroll scrollbar-hide relative"
+            style={{ scrollSnapType: 'y mandatory' }}
+            onScroll={() => handleScroll(monthRef, months, onMonthChange, true)}
+          >
+            <div style={{ height: itemHeight * 2 }} />
+            {months.map((month, idx) => (
+              <div
+                key={idx}
+                className={`h-11 flex items-center justify-center text-center cursor-pointer transition-all ${
+                  month === selectedMonth
+                    ? 'text-white font-semibold'
+                    : 'text-white/40 font-normal'
+                }`}
+                style={{ scrollSnapAlign: 'center', minHeight: itemHeight }}
+                onClick={() => handleClickItem(idx, months, onMonthChange, true)}
+              >
+                {month}
+              </div>
+            ))}
+            <div style={{ height: itemHeight * 2 }} />
+          </div>
+        </div>
+
+        {/* Year Picker */}
+        <div className="flex-1">
+          <div
+            ref={yearRef}
+            className="h-52 overflow-y-scroll scrollbar-hide relative"
+            style={{ scrollSnapType: 'y mandatory' }}
+            onScroll={() => handleScroll(yearRef, years, onYearChange, false)}
+          >
+            <div style={{ height: itemHeight * 2 }} />
+            {years.map((year, idx) => (
+              <div
+                key={year}
+                className={`h-11 flex items-center justify-center text-center cursor-pointer transition-all ${
+                  year === selectedYear
+                    ? 'text-white font-semibold'
+                    : 'text-white/40 font-normal'
+                }`}
+                style={{ scrollSnapAlign: 'center', minHeight: itemHeight }}
+                onClick={() => handleClickItem(idx, years, onYearChange, false)}
+              >
+                {year}
+              </div>
+            ))}
+            <div style={{ height: itemHeight * 2 }} />
+          </div>
+        </div>
+      </div>
+
+      <style jsx>{`
+        .scrollbar-hide::-webkit-scrollbar {
+          display: none;
+        }
+        .scrollbar-hide {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+      `}</style>
+    </div>
+  );
+}
 import BottomNav from '../components/BottomNav';
 import LoadingScreen from '../components/LoadingScreen';
 import { useAuth } from '../context/AuthContext';
@@ -45,6 +186,13 @@ export default function Settings() {
     weight: '',
     height: '',
   });
+
+  // Birthday picker data - same as signup with 13+ age limit
+  const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const currentYear = new Date().getFullYear();
+  const minAge = 13;
+  const maxYear = currentYear - minAge; // Must be at least 13 years old
+  const years = Array.from({ length: 100 }, (_, i) => maxYear - i); // From maxYear down to maxYear-99
 
   // Protect the page
   useEffect(() => {
@@ -237,7 +385,20 @@ export default function Settings() {
   const getMonthName = (month) => {
     const months = ['January', 'February', 'March', 'April', 'May', 'June', 
                     'July', 'August', 'September', 'October', 'November', 'December'];
-    return months[parseInt(month) - 1] || '';
+    if (!month) return '';
+    if (typeof month === 'string') {
+      // If it's already a month name, return it (case-insensitive match)
+      const found = months.find(m => m.toLowerCase() === month.toLowerCase());
+      if (found) return found;
+      // If it's a number string, convert to month name
+      const num = parseInt(month);
+      if (!isNaN(num) && num >= 1 && num <= 12) return months[num - 1];
+      return month; // fallback: return as-is
+    }
+    if (typeof month === 'number' && month >= 1 && month <= 12) {
+      return months[month - 1];
+    }
+    return '';
   };
 
   // Format birthdate display
@@ -373,43 +534,20 @@ export default function Settings() {
             <div className="rounded-2xl bg-white/10  overflow-hidden">
               {isEditingBody ? (
                 <div className="p-5 space-y-4">
-                  {/* Birth Month & Year */}
+                  {/* Birth Month & Year - iOS-style scroll picker */}
                   <div>
-                    <label className="block text-xs font-medium text-white/60 mb-1.5 uppercase tracking-wide">
+                    <label className="block text-xs font-medium text-white/60 mb-3 uppercase tracking-wide text-center">
                       Birth Month & Year
                     </label>
-                    <div className="grid grid-cols-2 gap-3">
-                      <select
-                        name="birthMonth"
-                        value={bodyForm.birthMonth}
-                        onChange={handleBodyChange}
-                        className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white focus:outline-none focus:border-white/30 transition-colors appearance-none cursor-pointer"
-                      >
-                        <option value="" className="bg-neutral-900">Month</option>
-                        <option value="1" className="bg-neutral-900">January</option>
-                        <option value="2" className="bg-neutral-900">February</option>
-                        <option value="3" className="bg-neutral-900">March</option>
-                        <option value="4" className="bg-neutral-900">April</option>
-                        <option value="5" className="bg-neutral-900">May</option>
-                        <option value="6" className="bg-neutral-900">June</option>
-                        <option value="7" className="bg-neutral-900">July</option>
-                        <option value="8" className="bg-neutral-900">August</option>
-                        <option value="9" className="bg-neutral-900">September</option>
-                        <option value="10" className="bg-neutral-900">October</option>
-                        <option value="11" className="bg-neutral-900">November</option>
-                        <option value="12" className="bg-neutral-900">December</option>
-                      </select>
-                      <input
-                        type="number"
-                        name="birthYear"
-                        value={bodyForm.birthYear}
-                        onChange={handleBodyChange}
-                        min="1900"
-                        max={new Date().getFullYear()}
-                        className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/40 focus:outline-none focus:border-white/30 transition-colors"
-                        placeholder="Year"
-                      />
-                    </div>
+                    <BirthdayPicker
+                      months={months}
+                      years={years}
+                      selectedMonth={bodyForm.birthMonth}
+                      selectedYear={bodyForm.birthYear ? parseInt(bodyForm.birthYear) : years[0]}
+                      onMonthChange={(month) => setBodyForm(prev => ({ ...prev, birthMonth: month }))}
+                      onYearChange={(year) => setBodyForm(prev => ({ ...prev, birthYear: year }))}
+                    />
+                    <p className="text-xs text-white/40 mt-2 text-center">Must be at least 13 years old</p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
