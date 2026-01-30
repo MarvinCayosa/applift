@@ -2,9 +2,9 @@ export default function RepInsightCard({ repData, repNumber }) {
   const { time, rom, peakVelocity, isClean, chartData } = repData;
 
   return (
-    <div className="bg-[#252525] rounded-2xl p-4 min-w-full shadow-lg">
+    <div className="bg-[#252525] rounded-2xl p-3 min-w-full shadow-lg">
       {/* Rep number header */}
-      <div className="flex justify-between items-center mb-3">
+      <div className="flex justify-between items-center mb-2">
         <h4 className="text-sm font-semibold text-white">Rep {repNumber}</h4>
         <span className={`text-xs font-semibold px-2 py-1 rounded-full ${
           isClean 
@@ -16,9 +16,9 @@ export default function RepInsightCard({ repData, repNumber }) {
       </div>
 
       {/* Chart on left, metrics on right */}
-      <div className="flex gap-4">
-        {/* Square chart on the left */}
-        <div className="w-28 h-28 flex-shrink-0 bg-[#1f1f1f] rounded-xl overflow-hidden">
+      <div className="flex gap-3">
+        {/* Square chart on the left - smaller */}
+        <div className="w-24 h-24 flex-shrink-0 bg-[#1f1f1f] rounded-xl overflow-hidden">
           {chartData && chartData.length > 0 ? (
             <svg className="w-full h-full" viewBox="0 0 112 112" preserveAspectRatio="none">
               <defs>
@@ -85,18 +85,18 @@ export default function RepInsightCard({ repData, repNumber }) {
         </div>
 
         {/* Metrics on the right - values beside labels */}
-        <div className="flex-1 flex flex-col justify-center space-y-2.5">
+        <div className="flex-1 flex flex-col justify-center space-y-2">
           <div className="flex items-baseline gap-2">
             <span className="text-xs text-gray-400">Time:</span>
-            <span className="text-base font-bold text-white">{time ? `${time.toFixed(1)}s` : '-'}</span>
+            <span className="text-sm font-bold text-white">{time ? `${time.toFixed(1)}s` : '-'}</span>
           </div>
           <div className="flex items-baseline gap-2">
             <span className="text-xs text-gray-400">ROM:</span>
-            <span className="text-base font-bold text-white">{rom ? `${rom.toFixed(0)}°` : '-'}</span>
+            <span className="text-sm font-bold text-white">{rom ? `${rom.toFixed(0)}°` : '-'}</span>
           </div>
           <div className="flex items-baseline gap-2">
             <span className="text-xs text-gray-400">Peak Velocity:</span>
-            <span className="text-base font-bold text-white">{peakVelocity ? `${peakVelocity.toFixed(1)}m/s` : '-'}</span>
+            <span className="text-sm font-bold text-white">{peakVelocity ? `${peakVelocity.toFixed(1)}m/s` : '-'}</span>
           </div>
         </div>
       </div>

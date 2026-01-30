@@ -226,12 +226,18 @@ export function useWorkoutSession({
           timeData: [...fullTimeData.current]
         };
         
+        // Build updated workout stats with current set included
+        const updatedSetData = [...workoutStats.setData, currentSetData];
+        const updatedTotalReps = workoutStats.totalReps + repStats.repCount;
+        const updatedTotalTime = workoutStats.totalTime + elapsedTime;
+        const updatedAllRepDurations = [...workoutStats.allRepDurations, ...repDurations];
+        
         setWorkoutStats(prev => ({
-          totalReps: prev.totalReps + repStats.repCount,
-          allRepDurations: [...prev.allRepDurations, ...repDurations],
+          totalReps: updatedTotalReps,
+          allRepDurations: updatedAllRepDurations,
           completedSets: prev.completedSets + 1,
-          totalTime: prev.totalTime + elapsedTime,
-          setData: [...prev.setData, currentSetData]
+          totalTime: updatedTotalTime,
+          setData: updatedSetData
         }));
         
         // Set complete - trigger break or workout complete
@@ -241,11 +247,14 @@ export function useWorkoutSession({
           setIsPaused(false);
           
           if (onWorkoutComplete) {
+            // Use the updated stats that include the current set
             onWorkoutComplete({
               workoutStats: {
-                ...workoutStats,
-                totalReps: workoutStats.totalReps + repStats.repCount,
-                totalTime: workoutStats.totalTime + elapsedTime
+                totalReps: updatedTotalReps,
+                allRepDurations: updatedAllRepDurations,
+                completedSets: currentSet,
+                totalTime: updatedTotalTime,
+                setData: updatedSetData
               },
               repData: repCounterRef.current.exportData(),
               chartData: { 
