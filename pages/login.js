@@ -199,29 +199,29 @@ export default function Login() {
         <meta name="description" content="Log in to your account" />
       </Head>
       
-      {/* Back button */}
-      <button
-        onClick={handleBackToSplash}
-        className="fixed top-4 left-4 p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors touch-manipulation"
-        style={{ 
-          top: 'max(1rem, env(safe-area-inset-top))',
-          left: 'max(1rem, env(safe-area-inset-left))',
-          zIndex: 9999,
-          cursor: 'pointer',
-          WebkitTapHighlightColor: 'transparent'
-        }}
-        aria-label="Go back"
-      >
-        <img src="/svg/back-arrow.svg" alt="" width="20" height="20" style={{ pointerEvents: 'none' }} />
-      </button>
-      
       <div className="auth-wrapper relative w-full">
-        <div className="bg-white/5 backdrop-blur-md rounded-[36px] shadow-2xl" style={{
+        <div className="bg-white/5 backdrop-blur-md rounded-[36px] shadow-2xl relative" style={{
           padding: 'clamp(1rem, 3vh, 2rem)',
           display: 'flex',
           flexDirection: 'column',
           gap: 'clamp(0.75rem, 2vh, 1.25rem)',
         }}>
+          {/* Back button - inside container, upper left */}
+          <button
+            onClick={handleBackToSplash}
+            className="absolute p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors touch-manipulation"
+            style={{ 
+              top: 'clamp(0.75rem, 2vh, 1rem)',
+              left: 'clamp(0.75rem, 2vw, 1rem)',
+              zIndex: 10,
+              cursor: 'pointer',
+              WebkitTapHighlightColor: 'transparent'
+            }}
+            aria-label="Go back"
+          >
+            <img src="/svg/back-arrow.svg" alt="" width="20" height="20" style={{ pointerEvents: 'none' }} />
+          </button>
+          
           <h1 className="font-semibold text-center" style={{
             color: 'var(--app-white)',
             fontSize: 'clamp(1.25rem, 4vw, 1.75rem)',
@@ -282,7 +282,7 @@ export default function Login() {
                   type="button"
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                   onClick={() => setShowPassword(s => !s)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 p-1"
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500"
                 >
                   {showPassword ? (
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 640 640" fill="currentColor">
@@ -326,8 +326,11 @@ export default function Login() {
             <button
               type="button"
               onClick={handleGoogleSignIn}
-              className="w-full rounded-full bg-white text-black font-semibold py-2 mb-4 flex items-center justify-center gap-2"
-              style={{ fontSize: 'clamp(0.875rem, 3vw, 1rem)' }}
+              className="w-full rounded-full bg-white text-black font-semibold flex items-center justify-center gap-2"
+              style={{
+                fontSize: 'clamp(0.875rem, 3vw, 1rem)',
+                padding: 'clamp(0.625rem, 2vh, 0.75rem) clamp(0.875rem, 3vw, 1rem)',
+              }}
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 48 48"><path fill="#4285F4" d="M24 9.5c3.54 0 6.7 1.22 9.19 3.22l6.85-6.85C35.64 2.34 30.13 0 24 0 14.61 0 6.27 5.7 2.44 14.01l7.98 6.21C12.13 13.09 17.62 9.5 24 9.5z"/><path fill="#34A853" d="M46.1 24.59c0-1.54-.14-3.02-.39-4.45H24v8.44h12.44c-.54 2.9-2.18 5.36-4.64 7.02l7.19 5.59C43.73 37.13 46.1 31.36 46.1 24.59z"/><path fill="#FBBC05" d="M10.42 28.22c-1.13-3.36-1.13-6.97 0-10.33l-7.98-6.21C.64 16.61 0 20.21 0 24c0 3.79.64 7.39 2.44 10.32l7.98-6.1z"/><path fill="#EA4335" d="M24 48c6.13 0 11.64-2.02 15.84-5.5l-7.19-5.59c-2.01 1.35-4.59 2.15-8.65 2.15-6.38 0-11.87-3.59-14.58-8.72l-7.98 6.1C6.27 42.3 14.61 48 24 48z"/><path fill="none" d="M0 0h48v48H0z"/></svg>
               Sign in with Google

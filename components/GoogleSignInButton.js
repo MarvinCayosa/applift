@@ -36,13 +36,15 @@ export default function GoogleSignInButton({
         ${fullWidth ? 'w-full' : ''} 
         inline-flex items-center justify-center 
         rounded-full bg-white text-black font-semibold 
-        py-3 px-4 
         transition-all duration-200
         hover:bg-gray-100
         disabled:opacity-50 disabled:cursor-not-allowed
         ${className}
       `}
-      style={{ fontSize: 'clamp(0.875rem, 3vw, 1rem)' }}
+      style={{ 
+        fontSize: 'clamp(0.875rem, 3vw, 1rem)',
+        padding: 'clamp(0.625rem, 2vh, 0.75rem) clamp(0.875rem, 3vw, 1rem)',
+      }}
     >
       {isLoading ? (
         <div className="w-5 h-5 border-2 border-black/20 border-t-black rounded-full animate-spin mr-2" />
