@@ -42,10 +42,10 @@ function BirthdayPicker({ months, years, selectedMonth, selectedYear, onMonthCha
   };
 
   return (
-    <div className="relative">
+    <div className="relative rounded-2xl overflow-hidden">
       {/* Selection indicator */}
       <div
-        className="absolute inset-x-0 z-10 pointer-events-none"
+        className="absolute inset-x-0 z-10 pointer-events-none rounded-xl"
         style={{
           top: '50%',
           transform: 'translateY(-50%)',
@@ -58,19 +58,19 @@ function BirthdayPicker({ months, years, selectedMonth, selectedYear, onMonthCha
 
       {/* Top fade */}
       <div
-        className="absolute inset-x-0 top-0 z-20 pointer-events-none"
+        className="absolute inset-x-0 top-0 z-20 pointer-events-none rounded-t-2xl"
         style={{
           height: '88px',
-          background: 'linear-gradient(to bottom, rgba(0,0,0,1), rgba(0,0,0,0))',
+          background: 'linear-gradient(to bottom, rgba(11,11,13,1), rgba(11,11,13,0))',
         }}
       />
 
       {/* Bottom fade */}
       <div
-        className="absolute inset-x-0 bottom-0 z-20 pointer-events-none"
+        className="absolute inset-x-0 bottom-0 z-20 pointer-events-none rounded-b-2xl"
         style={{
           height: '88px',
-          background: 'linear-gradient(to top, rgba(0,0,0,1), rgba(0,0,0,0))',
+          background: 'linear-gradient(to top, rgba(11,11,13,1), rgba(11,11,13,0))',
         }}
       />
 
@@ -187,11 +187,17 @@ export default function Settings() {
     height: '',
   });
 
-  // Birthday picker data - same as signup with 13+ age limit
+  // Weight and height unit states (like signup)
+  const [weightUnit, setWeightUnit] = useState('kg');
+  const [heightUnit, setHeightUnit] = useState('ft');
+  const [heightFeet, setHeightFeet] = useState('');
+  const [heightInches, setHeightInches] = useState('');
+
+  // Birthday picker data - 18+ age limit
   const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   const currentYear = new Date().getFullYear();
-  const minAge = 13;
-  const maxYear = currentYear - minAge; // Must be at least 13 years old
+  const minAge = 18;
+  const maxYear = currentYear - minAge; // Must be at least 18 years old
   const years = Array.from({ length: 100 }, (_, i) => maxYear - i); // From maxYear down to maxYear-99
 
   // Protect the page
@@ -211,12 +217,40 @@ export default function Settings() {
       email,
     });
 
+    // Get user's preferred units (default: kg for weight, ft for height)
+    const prefWeightUnit = userProfile?.weightUnit || 'kg';
+    const prefHeightUnit = userProfile?.heightUnit || 'ft';
+    setWeightUnit(prefWeightUnit);
+    setHeightUnit(prefHeightUnit);
+
+    // Convert stored values (always in kg/cm) to user's preferred display units
+    const storedWeightKg = userProfile?.weight || '';
+    const storedHeightCm = userProfile?.height || '';
+
+    // Weight: convert kg to lbs if user prefers lbs
+    let displayWeight = storedWeightKg;
+    if (storedWeightKg && prefWeightUnit === 'lbs') {
+      displayWeight = Math.round(storedWeightKg * 2.20462 * 10) / 10;
+    }
+
+    // Height: convert cm to ft/in if user prefers ft
+    let displayHeight = storedHeightCm;
+    let displayFeet = '';
+    let displayInches = '';
+    if (storedHeightCm && prefHeightUnit === 'ft') {
+      const totalInches = storedHeightCm / 2.54;
+      displayFeet = Math.floor(totalInches / 12).toString();
+      displayInches = Math.round(totalInches % 12).toString();
+    }
+
     setBodyForm({
       birthMonth: userProfile?.birthMonth || '',
       birthYear: userProfile?.birthYear || '',
-      weight: userProfile?.weight || '',
-      height: userProfile?.height || '',
+      weight: displayWeight,
+      height: displayHeight,
     });
+    setHeightFeet(displayFeet);
+    setHeightInches(displayInches);
     
     if (username) {
       const names = username.trim().split(' ').filter(n => n.length > 0);
@@ -262,11 +296,34 @@ export default function Settings() {
   const handleSaveBody = async () => {
     setIsSaving(true);
     try {
+      // Always store in standardized units: kg for weight, cm for height
+      let heightCm = null;
+      let weightKg = null;
+
+      // Convert height to cm for storage
+      if (heightUnit === 'ft') {
+        const feet = parseInt(heightFeet, 10) || 0;
+        const inches = parseInt(heightInches, 10) || 0;
+        heightCm = Math.round(feet * 30.48 + inches * 2.54);
+      } else {
+        heightCm = bodyForm.height ? parseFloat(bodyForm.height) : null;
+      }
+
+      // Convert weight to kg for storage
+      if (weightUnit === 'lbs') {
+        weightKg = bodyForm.weight ? Math.round(parseFloat(bodyForm.weight) * 0.453592 * 10) / 10 : null;
+      } else {
+        weightKg = bodyForm.weight ? parseFloat(bodyForm.weight) : null;
+      }
+
+      // Only save standardized values (kg, cm) and user's preferred units
       await updateUserProfile({
         birthMonth: bodyForm.birthMonth || null,
         birthYear: bodyForm.birthYear ? parseInt(bodyForm.birthYear) : null,
-        weight: bodyForm.weight ? parseFloat(bodyForm.weight) : null,
-        height: bodyForm.height ? parseFloat(bodyForm.height) : null,
+        weight: weightKg,  // Always in kg
+        height: heightCm,  // Always in cm
+        weightUnit,        // User's preferred display unit
+        heightUnit,        // User's preferred display unit
       });
       setIsEditingBody(false);
     } catch (error) {
@@ -286,12 +343,38 @@ export default function Settings() {
   };
 
   const handleCancelBody = () => {
+    // Reset to user's preferred units
+    const prefWeightUnit = userProfile?.weightUnit || 'kg';
+    const prefHeightUnit = userProfile?.heightUnit || 'ft';
+    setWeightUnit(prefWeightUnit);
+    setHeightUnit(prefHeightUnit);
+
+    // Convert stored values (always in kg/cm) back to display units
+    const storedWeightKg = userProfile?.weight || '';
+    const storedHeightCm = userProfile?.height || '';
+
+    let displayWeight = storedWeightKg;
+    if (storedWeightKg && prefWeightUnit === 'lbs') {
+      displayWeight = Math.round(storedWeightKg * 2.20462 * 10) / 10;
+    }
+
+    let displayHeight = storedHeightCm;
+    let displayFeet = '';
+    let displayInches = '';
+    if (storedHeightCm && prefHeightUnit === 'ft') {
+      const totalInches = storedHeightCm / 2.54;
+      displayFeet = Math.floor(totalInches / 12).toString();
+      displayInches = Math.round(totalInches % 12).toString();
+    }
+
     setBodyForm({
       birthMonth: userProfile?.birthMonth || '',
       birthYear: userProfile?.birthYear || '',
-      weight: userProfile?.weight || '',
-      height: userProfile?.height || '',
+      weight: displayWeight,
+      height: displayHeight,
     });
+    setHeightFeet(displayFeet);
+    setHeightInches(displayInches);
     setIsEditingBody(false);
   };
 
@@ -542,44 +625,194 @@ export default function Settings() {
                     <BirthdayPicker
                       months={months}
                       years={years}
-                      selectedMonth={bodyForm.birthMonth}
+                      selectedMonth={bodyForm.birthMonth || months[0]}
                       selectedYear={bodyForm.birthYear ? parseInt(bodyForm.birthYear) : years[0]}
                       onMonthChange={(month) => setBodyForm(prev => ({ ...prev, birthMonth: month }))}
                       onYearChange={(year) => setBodyForm(prev => ({ ...prev, birthYear: year }))}
                     />
-                    <p className="text-xs text-white/40 mt-2 text-center">Must be at least 13 years old</p>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-medium text-white/60 mb-1.5 uppercase tracking-wide">
-                        Weight (kg)
-                      </label>
-                      <input
-                        type="number"
-                        name="weight"
-                        value={bodyForm.weight}
-                        onChange={handleBodyChange}
-                        step="0.1"
-                        className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/40 focus:outline-none focus:border-white/30 transition-colors"
-                        placeholder="70"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-white/60 mb-1.5 uppercase tracking-wide">
-                        Height (cm)
-                      </label>
-                      <input
-                        type="number"
-                        name="height"
-                        value={bodyForm.height}
-                        onChange={handleBodyChange}
-                        step="0.1"
-                        className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/40 focus:outline-none focus:border-white/30 transition-colors"
-                        placeholder="175"
-                      />
+                  {/* Weight - same style as signup */}
+                  <div>
+                    <label className="block text-xs font-medium text-white/60 mb-2 uppercase tracking-wide">Weight</label>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1">
+                        <input
+                          value={bodyForm.weight}
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          onChange={(e) => setBodyForm(prev => ({ ...prev, weight: e.target.value }))}
+                          className="w-full rounded-full px-4 bg-black/40 text-white placeholder-white/40 border border-white/10 focus:outline-none focus:ring-2 focus:ring-[#8b5cf6]/50 transition-all"
+                          style={{ height: '2.5rem' }}
+                          placeholder={userProfile?.weight ? `Current: ${userProfile.weight}` : 'e.g., 70'}
+                        />
+                      </div>
+                      <div className="flex gap-1" style={{ minWidth: 'fit-content' }}>
+                        {[{ value: 'kg', label: 'kg' }, { value: 'lbs', label: 'lbs' }].map((unit) => {
+                          const selected = weightUnit === unit.value;
+                          return (
+                            <button
+                              key={unit.value}
+                              type="button"
+                              onClick={() => {
+                                if (weightUnit !== unit.value && bodyForm.weight) {
+                                  const currentWeight = parseFloat(bodyForm.weight);
+                                  if (!isNaN(currentWeight)) {
+                                    let convertedWeight;
+                                    if (unit.value === 'lbs' && weightUnit === 'kg') {
+                                      // kg to lbs
+                                      convertedWeight = (currentWeight * 2.20462).toFixed(1);
+                                    } else if (unit.value === 'kg' && weightUnit === 'lbs') {
+                                      // lbs to kg
+                                      convertedWeight = (currentWeight / 2.20462).toFixed(1);
+                                    }
+                                    if (convertedWeight) {
+                                      setBodyForm(prev => ({ ...prev, weight: convertedWeight }));
+                                    }
+                                  }
+                                }
+                                setWeightUnit(unit.value);
+                              }}
+                              className={`rounded-xl text-xs font-medium transition flex items-center justify-center ${selected ? 'bg-[#8b5cf6] text-white' : 'bg-white/10 text-white/70 border border-white/20'}`}
+                              style={{ width: '2.75rem', height: '2.5rem' }}
+                            >
+                              {unit.label}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
+
+                  {/* Height - same style as signup */}
+                  {heightUnit === 'ft' ? (
+                    <div className="space-y-2">
+                      <label className="block text-xs font-medium text-white/60 uppercase tracking-wide">Height</label>
+                      <div className="flex items-end gap-2">
+                        <div className="flex gap-2 flex-1">
+                          <label className="flex-1 block">
+                            <span className="text-xs block mb-1 text-white/50">Feet</span>
+                            <input
+                              value={heightFeet}
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              onChange={(e) => setHeightFeet(e.target.value)}
+                              className="w-full rounded-full px-4 bg-black/40 text-white placeholder-white/40 border border-white/10 focus:outline-none focus:ring-2 focus:ring-[#8b5cf6]/50 transition-all"
+                              style={{ height: '2.5rem' }}
+                              placeholder={userProfile?.heightFeet ? `${userProfile.heightFeet}` : 'e.g., 5'}
+                            />
+                          </label>
+                          <label className="flex-1 block">
+                            <span className="text-xs block mb-1 text-white/50">Inches</span>
+                            <input
+                              value={heightInches}
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              onChange={(e) => setHeightInches(e.target.value)}
+                              className="w-full rounded-full px-4 bg-black/40 text-white placeholder-white/40 border border-white/10 focus:outline-none focus:ring-2 focus:ring-[#8b5cf6]/50 transition-all"
+                              style={{ height: '2.5rem' }}
+                              placeholder={userProfile?.heightInches ? `${userProfile.heightInches}` : 'e.g., 10'}
+                            />
+                          </label>
+                        </div>
+                        <div className="flex gap-1" style={{ minWidth: 'fit-content' }}>
+                          {[{ value: 'ft', label: 'ft' }, { value: 'cm', label: 'cm' }].map((unit) => {
+                            const selected = heightUnit === unit.value;
+                            return (
+                              <button
+                                key={unit.value}
+                                type="button"
+                                onClick={() => {
+                                  if (heightUnit !== unit.value) {
+                                    if (unit.value === 'cm' && heightUnit === 'ft') {
+                                      // ft/in to cm
+                                      const feet = parseFloat(heightFeet) || 0;
+                                      const inches = parseFloat(heightInches) || 0;
+                                      if (feet > 0 || inches > 0) {
+                                        const totalCm = Math.round((feet * 30.48) + (inches * 2.54));
+                                        setBodyForm(prev => ({ ...prev, height: totalCm.toString() }));
+                                      }
+                                    } else if (unit.value === 'ft' && heightUnit === 'cm') {
+                                      // cm to ft/in
+                                      const cm = parseFloat(bodyForm.height) || 0;
+                                      if (cm > 0) {
+                                        const totalInches = cm / 2.54;
+                                        const feet = Math.floor(totalInches / 12);
+                                        const inches = Math.round(totalInches % 12);
+                                        setHeightFeet(feet.toString());
+                                        setHeightInches(inches.toString());
+                                      }
+                                    }
+                                  }
+                                  setHeightUnit(unit.value);
+                                }}
+                                className={`rounded-xl text-xs font-medium transition flex items-center justify-center ${selected ? 'bg-[#8b5cf6] text-white' : 'bg-white/10 text-white/70 border border-white/20'}`}
+                                style={{ width: '2.75rem', height: '2.5rem' }}
+                              >
+                                {unit.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-xs font-medium text-white/60 mb-2 uppercase tracking-wide">Height</label>
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1">
+                          <input
+                            value={bodyForm.height}
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            onChange={(e) => setBodyForm(prev => ({ ...prev, height: e.target.value }))}
+                            className="w-full rounded-full px-4 bg-black/40 text-white placeholder-white/40 border border-white/10 focus:outline-none focus:ring-2 focus:ring-[#8b5cf6]/50 transition-all"
+                            style={{ height: '2.5rem' }}
+                            placeholder={userProfile?.height ? `Current: ${userProfile.height}` : 'e.g., 170'}
+                          />
+                        </div>
+                        <div className="flex gap-1" style={{ minWidth: 'fit-content' }}>
+                          {[{ value: 'ft', label: 'ft' }, { value: 'cm', label: 'cm' }].map((unit) => {
+                            const selected = heightUnit === unit.value;
+                            return (
+                              <button
+                                key={unit.value}
+                                type="button"
+                                onClick={() => {
+                                  if (heightUnit !== unit.value) {
+                                    if (unit.value === 'cm' && heightUnit === 'ft') {
+                                      // ft/in to cm
+                                      const feet = parseFloat(heightFeet) || 0;
+                                      const inches = parseFloat(heightInches) || 0;
+                                      if (feet > 0 || inches > 0) {
+                                        const totalCm = Math.round((feet * 30.48) + (inches * 2.54));
+                                        setBodyForm(prev => ({ ...prev, height: totalCm.toString() }));
+                                      }
+                                    } else if (unit.value === 'ft' && heightUnit === 'cm') {
+                                      // cm to ft/in
+                                      const cm = parseFloat(bodyForm.height) || 0;
+                                      if (cm > 0) {
+                                        const totalInches = cm / 2.54;
+                                        const feet = Math.floor(totalInches / 12);
+                                        const inches = Math.round(totalInches % 12);
+                                        setHeightFeet(feet.toString());
+                                        setHeightInches(inches.toString());
+                                      }
+                                    }
+                                  }
+                                  setHeightUnit(unit.value);
+                                }}
+                                className={`rounded-xl text-xs font-medium transition flex items-center justify-center ${selected ? 'bg-[#8b5cf6] text-white' : 'bg-white/10 text-white/70 border border-white/20'}`}
+                                style={{ width: '2.75rem', height: '2.5rem' }}
+                              >
+                                {unit.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="flex gap-3 pt-2">
                     <button

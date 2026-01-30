@@ -7,6 +7,9 @@ import ConnectPill from '../components/ConnectPill';
 import EquipmentIcon from '../components/EquipmentIcon';
 import WorkoutCard from '../components/WorkoutCard';
 import LoadingScreen from '../components/LoadingScreen';
+import LoadTrendIndicator from '../components/LoadTrendIndicator';
+import EquipmentDistributionCard from '../components/EquipmentDistributionCard';
+import PlaceholderCard from '../components/PlaceholderCard';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useUserProfile } from '../utils/userProfileStore';
 import { useAuth } from '../context/AuthContext';
@@ -397,12 +400,12 @@ export default function Dashboard() {
     ],
     week: [
       // Sample data to show axes with days of the week
-      { day: 'Mon', load: 0 },
-      { day: 'Tue', load: 0 },
-      { day: 'Wed', load: 0 },
-      { day: 'Thu', load: 0 },
-      { day: 'Fri', load: 0 },
-      { day: 'Sat', load: 0 },
+      { day: 'Mon', load: 85 },
+      { day: 'Tue', load: 92 },
+      { day: 'Wed', load: 78 },
+      { day: 'Thu', load: 95 },
+      { day: 'Fri', load: 88 },
+      { day: 'Sat', load: 102 },
       { day: 'Sun', load: 0 },
     ],
     month: [
@@ -419,6 +422,22 @@ export default function Dashboard() {
   const totalLoad = currentLoadData.length > 0 ? currentLoadData.reduce((sum, item) => sum + item.load, 0) : 0;
   const maxLoad = currentLoadData.length > 0 ? Math.max(...currentLoadData.map(item => item.load)) : 0;
   const hasChartData = currentLoadData.length > 0 && currentLoadData.some(item => item.load > 0);
+
+  // Trend data - Backend will provide this comparison data
+  // Mock data for development showing different trend scenarios
+  const loadTrendData = {
+    difference: 12.5, // kg difference from last week (positive = up, negative = down, 0 = neutral)
+    percentChange: 8.3, // percentage change from last week
+    period: 'last week' // comparison period text
+  };
+
+  // Equipment distribution data - Backend will provide this per month
+  // Mock data showing distribution of exercises per equipment type
+  const equipmentDistributionData = [
+    { name: 'Dumbbell', value: 45, icon: '🏋️', color: '#FF4D4D' },     // Red
+    { name: 'Barbell', value: 30, icon: '⚖️', color: '#3B82F6' },      // Blue
+    { name: 'Weight Stack', value: 25, icon: '⛓️', color: '#FBBF24' }, // Yellow
+  ];
 
   // Equipment icon mapper
   const getEquipmentIcon = (equipment) => {
@@ -472,7 +491,7 @@ export default function Dashboard() {
       <BottomNav />
 
       <main className="w-full px-4 sm:px-6 md:px-8 pt-10 sm:pt-10 pb-4 md:pb-6">
-            <div className="w-full max-w-4xl mx-auto space-y-6">
+            <div className="w-full max-w-4xl mx-auto space-y-4">
               {/* Top bar: greetings + avatar left, controls right */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
@@ -548,15 +567,15 @@ export default function Dashboard() {
           </div>
 
           {/* Overview label outside the carousel */}
-          <div className="flex items-center justify-between mb-2 md:mb-6 content-fade-up-2">
+          <div className="flex items-center justify-between mb-1 md:mb-3 content-fade-up-2">
             <h2 className="text-lg sm:text-xl font-semibold text-white">Overview</h2>
           </div>
 
           {/* Overview Card Carousel */}
-          <section className="mb-8 md:mb-10 content-fade-up-3 -mx-4 sm:mx-0">
+          <section className="mb-4 md:mb-6 content-fade-up-3 -mx-4 sm:mx-0">
             <div>
               {/* Mobile Carousel - Scroll-snap centered with peek */}
-              <div className="block md:hidden mb-6">
+              <div className="block md:hidden mb-3">
                 <div
                   ref={carouselRef}
                   className="flex gap-4 overflow-x-auto pb-2 snap-x snap-mandatory snap-center scrollbar-hide scroll-smooth px-4"
@@ -613,7 +632,7 @@ export default function Dashboard() {
                 </div>
 
                 {/* Indicator dots (clickable) */}
-                <div className="flex justify-center gap-2.5 mt-6">
+                <div className="flex justify-center gap-2.5 mt-3">
                   {Array.from({ length: 2 }).map((_, index) => (
                     <button
                       key={index}
@@ -681,10 +700,10 @@ export default function Dashboard() {
           </section>
 
           {/* Load Lifted Section */}
-          <section className="mb-8 md:mb-10 content-fade-up-4">
-            <div className="bg-black rounded-3xl p-6 sm:p-8 shadow-2xl">
+          <section className="mb-4 md:mb-6 content-fade-up-4">
+            <div className="bg-black rounded-3xl p-5 sm:p-6 shadow-2xl">
               {/* Header with title and stats */}
-              <div className="flex items-start justify-between mb-6">
+              <div className="flex items-start justify-between mb-4">
                 <div>
                   <h3 className="text-lg font-semibold text-white mb-2">Workout</h3>
                   <p className="text-xs text-white/60 capitalize">
@@ -738,6 +757,34 @@ export default function Dashboard() {
                   </LineChart>
                 </ResponsiveContainer>
               </div>
+            </div>
+          </section>
+
+          {/* Weekly Comparison Card - Full width gray card */}
+          <section className="mb-4 md:mb-5 content-fade-up-5">
+            <LoadTrendIndicator
+              difference={loadTrendData.difference}
+              percentChange={loadTrendData.percentChange}
+              period={loadTrendData.period}
+              currentTotal={540}
+              previousTotal={527.5}
+            />
+          </section>
+
+          {/* Two half-width cards side by side */}
+          <section className="mb-4 md:mb-6 content-fade-up-6">
+            <div className="grid grid-cols-2 gap-4">
+              {/* Left: Equipment Distribution */}
+              <EquipmentDistributionCard
+                data={equipmentDistributionData}
+                period="This Month"
+              />
+              
+              {/* Right: Placeholder for future feature */}
+              <PlaceholderCard
+                title="Quick Stats"
+                subtitle="Coming soon"
+              />
             </div>
           </section>
 
