@@ -2,7 +2,6 @@ import Head from 'next/head';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import BottomNav from '../components/BottomNav';
-import { isPWA } from '../utils/pwaDetection';
 import ConnectPill from '../components/ConnectPill';
 import EquipmentIcon from '../components/EquipmentIcon';
 import EquipmentSelectionModal from '../components/EquipmentSelectionModal';
@@ -622,7 +621,7 @@ export default function Workouts() {
       />
 
       {/* Existing bottom nav */}
-      {isPWA() && <BottomNav />}
+      <BottomNav />
 
     </div>
   );
