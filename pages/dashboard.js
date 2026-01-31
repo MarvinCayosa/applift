@@ -8,15 +8,19 @@ import EquipmentIcon from '../components/EquipmentIcon';
 import WorkoutCard from '../components/WorkoutCard';
 import LoadingScreen from '../components/LoadingScreen';
 import LoadTrendIndicator from '../components/LoadTrendIndicator';
+import MovementQuality from '../components/MovementQuality';
 import EquipmentDistributionCard from '../components/EquipmentDistributionCard';
 import PlaceholderCard from '../components/PlaceholderCard';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useUserProfile } from '../utils/userProfileStore';
+import { useWorkoutStreak } from '../utils/useWorkoutStreak';
 import { useAuth } from '../context/AuthContext';
 import ActivityOverview from '../components/ActivityOverview';
+import WorkoutStreak from '../components/WorkoutStreak';
 import { useBluetooth } from '../context/BluetoothProvider';
 import { shouldUseAppMode } from '../utils/pwaInstalled';
 import { getUserAvatarColorStyle, getUserTextColor, getFirstWord } from '../utils/colorUtils';
+import useScrollAnimation from '../hooks/useScrollAnimation';
 
 // Profile colors for custom avatar (must match settings.js)
 const PROFILE_COLORS = [
@@ -35,6 +39,8 @@ const PROFILE_COLORS = [
 export default function Dashboard() {
   const { profile } = useUserProfile();
   const { user, userProfile, signOut, loading, isAuthenticated } = useAuth();
+  const { streakData, loading: streakLoading, error: streakError } = useWorkoutStreak();
+  
   const router = useRouter();
   const currentPath = router.pathname;
   
@@ -67,6 +73,17 @@ export default function Dashboard() {
   const [slideMetrics, setSlideMetrics] = useState({ width: 0, gap: 16 });
   const PEEK_OFFSET = 56;
   const [liftViewType, setLiftViewType] = useState('week');
+
+  // Scroll animations for dashboard sections - Fast and snappy, all fade-up with minimal delays
+  const headerAnimation = useScrollAnimation({ delay: 50 });
+  const connectPillAnimation = useScrollAnimation({ delay: 75 });
+  const overviewLabelAnimation = useScrollAnimation({ delay: 100 });
+  const streakAnimation = useScrollAnimation({ delay: 125 });
+  const carouselAnimation = useScrollAnimation({ delay: 150 });
+  const loadLiftedAnimation = useScrollAnimation({ delay: 175 });
+  const trendAnimation = useScrollAnimation({ delay: 200 });
+  const halfCardsAnimation = useScrollAnimation({ delay: 225 });
+  const movementQualityAnimation = useScrollAnimation({ delay: 250 });
 
   // Protect the dashboard - redirect if not authenticated and auth is done loading
   useEffect(() => {
@@ -448,9 +465,9 @@ export default function Dashboard() {
   // Equipment distribution data - Backend will provide this per month
   // Mock data showing distribution of exercises per equipment type
   const equipmentDistributionData = [
-    { name: 'Dumbbell', value: 45, icon: '🏋️', color: '#FF4D4D' },     // Red
-    { name: 'Barbell', value: 30, icon: '⚖️', color: '#3B82F6' },      // Blue
-    { name: 'Weight Stack', value: 25, icon: '⛓️', color: '#FBBF24' }, // Yellow
+    { name: 'Dumbbell', value: 45, icon: '🏋️', color: '#3b82f6' },     // Blue
+    { name: 'Barbell', value: 30, icon: '⚖️', color: '#ef4444' },      // Red
+    { name: 'Stack', value: 25, icon: '⛓️', color: '#eab308' }, // Yellow
   ];
 
   // Equipment icon mapper
@@ -507,7 +524,10 @@ export default function Dashboard() {
       <main className="w-full px-4 sm:px-6 md:px-8 pt-10 sm:pt-10 pb-4 md:pb-6">
             <div className="w-full max-w-4xl mx-auto space-y-4">
               {/* Top bar: greetings left, avatar right */}
-              <div className="flex items-center justify-between">
+              <div 
+                ref={headerAnimation.ref}
+                className={`flex items-center justify-between scroll-animate-fade-up ${headerAnimation.isVisible ? 'scroll-animate-visible' : ''}`}
+              >
                 {/* Greetings on left */}
                 <div className="flex flex-col leading-tight">
                   <span className="text-sm text-white/40 mb-1">Start your training today!</span>
@@ -519,7 +539,7 @@ export default function Dashboard() {
                 </div>
 
                 {/* Colored profile avatar with initials - clickable, now on right */}
-                <div className="relative" ref={profileRef}>
+                <div className="relative z-[10100]" ref={profileRef}>
                   <button
                     onClick={() => setProfileOpen(!profileOpen)}
                     className="w-12 h-12 sm:w-12 sm:h-12 rounded-full border border-white/20 flex items-center justify-center flex-shrink-0 hover:border-white/40 transition-colors overflow-hidden"
@@ -536,7 +556,7 @@ export default function Dashboard() {
                   {/* Dropdown menu */}
                   {profileOpen && (
                     <div
-                      className="absolute top-14 right-0 z-50 min-w-[180px] rounded-2xl bg-[#00000066] border border-white/15 shadow-2xl modal-content-fade-in"
+                      className="absolute top-14 right-0 z-[10100] min-w-[180px] rounded-2xl bg-[#00000066] border border-white/15 shadow-2xl modal-content-fade-in"
                       style={{
                         backdropFilter: 'blur(14px)',
                         WebkitBackdropFilter: 'blur(14px)',
@@ -562,7 +582,10 @@ export default function Dashboard() {
               </div>
 
           {/* Connection status pill */}
-          <div className="flex justify-center content-fade-up-1">
+          <div 
+            ref={connectPillAnimation.ref}
+            className={`flex justify-center scroll-animate-fade-up ${connectPillAnimation.isVisible ? 'scroll-animate-visible' : ''}`}
+          >
             <ConnectPill 
               connected={connected}
               device={device}
@@ -576,12 +599,30 @@ export default function Dashboard() {
           </div>
 
           {/* Overview label outside the carousel */}
-          <div className="flex items-center justify-between mb-1 md:mb-3 content-fade-up-2">
+          <div 
+            ref={overviewLabelAnimation.ref}
+            className={`flex items-center justify-between mb-1 md:mb-3 scroll-animate-fade-up ${overviewLabelAnimation.isVisible ? 'scroll-animate-visible' : ''}`}
+          >
             <h2 className="text-lg sm:text-xl font-semibold text-white">Overview</h2>
           </div>
 
+          {/* Workout Streak Section - positioned under Overview */}
+          <div 
+            ref={streakAnimation.ref}
+            className={`scroll-animate-fade-up ${streakAnimation.isVisible ? 'scroll-animate-visible' : ''}`}
+          >
+            <WorkoutStreak 
+              streakDays={streakData.currentStreak}
+              lastWorkoutDate={streakData.lastWorkoutDate ? new Date(streakData.lastWorkoutDate.seconds * 1000).toISOString() : null}
+              loading={streakLoading}
+            />
+          </div>
+
           {/* Overview Card Carousel */}
-          <section className="mb-4 md:mb-6 content-fade-up-3 -mx-4 sm:mx-0">
+          <section 
+            ref={carouselAnimation.ref}
+            className={`mb-4 md:mb-6 -mx-4 sm:mx-0 scroll-animate-fade-up ${carouselAnimation.isVisible ? 'scroll-animate-visible' : ''}`}
+          >
             <div>
               {/* Mobile Carousel - Scroll-snap centered with peek */}
               <div className="block md:hidden mb-3">
@@ -709,7 +750,10 @@ export default function Dashboard() {
           </section>
 
           {/* Load Lifted Section */}
-          <section className="mb-4 md:mb-6 content-fade-up-4">
+          <section 
+            ref={loadLiftedAnimation.ref}
+            className={`mb-4 md:mb-6 scroll-animate-fade-up ${loadLiftedAnimation.isVisible ? 'scroll-animate-visible' : ''}`}
+          >
             <div className="bg-black rounded-3xl p-5 sm:p-6 shadow-2xl">
               {/* Header with title and stats */}
               <div className="flex items-start justify-between mb-4">
@@ -770,7 +814,10 @@ export default function Dashboard() {
           </section>
 
           {/* Weekly Comparison Card - Full width gray card */}
-          <section className="mb-4 md:mb-5 content-fade-up-5">
+          <section 
+            ref={trendAnimation.ref}
+            className={`mb-4 md:mb-5 scroll-animate-fade-up ${trendAnimation.isVisible ? 'scroll-animate-visible' : ''}`}
+          >
             <LoadTrendIndicator
               difference={loadTrendData.difference}
               percentChange={loadTrendData.percentChange}
@@ -781,12 +828,16 @@ export default function Dashboard() {
           </section>
 
           {/* Two half-width cards side by side */}
-          <section className="mb-4 md:mb-6 content-fade-up-6">
+          <section 
+            ref={halfCardsAnimation.ref}
+            className={`mb-4 md:mb-6 scroll-animate-fade-up ${halfCardsAnimation.isVisible ? 'scroll-animate-visible' : ''}`}
+          >
             <div className="grid grid-cols-2 gap-4">
               {/* Left: Equipment Distribution */}
               <EquipmentDistributionCard
                 data={equipmentDistributionData}
                 period="This Month"
+                animate={halfCardsAnimation.isVisible}
               />
               
               {/* Right: Placeholder for future feature */}
@@ -795,6 +846,18 @@ export default function Dashboard() {
                 subtitle="Coming soon"
               />
             </div>
+          </section>
+
+          {/* Movement Quality Card - Weekly aggregated IMU metrics */}
+          <section 
+            ref={movementQualityAnimation.ref}
+            className={`mb-4 md:mb-5 scroll-animate-fade-up ${movementQualityAnimation.isVisible ? 'scroll-animate-visible' : ''}`}
+          >
+            <MovementQuality
+              loading={false}
+              animate={movementQualityAnimation.isVisible}
+              onFilterChange={(filter) => console.log('Filter changed:', filter)}
+            />
           </section>
 
           {/* Spacer for bottom nav */}
@@ -814,7 +877,7 @@ export default function Dashboard() {
       {/* Sign-out confirmation modal */}
       {showSignOutModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center px-4 modal-fade-in"
+          className="fixed inset-0 z-[10500] flex items-center justify-center px-4 modal-fade-in"
           style={{
             backgroundColor: 'rgba(0, 0, 0, 0.75)',
             backdropFilter: 'blur(12px)',

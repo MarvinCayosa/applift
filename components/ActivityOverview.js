@@ -2,16 +2,54 @@ import React, { useState, useEffect } from 'react'
 
 // Reusable WorkoutCard component for backend integration
 const WorkoutCard = ({ workout, onWorkoutClick, selectedDay }) => {
+  // Equipment color mapping (matching EquipmentDistributionCard)
+  const getEquipmentColor = (equipment) => {
+    const colorMap = {
+      'Dumbbell': '#FF4D4D',     // Red
+      'Barbell': '#3B82F6',      // Blue  
+      'Weight Stack': '#FBBF24', // Yellow
+    };
+    return colorMap[equipment] || '#7c3aed';
+  };
+
+  // Get equipment icon
+  const getEquipmentIcon = (equipment) => {
+    switch (equipment) {
+      case 'Dumbbell':
+        return '/svg/dumbbell.svg';
+      case 'Barbell':
+        return '/svg/barbell.svg';
+      case 'Weight Stack':
+        return '/svg/weight-stack.svg';
+      default:
+        return '/svg/dumbbell.svg';
+    }
+  };
+
   return (
     <button
       onClick={() => onWorkoutClick(workout, selectedDay)}
-      className="w-full bg-white/10 rounded-xl p-3 hover:bg-white/15 transition-all duration-200 text-left"
+      className="w-full bg-white/10 rounded-xl p-3 hover:bg-white/15 transition-all duration-200 text-left relative overflow-hidden"
     >
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-medium text-white/90">{workout.type}</span>
+      {/* Colored bar on the left side */}
+      <div 
+        className="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl"
+        style={{ backgroundColor: getEquipmentColor(workout.equipment) }}
+      />
+      
+      <div className="flex items-center justify-between mb-2 ml-3">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-white/90">{workout.exercise}</span>
+          <img 
+            src={getEquipmentIcon(workout.equipment)} 
+            alt={workout.equipment}
+            className="w-3 h-3"
+            style={{ filter: 'brightness(0) saturate(100%) invert(1)' }}
+          />
+        </div>
         <span className="text-xs text-white/50">{workout.startTime}</span>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 ml-3">
         <div className="flex items-center gap-1">
           <svg className="w-3 h-3 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -19,9 +57,12 @@ const WorkoutCard = ({ workout, onWorkoutClick, selectedDay }) => {
           <span className="text-xs text-white/70">{workout.duration} min</span>
         </div>
         <div className="flex items-center gap-1">
-          <svg className="w-3 h-3 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-1v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-1" />
-          </svg>
+          <img 
+            src="/svg/weight-response.svg" 
+            alt="Weight" 
+            className="w-3 h-3"
+            style={{ filter: 'brightness(0) saturate(100%) invert(64%) sepia(36%) saturate(678%) hue-rotate(249deg) brightness(91%) contrast(91%)' }}
+          />
           <span className="text-xs text-white/70">{workout.exerciseCount} exercises</span>
         </div>
       </div>
@@ -127,7 +168,8 @@ export default function ActivityOverview({
     30: [
       {
         id: 'workout_001',
-        type: 'Push Day',
+        exercise: 'Flat Bench Press',
+        equipment: 'Barbell',
         duration: 45,
         startTime: '07:30',
         exerciseCount: 3,
@@ -135,7 +177,8 @@ export default function ActivityOverview({
       },
       {
         id: 'workout_002', 
-        type: 'Cardio',
+        exercise: 'Concentration Curls',
+        equipment: 'Dumbbell',
         duration: 20,
         startTime: '18:00',
         exerciseCount: 1,
@@ -145,7 +188,8 @@ export default function ActivityOverview({
     29: [
       {
         id: 'workout_003',
-        type: 'Pull Day', 
+        exercise: 'Lateral Pulldown',
+        equipment: 'Weight Stack', 
         duration: 50,
         startTime: '08:00',
         exerciseCount: 4,
@@ -155,7 +199,8 @@ export default function ActivityOverview({
     28: [
       {
         id: 'workout_004',
-        type: 'Legs',
+        exercise: 'Front Squats',
+        equipment: 'Barbell',
         duration: 60,
         startTime: '09:15',
         exerciseCount: 5,
@@ -278,7 +323,9 @@ export default function ActivityOverview({
         }`}>
           <div className="h-full flex flex-col">
             <div className="h-full flex flex-col">
-              <p className="text-xs text-white/50 mb-3 uppercase tracking-wide font-semibold">This Week</p>
+              <p className="text-xs text-white/50 mb-3 uppercase tracking-wide font-semibold">
+                {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+              </p>
               
               <WeeklyDatePicker
                 currentWeek={currentWeek}

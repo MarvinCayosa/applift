@@ -33,9 +33,9 @@ export default function LoadTrendIndicator({
     switch(trend) {
       case 'up':
         return {
-          color: 'text-green-400',
-          bgColor: 'bg-green-500/20',
-          barColor: 'bg-green-400',
+          color: '#61d929', // new green
+          bgColor: 'rgba(97, 217, 41, 0.2)',
+          barColor: '#61d929',
           label: 'Increased',
           icon: (
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -45,9 +45,9 @@ export default function LoadTrendIndicator({
         }
       case 'down':
         return {
-          color: 'text-red-400',
-          bgColor: 'bg-red-500/20',
-          barColor: 'bg-red-400',
+          color: '#ef4444', // red
+          bgColor: 'rgba(239, 68, 68, 0.2)',
+          barColor: '#ef4444',
           label: 'Decreased',
           icon: (
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -57,9 +57,9 @@ export default function LoadTrendIndicator({
         }
       default:
         return {
-          color: 'text-white/50',
-          bgColor: 'bg-white/10',
-          barColor: 'bg-white/30',
+          color: 'rgba(255,255,255,0.5)',
+          bgColor: 'rgba(255,255,255,0.1)',
+          barColor: 'rgba(255,255,255,0.3)',
           label: 'No change',
           icon: (
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -98,11 +98,6 @@ export default function LoadTrendIndicator({
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <div className={`p-1.5 rounded-lg ${style.bgColor}`}>
-            <svg className="w-4 h-4 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-            </svg>
-          </div>
           <div>
             <h3 className="text-sm font-semibold text-white">Weekly Load Comparison</h3>
             <p className="text-[10px] text-white/40">vs {period}</p>
@@ -110,9 +105,12 @@ export default function LoadTrendIndicator({
         </div>
         
         {/* Trend badge */}
-        <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full ${style.bgColor}`}>
-          <span className={style.color}>{style.icon}</span>
-          <span className={`text-sm font-bold ${style.color}`}>
+        <div 
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full"
+          style={{ backgroundColor: style.bgColor }}
+        >
+          <span style={{ color: style.color }}>{style.icon}</span>
+          <span className="text-sm font-bold" style={{ color: style.color }}>
             {formatPercentage()}
           </span>
         </div>
@@ -128,8 +126,11 @@ export default function LoadTrendIndicator({
           </div>
           <div className="h-3 bg-white/5 rounded-full overflow-hidden">
             <div 
-              className={`h-full rounded-full transition-all duration-500 ${trend === 'up' ? 'bg-green-400' : trend === 'down' ? 'bg-amber-400' : 'bg-white/40'}`}
-              style={{ width: `${currentWidth}%` }}
+              className="h-full rounded-full transition-all duration-500"
+              style={{ 
+                width: `${currentWidth}%`,
+                backgroundColor: trend === 'up' ? '#61d929' : trend === 'down' ? '#f59e0b' : 'rgba(255,255,255,0.4)'
+              }}
             />
           </div>
         </div>
@@ -150,8 +151,8 @@ export default function LoadTrendIndicator({
       </div>
 
       {/* Difference summary */}
-      <div className={`mt-4 pt-3 border-t border-white/10 flex items-center justify-center gap-2`}>
-        <span className={`text-sm font-semibold ${style.color}`}>
+      <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-center gap-2">
+        <span className="text-sm font-semibold" style={{ color: style.color }}>
           {formatDifference()} kg
         </span>
         <span className="text-xs text-white/40">
