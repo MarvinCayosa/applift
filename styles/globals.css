@@ -225,7 +225,7 @@ html, body, #__next {
 
 /* Placeholder and SVG behavior: keep placeholders slightly faded, make SVGs inherit text color. */
 ::placeholder { color: rgba(238,235,217,0.72) !important; }
-svg { color: inherit; fill: currentColor; }
+svg { color: inherit; }
 
 /* Hide scrollbar for carousel elements while maintaining scroll functionality */
 .scrollbar-hide {
@@ -367,6 +367,50 @@ svg { color: inherit; fill: currentColor; }
   100% {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+/* Smooth expand animation for sections */
+@keyframes expandIn {
+  0% {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-expandIn {
+  animation: expandIn 300ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+}
+
+/* Dropdown slide animation */
+@keyframes dropdownSlideIn {
+  0% {
+    opacity: 0;
+    transform: scaleY(0.95) translateY(-8px);
+  }
+  100% {
+    opacity: 1;
+    transform: scaleY(1) translateY(0);
+  }
+}
+
+.animate-dropdownSlideIn {
+  animation: dropdownSlideIn 200ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+}
+
+/* Option item animation */
+@keyframes optionFadeIn {
+  0% {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
   }
 }
 

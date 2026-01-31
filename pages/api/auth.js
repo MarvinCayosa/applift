@@ -56,7 +56,7 @@ function sanitizeProfile(profile) {
     'username', 'displayName', 'gender', 'birthMonth', 'birthYear', 'age',
     'weight', 'weightUnit', 'height', 'heightUnit', 'heightFeet', 'heightInches', 'heightCm',
     'bmi', 'bmiCategory', 'bodyType', 'weightResponse', 'strengthExperience',
-    'workoutFrequency', 'fitnessGoal', 'trainingPriority', 'onboardingCompleted',
+    'activityLevel', 'fitnessGoal', 'trainingPriority', 'onboardingCompleted',
     'termsAccepted', 'termsAcceptedAt', 'consentAccepted', 'consentAcceptedAt'
   ];
   

@@ -496,7 +496,7 @@ export default function Dashboard() {
               <div className="flex items-center justify-between">
                 {/* Greetings on left */}
                 <div className="flex flex-col leading-tight">
-                  <span className="text-sm text-white/60 mb-1">Start your training today!</span>
+                  <span className="text-sm text-white/40 mb-1">Start your training today!</span>
                   <span className="text-2xl sm:text-3xl font-bold text-white">
                     Hi, <span style={{ color: getUserTextColor(user?.uid) }}>
                       {getFirstWord(userProfile?.username || profile?.username || user?.displayName || 'User')}

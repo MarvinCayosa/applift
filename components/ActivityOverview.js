@@ -282,12 +282,6 @@ export default function ActivityOverview({
 
               {/* Workout details in same container */}
               <div className="flex-1 overflow-y-auto scrollbar-hide">
-                {selectedDay && (
-                  <div className="text-xs text-white/60 mb-2">
-                    {selectedDay.dayName}, {selectedDay.day}
-                  </div>
-                )}
-                
                 <WorkoutLogsList
                   workouts={selectedDay ? currentWorkoutLogs[selectedDay.day] : null}
                   selectedDay={selectedDay}

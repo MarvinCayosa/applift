@@ -236,7 +236,7 @@ export default function Signup() {
   const [heightFeet, setHeightFeet] = useState(profile.heightFeet || '')
   const [heightInches, setHeightInches] = useState(profile.heightInches || '')
   const [heightValue, setHeightValue] = useState(profile.heightCm?.toString() || '')
-  const [heightUnit, setHeightUnit] = useState(profile.heightUnit || 'ft')
+  const [heightUnit, setHeightUnit] = useState(profile.heightUnit || 'cm')
   const [bmi, setBmi] = useState(profile.bmi || null)
   const [bmiCategory, setBmiCategory] = useState('')
 
@@ -288,6 +288,54 @@ export default function Signup() {
       router.replace('/dashboard')
     }
   }, [isAuthenticated, isOnboardingComplete, loading, router])
+
+  // Clear all form inputs when user navigates away from signup page
+  useEffect(() => {
+    const handleRouteChange = (url) => {
+      // Only clear if navigating away from signup
+      if (!url.includes('/signup')) {
+        // Clear all form state
+        setUsername('')
+        setEmail('')
+        setPassword('')
+        setConfirmPassword('')
+        setGender('')
+        setBirthMonth('')
+        setBirthYear('')
+        setAge('')
+        setWeight('')
+        setWeightUnit('kg')
+        setHeightUnit('cm')
+        setHeightFeet('')
+        setHeightInches('')
+        setHeightValue('')
+        setBmi(null)
+        setBmiCategory('')
+        setQuestionAnswers({
+          bodyType: '',
+          weightResponse: '',
+          strengthExperience: '',
+          workoutFrequency: '',
+          mainGoal: '',
+          trainingPriority: '',
+        })
+        setStep(1)
+        setStep1Phase('terms')
+        setStep5Phase('intro')
+        setStep5QuestionIndex(0)
+        setTermsScrolledToBottom(false)
+        setConsentScrolledToBottom(false)
+        setLocalError('')
+        setErrors([])
+      }
+    }
+
+    router.events.on('routeChangeStart', handleRouteChange)
+    
+    return () => {
+      router.events.off('routeChangeStart', handleRouteChange)
+    }
+  }, [router])
 
   function genUserId() {
     if (profile.userId) return profile.userId
@@ -420,13 +468,15 @@ export default function Signup() {
     },
     {
       key: 'workoutFrequency',
-      title: 'How often do you currently work out per week?',
+      title: 'What is your current activity level?',
       subtitle: '',
-      profileKey: 'workoutFrequency',
+      profileKey: 'activityLevel',
+      isActivityLevel: true,
       options: [
-        { value: '0_1', label: '0–1 times', description: 'I’m mostly inactive or just starting out.' },
-        { value: '2_3', label: '2–3 times', description: 'I train occasionally but inconsistently.' },
-        { value: '4_plus', label: '4+ times', description: 'I train regularly and consistently.' },
+        { value: 1, label: 'Sedentary', description: 'Daily basic activities' },
+        { value: 2, label: 'Somewhat Active', description: '30-60 min daily moderate activity' },
+        { value: 3, label: 'Active', description: 'Daily exercise or 3-4x per week' },
+        { value: 4, label: 'Very Active', description: 'Intense exercise 6-7x per week' },
       ],
     },
     {
@@ -755,6 +805,12 @@ export default function Signup() {
 
   async function handleSubmit(e) {
     e.preventDefault();
+    
+    // Only create account at the final review step
+    if (step !== reviewStep) {
+      return;
+    }
+    
     setLocalError('');
     clearError();
     
@@ -772,9 +828,10 @@ export default function Signup() {
     const weightInKg = weightUnit === 'lbs' ? Math.round(weightNum * 0.453592) : weightNum;
     const heightInCm = heightUnit === 'ft' 
       ? Math.round((parseInt(heightFeet, 10) || 0) * 30.48 + (parseInt(heightInches, 10) || 0) * 2.54)
-      : parseInt(heightValue, 10) || null;
+      : parseInt(heightValue, 10) || 0;
 
-    const profileData = {
+    // Build profile data, filtering out blank/null/undefined values
+    const rawProfileData = {
       username,
       gender,
       birthMonth,
@@ -782,17 +839,30 @@ export default function Signup() {
       age: parseInt(age, 10) || null,
       weight: weightInKg || null,  // Always stored in kg
       weightUnit,                   // User's preferred display unit
-      height: heightInCm,           // Always stored in cm
+      height: heightInCm || null,   // Always stored in cm
       heightUnit,                   // User's preferred display unit
       bmi,
       bmiCategory,
-      ...questionAnswers,
+      // Map questionAnswers to actual profile keys
+      bodyType: questionAnswers.bodyType || null,
+      weightResponse: questionAnswers.weightResponse || null,
+      strengthExperience: questionAnswers.strengthExperience || null,
+      activityLevel: questionAnswers.workoutFrequency || null, // Save as activityLevel
+      fitnessGoal: questionAnswers.mainGoal || null,
+      trainingPriority: questionAnswers.trainingPriority || null,
       termsAccepted: true,
       termsAcceptedAt: new Date().toISOString(),
       consentAccepted: true,
       consentAcceptedAt: new Date().toISOString(),
       onboardingCompleted: true,
     };
+    
+    // Filter out null, undefined, and empty string values
+    const profileData = Object.fromEntries(
+      Object.entries(rawProfileData).filter(([key, value]) => 
+        value !== null && value !== undefined && value !== ''
+      )
+    );
     
     try {
       console.log('📝 Starting account creation...');
@@ -1104,7 +1174,7 @@ You acknowledge the system's limits (e.g., single IMU, equipment-based sensing) 
               </svg>
             ) : (
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 640 640" fill="currentColor">
-                <path d="M320 144C254.8 144 201.2 173.6 160.1 211.7C121.6 247.5 95 290 81.4 320C95 350 121.6 392.5 160.1 428.3C201.2 466.4 254.8 496 320 496C385.2 496 438.8 466.4 479.9 428.3C518.4 392.5 545 350 558.6 320C545 290 518.4 247.5 479.9 211.7C438.8 173.6 385.2 144 320 144zM127.4 176.6C174.5 132.8 239.2 96 320 96C400.8 96 465.5 132.8 512.6 176.6C559.4 220.1 590.7 272 605.6 307.7C608.9 315.6 608.9 324.4 605.6 332.3C590.7 368 559.4 420 512.6 463.4C465.5 507.1 400.8 544 320 544C239.2 544 174.5 507.2 127.4 463.4C80.6 419.9 49.3 368 34.4 332.3C31.1 324.4 31.1 315.6 34.4 307.7C49.3 272 80.6 220 127.4 176.6zM320 400C364.2 400 400 364.2 400 320C400 290.4 383.9 264.5 360 250.7C358.6 310.4 310.4 358.6 250.7 360C264.5 383.9 290.4 400 320 400zM240.4 311.6C242.9 311.9 245.4 312 248 312C283.3 312 312 283.3 312 248C312 245.4 311.8 242.9 311.6 240.4C274.2 244.3 244.4 274.1 240.5 311.5zM286 196.6C296.8 193.6 308.2 192.1 319.9 192.1C328.7 192.1 337.4 193 345.7 194.7C346 194.8 346.2 194.8 346.5 194.9C404.4 207.1 447.9 258.6 447.9 320.1C447.9 390.8 390.6 448.1 319.9 448.1C258.3 448.1 206.9 404.6 194.7 346.7C192.9 338.1 191.9 329.2 191.9 320.1C191.9 309.1 193.3 298.3 195.9 288.1C196.1 287.4 196.2 286.8 196.4 286.2C208.3 242.8 242.5 208.6 285.9 196.7z" />
+                <path d="M320 144C254.8 144 201.2 173.6 160.1 211.7C121.6 247.5 95 290 81.4 320C95 350 121.6 392.5 160.1 428.3C201.2 466.4 254.8 496 320 496C385.2 496 438.8 466.4 479.9 428.3C518.4 392.5 545 350 558.6 320C545 290 518.4 247.5 479.9 211.7C438.8 173.6 385.2 144 320 144zM127.4 176.6C174.5 132.8 239.2 96 320 96C400.8 96 465.5 132.8 512.6 176.6C559.4 220.1 590.7 272 605.6 307.7C608.9 315.6 608.9 324.4 605.6 332.3C590.7 368 559.4 420 512.6 463.4C465.5 507.1 400.8 544 320 544C239.2 544 174.5 507.2 127.4 463.4C80.6 419.9 49.3 368 34.4 332.3C31.1 324.4 31.1 315.6 34.4 307.7C49.3 272 80.6 220 127.4 176.6zM320 400C364.2 400 400 364.2 400 320C400 275.8 364.2 240 320 240C275.8 240 240 275.8 240 320C240 364.2 275.8 400 320 400zM240.4 311.6C242.9 311.9 245.4 312 248 312C283.3 312 312 283.3 312 248C312 245.4 311.8 242.9 311.6 240.4C274.2 244.3 244.4 274.1 240.5 311.5zM286 196.6C296.8 193.6 308.2 192.1 319.9 192.1C328.7 192.1 337.4 193 345.7 194.7C346 194.8 346.2 194.8 346.5 194.9C404.4 207.1 447.9 258.6 447.9 320.1C447.9 390.8 390.6 448.1 319.9 448.1C258.3 448.1 206.9 404.6 194.7 346.7C192.9 338.1 191.9 329.2 191.9 320.1C191.9 309.1 193.3 298.3 195.9 288.1C196.1 287.4 196.2 286.8 196.4 286.2C208.3 242.8 242.5 208.6 285.9 196.7z" />
               </svg>
             )}
           </button>
@@ -1222,7 +1292,22 @@ You acknowledge the system's limits (e.g., single IMU, equipment-based sensing) 
                 <button
                   key={unit.value}
                   type="button"
-                  onClick={() => setWeightUnit(unit.value)}
+                  onClick={() => {
+                    if (unit.value !== weightUnit && weight) {
+                      // Convert weight when switching units
+                      const currentWeight = parseFloat(weight) || 0
+                      if (unit.value === 'lbs') {
+                        // Converting from kg to lbs
+                        const converted = Math.round(currentWeight * 2.20462)
+                        setWeight(converted.toString())
+                      } else {
+                        // Converting from lbs to kg
+                        const converted = Math.round(currentWeight * 0.453592)
+                        setWeight(converted.toString())
+                      }
+                    }
+                    setWeightUnit(unit.value)
+                  }}
                   className={`rounded-xl text-xs font-medium transition flex items-center justify-center ${selected ? 'bg-[#8b5cf6] text-white' : 'bg-white/10 text-white/70 border border-white/20'}`}
                   style={{ width: '2.75rem', height: '2.5rem' }}
                 >
@@ -1234,7 +1319,61 @@ You acknowledge the system's limits (e.g., single IMU, equipment-based sensing) 
         </div>
       </div>
 
-      {heightUnit === 'ft' ? (
+      {heightUnit === 'cm' ? (
+        <label className="block">
+          <div className="text-xs mb-2" style={{ color: 'rgba(238,235,217,0.85)' }}>Height</div>
+          <div className="flex items-center gap-2">
+            <div className="flex-1">
+              <input
+                value={heightValue}
+                inputMode="numeric"
+                pattern="[0-9]*"
+                onChange={(e) => { const v = e.target.value; setHeightValue(v); updateProfile({ heightCm: v, heightUnit: 'cm', height: parseInt(v, 10) || null }) }}
+                className="w-full rounded-full px-4 bg-black/40 text-white placeholder-gray-400 border border-white/5 focus:outline-none focus:ring-2 focus:ring-[#8b5cf6]/50 transition-all"
+                style={{ height: '2.5rem' }}
+                placeholder="e.g., 170"
+              />
+            </div>
+            <div className="flex gap-1" style={{ minWidth: 'fit-content' }}>
+              {[{ value: 'cm', label: 'cm' }, { value: 'ft', label: 'ft' }].map((unit) => {
+                const selected = heightUnit === unit.value
+                return (
+                  <button
+                    key={unit.value}
+                    type="button"
+                    onClick={() => {
+                      if (unit.value !== heightUnit) {
+                        if (unit.value === 'cm') {
+                          // Converting from ft/in to cm
+                          const feet = parseInt(heightFeet, 10) || 0
+                          const inches = parseInt(heightInches, 10) || 0
+                          const cm = Math.round(feet * 30.48 + inches * 2.54)
+                          if (cm > 0) setHeightValue(cm.toString())
+                        } else {
+                          // Converting from cm to ft/in
+                          const cm = parseInt(heightValue, 10) || 0
+                          const totalInches = cm / 2.54
+                          const feet = Math.floor(totalInches / 12)
+                          const inches = Math.round(totalInches % 12)
+                          if (feet > 0 || inches > 0) {
+                            setHeightFeet(feet.toString())
+                            setHeightInches(inches.toString())
+                          }
+                        }
+                      }
+                      setHeightUnit(unit.value)
+                    }}
+                    className={`rounded-xl text-xs font-medium transition flex items-center justify-center ${selected ? 'bg-[#8b5cf6] text-white' : 'bg-white/10 text-white/70 border border-white/20'}`}
+                    style={{ width: '2.75rem', height: '2.5rem' }}
+                  >
+                    {unit.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </label>
+      ) : (
         <div className="space-y-3">
           <div className="text-xs mb-2" style={{ color: 'rgba(238,235,217,0.85)' }}>Height</div>
           <div className="flex items-end gap-2">
@@ -1279,13 +1418,34 @@ You acknowledge the system's limits (e.g., single IMU, equipment-based sensing) 
               </label>
             </div>
             <div className="flex gap-1" style={{ minWidth: 'fit-content' }}>
-              {[{ value: 'ft', label: 'ft' }, { value: 'cm', label: 'cm' }].map((unit) => {
+              {[{ value: 'cm', label: 'cm' }, { value: 'ft', label: 'ft' }].map((unit) => {
                 const selected = heightUnit === unit.value
                 return (
                   <button
                     key={unit.value}
                     type="button"
-                    onClick={() => setHeightUnit(unit.value)}
+                    onClick={() => {
+                      if (unit.value !== heightUnit) {
+                        if (unit.value === 'cm') {
+                          // Converting from ft/in to cm
+                          const feet = parseInt(heightFeet, 10) || 0
+                          const inches = parseInt(heightInches, 10) || 0
+                          const cm = Math.round(feet * 30.48 + inches * 2.54)
+                          if (cm > 0) setHeightValue(cm.toString())
+                        } else {
+                          // Converting from cm to ft/in
+                          const cm = parseInt(heightValue, 10) || 0
+                          const totalInches = cm / 2.54
+                          const feet = Math.floor(totalInches / 12)
+                          const inches = Math.round(totalInches % 12)
+                          if (feet > 0 || inches > 0) {
+                            setHeightFeet(feet.toString())
+                            setHeightInches(inches.toString())
+                          }
+                        }
+                      }
+                      setHeightUnit(unit.value)
+                    }}
                     className={`rounded-xl text-xs font-medium transition flex items-center justify-center ${selected ? 'bg-[#8b5cf6] text-white' : 'bg-white/10 text-white/70 border border-white/20'}`}
                     style={{ width: '2.75rem', height: '2.5rem' }}
                   >
@@ -1296,39 +1456,6 @@ You acknowledge the system's limits (e.g., single IMU, equipment-based sensing) 
             </div>
           </div>
         </div>
-      ) : (
-        <label className="block">
-          <div className="text-xs mb-2" style={{ color: 'rgba(238,235,217,0.85)' }}>Height</div>
-          <div className="flex items-center gap-2">
-            <div className="flex-1">
-              <input
-                value={heightValue}
-                inputMode="numeric"
-                pattern="[0-9]*"
-                onChange={(e) => { const v = e.target.value; setHeightValue(v); updateProfile({ heightCm: v, heightUnit: 'cm', height: parseInt(v, 10) || null }) }}
-                className="w-full rounded-full px-4 bg-black/40 text-white placeholder-gray-400 border border-white/5 focus:outline-none focus:ring-2 focus:ring-[#8b5cf6]/50 transition-all"
-                style={{ height: '2.5rem' }}
-                placeholder="e.g., 170"
-              />
-            </div>
-            <div className="flex gap-1" style={{ minWidth: 'fit-content' }}>
-              {[{ value: 'ft', label: 'ft' }, { value: 'cm', label: 'cm' }].map((unit) => {
-                const selected = heightUnit === unit.value
-                return (
-                  <button
-                    key={unit.value}
-                    type="button"
-                    onClick={() => setHeightUnit(unit.value)}
-                    className={`rounded-xl text-xs font-medium transition flex items-center justify-center ${selected ? 'bg-[#8b5cf6] text-white' : 'bg-white/10 text-white/70 border border-white/20'}`}
-                    style={{ width: '2.75rem', height: '2.5rem' }}
-                  >
-                    {unit.label}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        </label>
       )}
 
       <p className="text-xs" style={{ color: 'rgba(238,235,217,0.65)' }}>
@@ -1390,6 +1517,82 @@ You acknowledge the system's limits (e.g., single IMU, equipment-based sensing) 
             </div>
           ) : null}
 
+          {/* Activity Level Selector - 4 buttons in a row */}
+          {step5Questions[step5QuestionIndex].isActivityLevel ? (
+            <div className="space-y-4">
+              <div className="flex justify-between gap-2">
+                {step5Questions[step5QuestionIndex].options.map((opt) => {
+                  const selected = questionAnswers[step5Questions[step5QuestionIndex].key] === opt.value
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => {
+                        const key = step5Questions[step5QuestionIndex].key
+                        setQuestionAnswers((prev) => ({ ...prev, [key]: opt.value }))
+                        updateProfile({ [step5Questions[step5QuestionIndex].profileKey]: opt.value })
+                      }}
+                      className={`flex-1 flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all duration-300 ${
+                        selected 
+                          ? 'border-green-500 bg-green-500/20 scale-105' 
+                          : 'border-white/10 bg-black/20 hover:border-white/20 hover:bg-white/5'
+                      }`}
+                    >
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 ${
+                        selected ? 'bg-green-500 text-white' : 'bg-white/10 text-white/60'
+                      }`}>
+                        {opt.value === 1 && (
+                          <img 
+                            src="/svg/sedentary.svg" 
+                            alt="Sedentary" 
+                            className="w-5 h-5"
+                            style={{ filter: 'brightness(0) invert(1)' }}
+                          />
+                        )}
+                        {opt.value === 2 && (
+                          <img 
+                            src="/svg/activity-level.svg" 
+                            alt="Somewhat Active" 
+                            className="w-5 h-5"
+                            style={{ filter: 'brightness(0) invert(1)' }}
+                          />
+                        )}
+                        {opt.value === 3 && (
+                          <img 
+                            src="/svg/active.svg" 
+                            alt="Active" 
+                            className="w-5 h-5"
+                            style={{ filter: 'brightness(0) invert(1)' }}
+                          />
+                        )}
+                        {opt.value === 4 && (
+                          <img 
+                            src="/svg/very-active.svg" 
+                            alt="Very Active" 
+                            className="w-5 h-5"
+                            style={{ filter: 'brightness(0) invert(1)' }}
+                          />
+                        )}
+                      </div>
+                      <span className={`text-sm font-medium ${selected ? 'text-white' : 'text-white/60'}`}>
+                        {opt.value}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+              {questionAnswers[step5Questions[step5QuestionIndex].key] && (
+                <div className="text-center animate-fadeIn">
+                  <p className="text-sm font-semibold text-white">
+                    {step5Questions[step5QuestionIndex].options.find(o => o.value === questionAnswers[step5Questions[step5QuestionIndex].key])?.label}
+                  </p>
+                  <p className="text-xs text-white/60 mt-1">
+                    {step5Questions[step5QuestionIndex].options.find(o => o.value === questionAnswers[step5Questions[step5QuestionIndex].key])?.description}
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : (
           <div className="space-y-2">
             {step5Questions[step5QuestionIndex].options.map((opt) => {
               const selected = questionAnswers[step5Questions[step5QuestionIndex].key] === opt.value
@@ -1419,6 +1622,7 @@ You acknowledge the system's limits (e.g., single IMU, equipment-based sensing) 
               )
             })}
           </div>
+          )}
         </div>
       )}
 
@@ -1503,6 +1707,47 @@ You acknowledge the system's limits (e.g., single IMU, equipment-based sensing) 
               </span>
               <span>{getStep5Label('mainGoal', questionAnswers.mainGoal)}</span>
             </div>
+            <div className="flex justify-between text-sm" style={{ color: 'var(--app-white)' }}>
+              <span className="flex items-center gap-2">
+                {questionAnswers.workoutFrequency === 1 && (
+                  <img 
+                    src="/svg/sedentary.svg" 
+                    alt="Activity Level" 
+                    style={{ width: '16px', height: '16px', filter: 'brightness(0) invert(1)' }}
+                  />
+                )}
+                {questionAnswers.workoutFrequency === 2 && (
+                  <img 
+                    src="/svg/activity-level.svg" 
+                    alt="Activity Level" 
+                    style={{ width: '16px', height: '16px', filter: 'brightness(0) invert(1)' }}
+                  />
+                )}
+                {questionAnswers.workoutFrequency === 3 && (
+                  <img 
+                    src="/svg/active.svg" 
+                    alt="Activity Level" 
+                    style={{ width: '16px', height: '16px', filter: 'brightness(0) invert(1)' }}
+                  />
+                )}
+                {questionAnswers.workoutFrequency === 4 && (
+                  <img 
+                    src="/svg/very-active.svg" 
+                    alt="Activity Level" 
+                    style={{ width: '16px', height: '16px', filter: 'brightness(0) invert(1)' }}
+                  />
+                )}
+                {!questionAnswers.workoutFrequency && (
+                  <img 
+                    src="/svg/activity-level.svg" 
+                    alt="Activity Level" 
+                    style={{ width: '16px', height: '16px', filter: 'brightness(0) invert(1)' }}
+                  />
+                )}
+                Activity Level
+              </span>
+              <span>{questionAnswers.workoutFrequency ? `Level ${questionAnswers.workoutFrequency}` : '—'}</span>
+            </div>
           </div>
         </div>
       )}
@@ -1526,7 +1771,7 @@ You acknowledge the system's limits (e.g., single IMU, equipment-based sensing) 
           { label: 'Body Type', value: getStep5Label('bodyType', questionAnswers.bodyType), jump: 5 },
           { label: 'Weight Response', value: getStep5Label('weightResponse', questionAnswers.weightResponse), jump: 5 },
           { label: 'Fitness Level', value: getStep5Label('strengthExperience', questionAnswers.strengthExperience), jump: 5 },
-          { label: 'Workout Frequency', value: getStep5Label('workoutFrequency', questionAnswers.workoutFrequency), jump: 5 },
+          { label: 'Activity Level', value: questionAnswers.workoutFrequency ? `Level ${questionAnswers.workoutFrequency} (${getStep5Label('workoutFrequency', questionAnswers.workoutFrequency)})` : '', jump: 5 },
           { label: 'Goal', value: getStep5Label('mainGoal', questionAnswers.mainGoal), jump: 5 },
           { label: 'Training Priority', value: getStep5Label('trainingPriority', questionAnswers.trainingPriority), jump: 5 },
         ]

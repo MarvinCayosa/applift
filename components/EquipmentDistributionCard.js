@@ -61,7 +61,7 @@ export default function EquipmentDistributionCard({
   }
 
   return (
-    <div className="rounded-2xl p-2 h-[300px] flex flex-col bg-white/10">
+    <div className="rounded-2xl p-3 h-[300px] flex flex-col bg-white/10">
       {/* Header */}
       <div className="mb-1">
         <h3 className="text-xs font-semibold text-white uppercase tracking-wide">
@@ -72,7 +72,7 @@ export default function EquipmentDistributionCard({
 
       {hasData ? (
         <div className="flex-1 flex flex-col min-h-0">
-          {/* Donut Chart - No center text, with scale animation on hover */}
+          {/* Donut Chart - with center icon */}
           <div 
             className="relative flex-shrink-0 transition-transform duration-300 ease-out" 
             style={{ 
@@ -119,6 +119,14 @@ export default function EquipmentDistributionCard({
                 </Pie>
               </PieChart>
             </ResponsiveContainer>
+            {/* Center Icon - Exercise/Workout figure */}
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <img 
+                src="/svg/workout-figure.svg" 
+                alt="Workout" 
+                className="w-8 h-8"
+              />
+            </div>
           </div>
 
           {/* Legend - compact */}

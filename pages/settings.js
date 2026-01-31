@@ -157,6 +157,7 @@ export default function Settings() {
   const [userInitials, setUserInitials] = useState('U');
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [isEditingBody, setIsEditingBody] = useState(false);
+  const [isEditingGoals, setIsEditingGoals] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showSignOutModal, setShowSignOutModal] = useState(false);
@@ -179,6 +180,310 @@ export default function Settings() {
     email: '',
   });
 
+  // Gender state (moved to Personal Information)
+  const [gender, setGender] = useState('');
+
+  // Goals & Preferences state
+  const [goalsForm, setGoalsForm] = useState({
+    bodyType: '',
+    weightResponse: '',
+    strengthExperience: '',
+    activityLevel: null,
+    fitnessGoal: '',
+    trainingPriority: '',
+  });
+
+  // Dropdown open states
+  const [openDropdown, setOpenDropdown] = useState(null);
+
+  // Goals questions with options (from signup)
+  const goalsQuestions = [
+    {
+      key: 'activityLevel',
+      label: 'Activity Level',
+      isActivityLevel: true,
+      icon: (
+        <img 
+          src="/svg/activity-level.svg" 
+          alt="Activity Level" 
+          className="w-4 h-4"
+          style={{ filter: 'brightness(0) invert(1)' }}
+        />
+      ),
+      options: [
+        { value: 1, label: 'Sedentary', description: 'Daily basic activities' },
+        { value: 2, label: 'Somewhat Active', description: '30-60 min daily moderate activity' },
+        { value: 3, label: 'Active', description: 'Daily exercise or 3-4x per week' },
+        { value: 4, label: 'Very Active', description: 'Intense exercise 6-7x per week' },
+      ],
+    },
+    {
+      key: 'bodyType',
+      label: 'Body Type',
+      icon: (
+        <img 
+          src="/svg/sedentary.svg" 
+          alt="Body Type" 
+          className="w-4 h-4"
+          style={{ filter: 'brightness(0) invert(1)' }}
+        />
+      ),
+      options: [
+        { value: 'lean_slim', label: 'Slim', description: 'Lighter frame, less natural muscle' },
+        { value: 'average_medium', label: 'Average', description: 'Balanced frame with some muscle' },
+        { value: 'broad_muscular', label: 'Broad', description: 'Stockier frame, more muscle mass' },
+      ],
+    },
+    {
+      key: 'weightResponse',
+      label: 'Weight Response',
+      icon: (
+        <img 
+          src="/svg/weight-response.svg" 
+          alt="Weight Response" 
+          className="w-4 h-4"
+          style={{ filter: 'brightness(0) invert(1)' }}
+        />
+      ),
+      options: [
+        { value: 'gain_easy_hard_lose', label: 'Gain Muscle Easily', description: 'Body responds quickly to training' },
+        { value: 'average_response', label: 'Average Response', description: 'Gain or lose slowly with effort' },
+        { value: 'gain_slow_lose_easy', label: 'Lose Fat Easily', description: 'Struggle to build, lose fat fast' },
+      ],
+    },
+    {
+      key: 'strengthExperience',
+      label: 'Experience Level',
+      icon: (
+        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+        </svg>
+      ),
+      options: [
+        { value: 'beginner', label: 'Beginner', description: 'Little to no experience' },
+        { value: 'intermediate', label: 'Intermediate', description: 'Can perform exercises correctly' },
+        { value: 'advanced', label: 'Advanced', description: 'Extensive experience' },
+      ],
+    },
+    {
+      key: 'fitnessGoal',
+      label: 'Fitness Goal',
+      icon: (
+        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="10"/>
+          <circle cx="12" cy="12" r="6"/>
+          <circle cx="12" cy="12" r="2"/>
+        </svg>
+      ),
+      options: [
+        { value: 'build_strength', label: 'Build Strength', description: 'Lift heavier, improve power' },
+        { value: 'hypertrophy', label: 'Increase Muscle', description: 'Grow and shape muscles' },
+        { value: 'conditioning', label: 'Improve Conditioning', description: 'Better stamina and performance' },
+      ],
+    },
+    {
+      key: 'trainingPriority',
+      label: 'Training Priority',
+      icon: (
+        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+          <polyline points="22 4 12 14.01 9 11.01"/>
+        </svg>
+      ),
+      options: [
+        { value: 'safety_form', label: 'Safety & Form', description: 'Avoid injury, train correctly' },
+        { value: 'progressive_load', label: 'Progressive Gains', description: 'Measurable improvement' },
+        { value: 'consistency', label: 'Consistency', description: 'Build workout habits' },
+      ],
+    },
+  ];
+
+  // Modern Dropdown Component
+  const ModernDropdown = ({ question, value, onChange, isOpen, onToggle }) => {
+    const selectedOption = question.options.find(opt => opt.value === value);
+    const dropdownRef = useRef(null);
+
+    // Close dropdown when clicking outside
+    useEffect(() => {
+      const handleClickOutside = (event) => {
+        if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+          if (isOpen) onToggle(null);
+        }
+      };
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [isOpen, onToggle]);
+
+    // Activity Level Selector (4 buttons in a row)
+    if (question.isActivityLevel) {
+      return (
+        <div className="space-y-3">
+          <label className="block text-xs font-medium text-white/60 uppercase tracking-wide">
+            {question.label}
+          </label>
+          <div className="flex justify-between gap-2">
+            {question.options.map((opt) => {
+              const isSelected = value === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => onChange(question.key, opt.value)}
+                  className={`flex-1 flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all duration-300 ${
+                    isSelected 
+                      ? 'border-green-500 bg-green-500/20 scale-105' 
+                      : 'border-white/10 bg-black/20 hover:border-white/20 hover:bg-white/5'
+                  }`}
+                >
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 ${
+                    isSelected ? 'bg-green-500 text-white' : 'bg-white/10 text-white/60'
+                  }`}>
+                    {opt.value === 1 && (
+                      <img 
+                        src="/svg/sedentary.svg" 
+                        alt="Sedentary" 
+                        className="w-5 h-5"
+                        style={{ filter: 'brightness(0) invert(1)' }}
+                      />
+                    )}
+                    {opt.value === 2 && (
+                      <img 
+                        src="/svg/activity-level.svg" 
+                        alt="Somewhat Active" 
+                        className="w-5 h-5"
+                        style={{ filter: 'brightness(0) invert(1)' }}
+                      />
+                    )}
+                    {opt.value === 3 && (
+                      <img 
+                        src="/svg/active.svg" 
+                        alt="Active" 
+                        className="w-5 h-5"
+                        style={{ filter: 'brightness(0) invert(1)' }}
+                      />
+                    )}
+                    {opt.value === 4 && (
+                      <img 
+                        src="/svg/very-active.svg" 
+                        alt="Very Active" 
+                        className="w-5 h-5"
+                        style={{ filter: 'brightness(0) invert(1)' }}
+                      />
+                    )}
+                  </div>
+                  <span className={`text-sm font-medium ${isSelected ? 'text-white' : 'text-white/60'}`}>
+                    {opt.value}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {value && (
+            <div className="text-center animate-fadeIn">
+              <p className="text-sm font-semibold text-white">
+                {selectedOption?.label}
+              </p>
+              <p className="text-xs text-white/60 mt-1">
+                {selectedOption?.description}
+              </p>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Regular dropdown
+    return (
+      <div ref={dropdownRef} className="relative">
+        <button
+          type="button"
+          onClick={() => onToggle(isOpen ? null : question.key)}
+          className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-all duration-300 ${
+            isOpen 
+              ? 'bg-[#8b5cf6]/20 border-[#8b5cf6] ring-2 ring-[#8b5cf6]/30' 
+              : 'bg-black/40 border-white/10 hover:border-white/20'
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            <div className={`transition-colors duration-300 ${isOpen ? 'text-[#8b5cf6]' : 'text-white/60'}`}>
+              {question.icon}
+            </div>
+            <div className="text-left">
+              <p className="text-xs text-white/50">{question.label}</p>
+              <p className={`text-sm font-medium transition-colors duration-300 ${selectedOption ? 'text-white' : 'text-white/40'}`}>
+                {selectedOption?.label || 'Select...'}
+              </p>
+            </div>
+          </div>
+          <svg 
+            className={`w-5 h-5 text-white/50 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`}
+            fill="none" 
+            stroke="currentColor" 
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        {/* Dropdown Options */}
+        <div 
+          className={`rounded-xl bg-[#1a1a2e] border border-white/10 shadow-2xl overflow-hidden ${!isOpen ? 'pointer-events-none border-transparent' : ''}`}
+          style={{ 
+            maxHeight: isOpen ? '320px' : '0px',
+            opacity: isOpen ? 1 : 0,
+            marginTop: isOpen ? '8px' : '0px',
+            transition: 'max-height 400ms cubic-bezier(0.4, 0, 0.2, 1), opacity 300ms ease, margin-top 300ms ease, border-color 300ms ease',
+            boxShadow: isOpen ? '0 20px 40px rgba(0,0,0,0.4), 0 0 30px rgba(139, 92, 246, 0.15)' : 'none',
+          }}
+        >
+          <div className="py-1 overflow-y-auto" style={{ maxHeight: '300px' }}>
+            {question.options.map((option, idx) => {
+              const isSelected = value === option.value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => {
+                    onChange(question.key, option.value);
+                    onToggle(null);
+                  }}
+                  className={`w-full px-4 py-3 flex items-center gap-3 transition-all duration-200 ${
+                    isSelected 
+                      ? 'bg-[#8b5cf6]/20' 
+                      : 'hover:bg-white/5 active:bg-white/10'
+                  }`}
+                  style={{
+                    opacity: isOpen ? 1 : 0,
+                    transform: isOpen ? 'translateX(0)' : 'translateX(-8px)',
+                    transition: `all 200ms cubic-bezier(0.22, 0.61, 0.36, 1) ${idx * 40}ms`,
+                  }}
+                >
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${
+                    isSelected 
+                      ? 'border-[#8b5cf6] bg-[#8b5cf6]' 
+                      : 'border-white/30'
+                  }`}>
+                    {isSelected && (
+                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </div>
+                  <div className="text-left flex-1">
+                    <p className={`text-sm font-medium ${isSelected ? 'text-white' : 'text-white/80'}`}>
+                      {option.label}
+                    </p>
+                    <p className="text-xs text-white/50">{option.description}</p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // Form state for body metrics
   const [bodyForm, setBodyForm] = useState({
     birthMonth: '',
@@ -189,7 +494,7 @@ export default function Settings() {
 
   // Weight and height unit states (like signup)
   const [weightUnit, setWeightUnit] = useState('kg');
-  const [heightUnit, setHeightUnit] = useState('ft');
+  const [heightUnit, setHeightUnit] = useState('cm');
   const [heightFeet, setHeightFeet] = useState('');
   const [heightInches, setHeightInches] = useState('');
 
@@ -217,9 +522,9 @@ export default function Settings() {
       email,
     });
 
-    // Get user's preferred units (default: kg for weight, ft for height)
+    // Get user's preferred units (default: kg for weight, cm for height)
     const prefWeightUnit = userProfile?.weightUnit || 'kg';
-    const prefHeightUnit = userProfile?.heightUnit || 'ft';
+    const prefHeightUnit = userProfile?.heightUnit || 'cm';
     setWeightUnit(prefWeightUnit);
     setHeightUnit(prefHeightUnit);
 
@@ -251,6 +556,19 @@ export default function Settings() {
     });
     setHeightFeet(displayFeet);
     setHeightInches(displayInches);
+    
+    // Initialize gender and activity level
+    setGender(userProfile?.gender || '');
+    
+    // Initialize goals form
+    setGoalsForm({
+      bodyType: userProfile?.bodyType || '',
+      weightResponse: userProfile?.weightResponse || '',
+      strengthExperience: userProfile?.strengthExperience || '',
+      activityLevel: userProfile?.activityLevel || null,
+      fitnessGoal: userProfile?.fitnessGoal || '',
+      trainingPriority: userProfile?.trainingPriority || '',
+    });
     
     if (username) {
       const names = username.trim().split(' ').filter(n => n.length > 0);
@@ -324,6 +642,7 @@ export default function Settings() {
         height: heightCm,  // Always in cm
         weightUnit,        // User's preferred display unit
         heightUnit,        // User's preferred display unit
+        gender: gender || null,
       });
       setIsEditingBody(false);
     } catch (error) {
@@ -345,7 +664,7 @@ export default function Settings() {
   const handleCancelBody = () => {
     // Reset to user's preferred units
     const prefWeightUnit = userProfile?.weightUnit || 'kg';
-    const prefHeightUnit = userProfile?.heightUnit || 'ft';
+    const prefHeightUnit = userProfile?.heightUnit || 'cm';
     setWeightUnit(prefWeightUnit);
     setHeightUnit(prefHeightUnit);
 
@@ -375,7 +694,47 @@ export default function Settings() {
     });
     setHeightFeet(displayFeet);
     setHeightInches(displayInches);
+    setGender(userProfile?.gender || '');
     setIsEditingBody(false);
+  };
+
+  // Goals handlers
+  const handleGoalsChange = (key, value) => {
+    setGoalsForm(prev => ({ ...prev, [key]: value }));
+  };
+
+  const handleSaveGoals = async () => {
+    setIsSaving(true);
+    try {
+      await updateUserProfile({
+        bodyType: goalsForm.bodyType || null,
+        weightResponse: goalsForm.weightResponse || null,
+        strengthExperience: goalsForm.strengthExperience || null,
+        activityLevel: goalsForm.activityLevel || null,
+        fitnessGoal: goalsForm.fitnessGoal || null,
+        trainingPriority: goalsForm.trainingPriority || null,
+      });
+      setIsEditingGoals(false);
+      setOpenDropdown(null);
+    } catch (error) {
+      console.error('Error saving goals:', error);
+      alert('Failed to save changes. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCancelGoals = () => {
+    setGoalsForm({
+      bodyType: userProfile?.bodyType || '',
+      weightResponse: userProfile?.weightResponse || '',
+      strengthExperience: userProfile?.strengthExperience || '',
+      activityLevel: userProfile?.activityLevel || null,
+      fitnessGoal: userProfile?.fitnessGoal || '',
+      trainingPriority: userProfile?.trainingPriority || '',
+    });
+    setIsEditingGoals(false);
+    setOpenDropdown(null);
   };
 
   const handleChangePassword = async () => {
@@ -602,21 +961,24 @@ export default function Settings() {
           <section className="content-fade-up-3">
             <div className="flex items-center justify-between mb-3 px-1">
               <h3 className="text-xs font-semibold text-white/50 uppercase tracking-wide">Personal Information</h3>
-              {!isEditingBody && (
-                <button
-                  onClick={() => setIsEditingBody(true)}
-                  className="p-1.5 rounded-full hover:bg-violet-500/20 transition-colors"
-                  aria-label="Edit personal information"
-                >
-                  <svg className="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                  </svg>
-                </button>
-              )}
+              <button
+                onClick={() => setIsEditingBody(!isEditingBody)}
+                className={`p-1.5 rounded-full transition-all duration-300 ${isEditingBody ? 'bg-violet-500/30 rotate-45' : 'hover:bg-violet-500/20'}`}
+                aria-label="Edit personal information"
+              >
+                <svg className={`w-4 h-4 transition-colors duration-300 ${isEditingBody ? 'text-violet-300' : 'text-violet-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+              </button>
             </div>
-            <div className="rounded-2xl bg-white/10  overflow-hidden">
+            <div 
+              className="rounded-2xl bg-white/10 overflow-hidden transition-all duration-500 ease-out"
+              style={{
+                maxHeight: isEditingBody ? '1200px' : '400px',
+              }}
+            >
               {isEditingBody ? (
-                <div className="p-5 space-y-4">
+                <div className="p-5 space-y-4 animate-fadeIn">
                   {/* Birth Month & Year - iOS-style scroll picker */}
                   <div>
                     <label className="block text-xs font-medium text-white/60 mb-3 uppercase tracking-wide text-center">
@@ -685,38 +1047,23 @@ export default function Settings() {
                   </div>
 
                   {/* Height - same style as signup */}
-                  {heightUnit === 'ft' ? (
-                    <div className="space-y-2">
-                      <label className="block text-xs font-medium text-white/60 uppercase tracking-wide">Height</label>
-                      <div className="flex items-end gap-2">
-                        <div className="flex gap-2 flex-1">
-                          <label className="flex-1 block">
-                            <span className="text-xs block mb-1 text-white/50">Feet</span>
-                            <input
-                              value={heightFeet}
-                              inputMode="numeric"
-                              pattern="[0-9]*"
-                              onChange={(e) => setHeightFeet(e.target.value)}
-                              className="w-full rounded-full px-4 bg-black/40 text-white placeholder-white/40 border border-white/10 focus:outline-none focus:ring-2 focus:ring-[#8b5cf6]/50 transition-all"
-                              style={{ height: '2.5rem' }}
-                              placeholder={userProfile?.heightFeet ? `${userProfile.heightFeet}` : 'e.g., 5'}
-                            />
-                          </label>
-                          <label className="flex-1 block">
-                            <span className="text-xs block mb-1 text-white/50">Inches</span>
-                            <input
-                              value={heightInches}
-                              inputMode="numeric"
-                              pattern="[0-9]*"
-                              onChange={(e) => setHeightInches(e.target.value)}
-                              className="w-full rounded-full px-4 bg-black/40 text-white placeholder-white/40 border border-white/10 focus:outline-none focus:ring-2 focus:ring-[#8b5cf6]/50 transition-all"
-                              style={{ height: '2.5rem' }}
-                              placeholder={userProfile?.heightInches ? `${userProfile.heightInches}` : 'e.g., 10'}
-                            />
-                          </label>
+                  {heightUnit === 'cm' ? (
+                    <div>
+                      <label className="block text-xs font-medium text-white/60 mb-2 uppercase tracking-wide">Height</label>
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1">
+                          <input
+                            value={bodyForm.height}
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            onChange={(e) => setBodyForm(prev => ({ ...prev, height: e.target.value }))}
+                            className="w-full rounded-full px-4 bg-black/40 text-white placeholder-white/40 border border-white/10 focus:outline-none focus:ring-2 focus:ring-[#8b5cf6]/50 transition-all"
+                            style={{ height: '2.5rem' }}
+                            placeholder={userProfile?.height ? `Current: ${userProfile.height}` : 'e.g., 170'}
+                          />
                         </div>
                         <div className="flex gap-1" style={{ minWidth: 'fit-content' }}>
-                          {[{ value: 'ft', label: 'ft' }, { value: 'cm', label: 'cm' }].map((unit) => {
+                          {[{ value: 'cm', label: 'cm' }, { value: 'ft', label: 'ft' }].map((unit) => {
                             const selected = heightUnit === unit.value;
                             return (
                               <button
@@ -757,22 +1104,37 @@ export default function Settings() {
                       </div>
                     </div>
                   ) : (
-                    <div>
-                      <label className="block text-xs font-medium text-white/60 mb-2 uppercase tracking-wide">Height</label>
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1">
-                          <input
-                            value={bodyForm.height}
-                            inputMode="numeric"
-                            pattern="[0-9]*"
-                            onChange={(e) => setBodyForm(prev => ({ ...prev, height: e.target.value }))}
-                            className="w-full rounded-full px-4 bg-black/40 text-white placeholder-white/40 border border-white/10 focus:outline-none focus:ring-2 focus:ring-[#8b5cf6]/50 transition-all"
-                            style={{ height: '2.5rem' }}
-                            placeholder={userProfile?.height ? `Current: ${userProfile.height}` : 'e.g., 170'}
-                          />
+                    <div className="space-y-2">
+                      <label className="block text-xs font-medium text-white/60 uppercase tracking-wide">Height</label>
+                      <div className="flex items-end gap-2">
+                        <div className="flex gap-2 flex-1">
+                          <label className="flex-1 block">
+                            <span className="text-xs block mb-1 text-white/50">Feet</span>
+                            <input
+                              value={heightFeet}
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              onChange={(e) => setHeightFeet(e.target.value)}
+                              className="w-full rounded-full px-4 bg-black/40 text-white placeholder-white/40 border border-white/10 focus:outline-none focus:ring-2 focus:ring-[#8b5cf6]/50 transition-all"
+                              style={{ height: '2.5rem' }}
+                              placeholder={userProfile?.heightFeet ? `${userProfile.heightFeet}` : 'e.g., 5'}
+                            />
+                          </label>
+                          <label className="flex-1 block">
+                            <span className="text-xs block mb-1 text-white/50">Inches</span>
+                            <input
+                              value={heightInches}
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              onChange={(e) => setHeightInches(e.target.value)}
+                              className="w-full rounded-full px-4 bg-black/40 text-white placeholder-white/40 border border-white/10 focus:outline-none focus:ring-2 focus:ring-[#8b5cf6]/50 transition-all"
+                              style={{ height: '2.5rem' }}
+                              placeholder={userProfile?.heightInches ? `${userProfile.heightInches}` : 'e.g., 10'}
+                            />
+                          </label>
                         </div>
                         <div className="flex gap-1" style={{ minWidth: 'fit-content' }}>
-                          {[{ value: 'ft', label: 'ft' }, { value: 'cm', label: 'cm' }].map((unit) => {
+                          {[{ value: 'cm', label: 'cm' }, { value: 'ft', label: 'ft' }].map((unit) => {
                             const selected = heightUnit === unit.value;
                             return (
                               <button
@@ -813,6 +1175,31 @@ export default function Settings() {
                       </div>
                     </div>
                   )}
+
+                  {/* Gender */}
+                  <div>
+                    <label className="block text-xs font-medium text-white/60 mb-2 uppercase tracking-wide">Gender</label>
+                    <div className="flex gap-2">
+                      {[{ value: 'male', label: 'Male' }, { value: 'female', label: 'Female' }, { value: 'other', label: 'Other' }].map((opt) => {
+                        const selected = gender === opt.value;
+                        return (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => setGender(opt.value)}
+                            className={`flex-1 text-center rounded-2xl border transition-all ${selected ? 'border-[#8b5cf6] bg-[#8b5cf6]/10 text-white shadow-lg' : 'border-white/10 text-white/80 bg-black/30 hover:border-white/20'}`}
+                            style={{
+                              fontSize: '0.875rem',
+                              padding: '0.75rem 1rem',
+                              boxShadow: selected ? '0 0 20px rgba(139, 92, 246, 0.4)' : 'none',
+                            }}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
 
                   <div className="flex gap-3 pt-2">
                     <button
@@ -863,7 +1250,7 @@ export default function Settings() {
                   </div>
 
                   {/* Height - New height SVG icon */}
-                  <div className="px-5 py-4 flex items-center justify-between">
+                  <div className="px-5 py-4 flex items-center justify-between border-b border-white/10">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
                         <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -876,6 +1263,105 @@ export default function Settings() {
                       </div>
                     </div>
                   </div>
+
+                  {/* Gender */}
+                  <div className="px-5 py-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
+                        <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="12" cy="8" r="5" />
+                          <path d="M20 21a8 8 0 0 0-16 0" />
+                        </svg>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-white">Gender</p>
+                        <p className="text-xs text-white/50 capitalize">{gender || 'Not set'}</p>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </section>
+
+          {/* Goals & Preferences Section */}
+          <section className="content-fade-up-4">
+            <div className="flex items-center justify-between mb-3 px-1">
+              <h3 className="text-xs font-semibold text-white/50 uppercase tracking-wide">Goals & Preferences</h3>
+              <button
+                onClick={() => {
+                  setIsEditingGoals(!isEditingGoals);
+                  setOpenDropdown(null);
+                }}
+                className={`p-1.5 rounded-full transition-all duration-300 ${isEditingGoals ? 'bg-violet-500/30 rotate-45' : 'hover:bg-violet-500/20'}`}
+                aria-label="Edit goals"
+              >
+                <svg className={`w-4 h-4 transition-colors duration-300 ${isEditingGoals ? 'text-violet-300' : 'text-violet-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+              </button>
+            </div>
+            <div 
+              className={`rounded-2xl bg-white/10 transition-all duration-500 ease-out overflow-hidden`}
+            >
+              {isEditingGoals ? (
+                <div className="p-5 space-y-4 animate-fadeIn">
+                  {/* Goals Dropdowns (includes Activity Level) */}
+                  <div className="space-y-3">
+                    {goalsQuestions.map((question) => (
+                      <ModernDropdown
+                        key={question.key}
+                        question={question}
+                        value={goalsForm[question.key]}
+                        onChange={handleGoalsChange}
+                        isOpen={openDropdown === question.key}
+                        onToggle={setOpenDropdown}
+                      />
+                    ))}
+                  </div>
+
+                  <div className="flex gap-3 pt-4">
+                    <button
+                      onClick={handleCancelGoals}
+                      className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/90 font-medium transition-colors border border-white/10"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleSaveGoals}
+                      disabled={isSaving}
+                      className="flex-1 px-4 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-medium transition-colors disabled:opacity-50"
+                    >
+                      {isSaving ? 'Saving...' : 'Save'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {/* Goals Display */}
+                  {goalsQuestions.map((question, idx) => {
+                    const selectedOption = question.options.find(opt => opt.value === goalsForm[question.key]);
+                    return (
+                      <div 
+                        key={question.key}
+                        className={`px-5 py-4 flex items-center justify-between ${idx < goalsQuestions.length - 1 ? 'border-b border-white/10' : ''}`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white">
+                            {question.icon}
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-white">{question.label}</p>
+                            <p className="text-xs text-white/50">
+                              {question.isActivityLevel && selectedOption 
+                                ? `${selectedOption.label} (Level ${selectedOption.value})`
+                                : selectedOption?.label || 'Not set'}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </>
               )}
             </div>
