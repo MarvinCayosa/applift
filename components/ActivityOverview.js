@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 
 // Reusable WorkoutCard component for backend integration
 const WorkoutCard = ({ workout, onWorkoutClick, selectedDay }) => {
@@ -111,6 +111,16 @@ export default function ActivityOverview({
   const [viewMode, setViewMode] = useState('week') // 'week' | 'months'
   const [selectedDay, setSelectedDay] = useState(null) // For showing workout details
   const isDesktop = variant === 'desktop'
+
+  // Auto-select today when component mounts
+  useEffect(() => {
+    if (currentWeek.length > 0 && !selectedDay) {
+      const today = currentWeek.find(day => day.isToday && !day.isFuture);
+      if (today) {
+        setSelectedDay(today);
+      }
+    }
+  }, [currentWeek, selectedDay]);
 
   // Use workoutLogs from props, fallback to mock data for development
   const currentWorkoutLogs = Object.keys(workoutLogs).length > 0 ? workoutLogs : {

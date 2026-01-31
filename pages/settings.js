@@ -150,6 +150,20 @@ import { deleteUser, updatePassword, EmailAuthProvider, reauthenticateWithCreden
 import { doc, deleteDoc } from 'firebase/firestore';
 import { db } from '../config/firestore';
 
+// Available profile colors
+const PROFILE_COLORS = [
+  { name: 'Purple', value: 'purple', bg: 'rgb(147, 51, 234)', gradient: 'linear-gradient(135deg, rgb(192, 132, 250), rgb(147, 51, 234))' },
+  { name: 'Blue', value: 'blue', bg: 'rgb(37, 99, 235)', gradient: 'linear-gradient(135deg, rgb(96, 165, 250), rgb(37, 99, 235))' },
+  { name: 'Pink', value: 'pink', bg: 'rgb(219, 39, 119)', gradient: 'linear-gradient(135deg, rgb(244, 114, 182), rgb(219, 39, 119))' },
+  { name: 'Green', value: 'green', bg: 'rgb(34, 197, 94)', gradient: 'linear-gradient(135deg, rgb(74, 222, 128), rgb(34, 197, 94))' },
+  { name: 'Orange', value: 'orange', bg: 'rgb(234, 88, 12)', gradient: 'linear-gradient(135deg, rgb(251, 146, 60), rgb(234, 88, 12))' },
+  { name: 'Cyan', value: 'cyan', bg: 'rgb(14, 165, 233)', gradient: 'linear-gradient(135deg, rgb(34, 211, 238), rgb(14, 165, 233))' },
+  { name: 'Indigo', value: 'indigo', bg: 'rgb(79, 70, 229)', gradient: 'linear-gradient(135deg, rgb(129, 140, 248), rgb(79, 70, 229))' },
+  { name: 'Rose', value: 'rose', bg: 'rgb(225, 29, 72)', gradient: 'linear-gradient(135deg, rgb(251, 113, 133), rgb(225, 29, 72))' },
+  { name: 'Amber', value: 'amber', bg: 'rgb(217, 119, 6)', gradient: 'linear-gradient(135deg, rgb(251, 191, 36), rgb(217, 119, 6))' },
+  { name: 'Lime', value: 'lime', bg: 'rgb(132, 204, 22)', gradient: 'linear-gradient(135deg, rgb(163, 230, 53), rgb(132, 204, 22))' },
+];
+
 export default function Settings() {
   const router = useRouter();
   const { user, userProfile, updateUserProfile, signOut, loading, isAuthenticated } = useAuth();
@@ -164,6 +178,11 @@ export default function Settings() {
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
+  
+  // Profile customization state
+  const [profileColor, setProfileColor] = useState('');
+  const [profileImage, setProfileImage] = useState('');
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   
   // Password change state
   const [passwordData, setPasswordData] = useState({
@@ -329,14 +348,14 @@ export default function Settings() {
                   key={opt.value}
                   type="button"
                   onClick={() => onChange(question.key, opt.value)}
-                  className={`flex-1 flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all duration-300 ${
+                  className={`flex-1 flex flex-col items-center gap-2 p-3 rounded-xl transition-all duration-300 ${
                     isSelected 
-                      ? 'border-green-500 bg-green-500/20 scale-105' 
-                      : 'border-white/10 bg-black/20 hover:border-white/20 hover:bg-white/5'
+                      ? 'bg-green-500 scale-105' 
+                      : 'bg-black/20 hover:bg-white/10'
                   }`}
                 >
                   <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 ${
-                    isSelected ? 'bg-green-500 text-white' : 'bg-white/10 text-white/60'
+                    isSelected ? 'bg-white/20 text-white' : 'bg-white/10 text-white/60'
                   }`}>
                     {opt.value === 1 && (
                       <img 
@@ -560,6 +579,10 @@ export default function Settings() {
     // Initialize gender and activity level
     setGender(userProfile?.gender || '');
     
+    // Initialize profile customization
+    setProfileColor(userProfile?.profileColor || '');
+    setProfileImage(userProfile?.profileImage || '');
+    
     // Initialize goals form
     setGoalsForm({
       bodyType: userProfile?.bodyType || '',
@@ -601,6 +624,8 @@ export default function Settings() {
     try {
       await updateUserProfile({
         username: profileForm.username,
+        profileColor: profileColor || null,
+        profileImage: profileImage || null,
       });
       setIsEditingProfile(false);
     } catch (error) {
@@ -658,6 +683,8 @@ export default function Settings() {
       username: userProfile?.username || user?.displayName || '',
       email: userProfile?.email || user?.email || '',
     });
+    setProfileColor(userProfile?.profileColor || '');
+    setProfileImage(userProfile?.profileImage || '');
     setIsEditingProfile(false);
   };
 
@@ -876,10 +903,14 @@ export default function Settings() {
               <div className="p-5 flex items-center gap-4 border-b border-white/10">
                 {/* Avatar */}
                 <div 
-                  className="w-16 h-16 rounded-full border-2 border-white/20 flex items-center justify-center flex-shrink-0"
-                  style={getUserAvatarColorStyle(user?.uid)}
+                  className="w-16 h-16 rounded-full border-2 border-white/20 flex items-center justify-center flex-shrink-0 overflow-hidden"
+                  style={profileImage ? {} : (profileColor ? { background: PROFILE_COLORS.find(c => c.value === profileColor)?.gradient || getUserAvatarColorStyle(user?.uid).background } : getUserAvatarColorStyle(user?.uid))}
                 >
-                  <span className="text-xl font-semibold text-white">{userInitials}</span>
+                  {profileImage ? (
+                    <img src={profileImage} alt="Profile" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-xl font-semibold text-white">{userInitials}</span>
+                  )}
                 </div>
                 
                 {/* Name & Email */}
@@ -908,46 +939,106 @@ export default function Settings() {
 
               {/* Edit Profile Form */}
               {isEditingProfile && (
-                <div className="p-5 space-y-4">
-                  <div>
-                    <label className="block text-xs font-medium text-white/60 mb-1.5 uppercase tracking-wide">
-                      Username
+                <div className="p-5 space-y-5">
+                  {/* Avatar with upload overlay - centered */}
+                  <div className="flex flex-col items-center gap-3">
+                    <label className="relative cursor-pointer group">
+                      <div 
+                        className="w-24 h-24 rounded-full border-2 border-white/20 flex items-center justify-center overflow-hidden transition-all group-hover:border-white/40"
+                        style={profileImage ? {} : (profileColor ? { background: PROFILE_COLORS.find(c => c.value === profileColor)?.gradient || getUserAvatarColorStyle(user?.uid).background } : getUserAvatarColorStyle(user?.uid))}
+                      >
+                        {profileImage ? (
+                          <img src={profileImage} alt="Profile" className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-3xl font-semibold text-white">{userInitials}</span>
+                        )}
+                      </div>
+                      {/* Upload overlay */}
+                      <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                      </div>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          if (file.size > 2 * 1024 * 1024) {
+                            alert('Image must be less than 2MB');
+                            return;
+                          }
+                          const reader = new FileReader();
+                          reader.onloadend = () => setProfileImage(reader.result);
+                          reader.readAsDataURL(file);
+                        }}
+                      />
                     </label>
-                    <input
-                      type="text"
-                      name="username"
-                      value={profileForm.username}
-                      onChange={handleProfileChange}
-                      className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/40 focus:outline-none focus:border-white/30 focus:bg-white/10 transition-colors"
-                      placeholder="Enter username"
-                    />
+                    {profileImage && (
+                      <button
+                        type="button"
+                        onClick={() => setProfileImage('')}
+                        className="text-xs text-rose-400 hover:text-rose-300 transition-colors"
+                      >
+                        Remove photo
+                      </button>
+                    )}
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-medium text-white/60 mb-1.5 uppercase tracking-wide">
-                      Email
-                    </label>
-                    <input
-                      type="email"
-                      name="email"
-                      value={profileForm.email}
-                      disabled
-                      className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white/50 cursor-not-allowed"
-                    />
-                    <p className="text-xs text-white/40 mt-1">Email cannot be changed</p>
-                  </div>
+                  {/* Color picker - compact row */}
+                  {!profileImage && (
+                    <div className="flex items-center justify-center gap-2">
+                      {PROFILE_COLORS.map((color) => (
+                        <button
+                          key={color.value}
+                          type="button"
+                          onClick={() => setProfileColor(color.value)}
+                          className={`w-7 h-7 rounded-full transition-all ${profileColor === color.value ? 'ring-2 ring-white scale-110' : 'hover:scale-110 opacity-70 hover:opacity-100'}`}
+                          style={{ background: color.gradient }}
+                        />
+                      ))}
+                      {profileColor && (
+                        <button
+                          type="button"
+                          onClick={() => setProfileColor('')}
+                          className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/50"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  )}
 
-                  <div className="flex gap-3 pt-2">
+                  {/* Username input */}
+                  <input
+                    type="text"
+                    name="username"
+                    value={profileForm.username}
+                    onChange={handleProfileChange}
+                    className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/40 focus:outline-none focus:border-violet-500/50 transition-colors text-center"
+                    placeholder="Username"
+                  />
+
+                  {/* Email - read only, subtle */}
+                  <p className="text-xs text-white/40 text-center">{profileForm.email}</p>
+
+                  {/* Action buttons */}
+                  <div className="flex gap-3">
                     <button
                       onClick={handleCancelProfile}
-                      className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/90 font-medium transition-colors border border-white/10"
+                      className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 font-medium transition-colors"
                     >
                       Cancel
                     </button>
                     <button
                       onClick={handleSaveProfile}
                       disabled={isSaving}
-                      className="flex-1 px-4 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-medium transition-colors disabled:opacity-50"
+                      className="flex-1 py-2.5 rounded-xl bg-violet-500 hover:bg-violet-600 text-white font-medium transition-colors disabled:opacity-50"
                     >
                       {isSaving ? 'Saving...' : 'Save'}
                     </button>
@@ -1187,11 +1278,10 @@ export default function Settings() {
                             key={opt.value}
                             type="button"
                             onClick={() => setGender(opt.value)}
-                            className={`flex-1 text-center rounded-2xl border transition-all ${selected ? 'border-[#8b5cf6] bg-[#8b5cf6]/10 text-white shadow-lg' : 'border-white/10 text-white/80 bg-black/30 hover:border-white/20'}`}
+                            className={`flex-1 text-center rounded-2xl transition-all ${selected ? 'bg-[#8b5cf6] text-white' : 'text-white/80 bg-black/30 hover:bg-white/10'}`}
                             style={{
                               fontSize: '0.875rem',
                               padding: '0.75rem 1rem',
-                              boxShadow: selected ? '0 0 20px rgba(139, 92, 246, 0.4)' : 'none',
                             }}
                           >
                             {opt.label}

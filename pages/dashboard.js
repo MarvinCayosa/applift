@@ -18,6 +18,20 @@ import { useBluetooth } from '../context/BluetoothProvider';
 import { shouldUseAppMode } from '../utils/pwaInstalled';
 import { getUserAvatarColorStyle, getUserTextColor, getFirstWord } from '../utils/colorUtils';
 
+// Profile colors for custom avatar (must match settings.js)
+const PROFILE_COLORS = [
+  { name: 'Purple', value: 'purple', bg: 'rgb(147, 51, 234)', gradient: 'linear-gradient(135deg, rgb(192, 132, 250), rgb(147, 51, 234))' },
+  { name: 'Blue', value: 'blue', bg: 'rgb(37, 99, 235)', gradient: 'linear-gradient(135deg, rgb(96, 165, 250), rgb(37, 99, 235))' },
+  { name: 'Pink', value: 'pink', bg: 'rgb(219, 39, 119)', gradient: 'linear-gradient(135deg, rgb(244, 114, 182), rgb(219, 39, 119))' },
+  { name: 'Green', value: 'green', bg: 'rgb(34, 197, 94)', gradient: 'linear-gradient(135deg, rgb(74, 222, 128), rgb(34, 197, 94))' },
+  { name: 'Orange', value: 'orange', bg: 'rgb(234, 88, 12)', gradient: 'linear-gradient(135deg, rgb(251, 146, 60), rgb(234, 88, 12))' },
+  { name: 'Cyan', value: 'cyan', bg: 'rgb(14, 165, 233)', gradient: 'linear-gradient(135deg, rgb(34, 211, 238), rgb(14, 165, 233))' },
+  { name: 'Indigo', value: 'indigo', bg: 'rgb(79, 70, 229)', gradient: 'linear-gradient(135deg, rgb(129, 140, 248), rgb(79, 70, 229))' },
+  { name: 'Rose', value: 'rose', bg: 'rgb(225, 29, 72)', gradient: 'linear-gradient(135deg, rgb(251, 113, 133), rgb(225, 29, 72))' },
+  { name: 'Amber', value: 'amber', bg: 'rgb(217, 119, 6)', gradient: 'linear-gradient(135deg, rgb(251, 191, 36), rgb(217, 119, 6))' },
+  { name: 'Lime', value: 'lime', bg: 'rgb(132, 204, 22)', gradient: 'linear-gradient(135deg, rgb(163, 230, 53), rgb(132, 204, 22))' },
+];
+
 export default function Dashboard() {
   const { profile } = useUserProfile();
   const { user, userProfile, signOut, loading, isAuthenticated } = useAuth();
@@ -508,13 +522,15 @@ export default function Dashboard() {
                 <div className="relative" ref={profileRef}>
                   <button
                     onClick={() => setProfileOpen(!profileOpen)}
-                    className="w-12 h-12 sm:w-12 sm:h-12 rounded-full border border-white/20 flex items-center justify-center flex-shrink-0 hover:border-white/40 transition-colors"
-                    style={{
-                      ...getUserAvatarColorStyle(user?.uid),
-                    }}
+                    className="w-12 h-12 sm:w-12 sm:h-12 rounded-full border border-white/20 flex items-center justify-center flex-shrink-0 hover:border-white/40 transition-colors overflow-hidden"
+                    style={userProfile?.profileImage ? {} : (userProfile?.profileColor ? { background: PROFILE_COLORS.find(c => c.value === userProfile.profileColor)?.gradient || getUserAvatarColorStyle(user?.uid).background } : getUserAvatarColorStyle(user?.uid))}
                     aria-label="Profile menu"
                   >
-                    <span className="text-lg font-semibold text-white">{userInitials}</span>
+                    {userProfile?.profileImage ? (
+                      <img src={userProfile.profileImage} alt="Profile" className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-lg font-semibold text-white">{userInitials}</span>
+                    )}
                   </button>
 
                   {/* Dropdown menu */}
@@ -698,7 +714,7 @@ export default function Dashboard() {
               {/* Header with title and stats */}
               <div className="flex items-start justify-between mb-4">
                 <div>
-                  <h3 className="text-lg font-semibold text-white mb-2">Workout</h3>
+                  <h3 className="text-lg font-semibold text-white mb-2">Workout Load</h3>
                   <p className="text-xs text-white/60 capitalize">
                     {hasChartData 
                       ? (liftViewType === 'day' ? 'Today' : liftViewType === 'week' ? 'Last 7 Days' : 'Last 4 Weeks')

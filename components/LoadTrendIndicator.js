@@ -34,9 +34,11 @@ export default function LoadTrendIndicator({
       case 'up':
         return {
           color: 'text-green-400',
-          bgColor: 'bg-green-400/10',
+          bgColor: 'bg-green-500/20',
+          barColor: 'bg-green-400',
+          label: 'Increased',
           icon: (
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 15l7-7 7 7" />
             </svg>
           )
@@ -44,9 +46,11 @@ export default function LoadTrendIndicator({
       case 'down':
         return {
           color: 'text-red-400',
-          bgColor: 'bg-red-400/10',
+          bgColor: 'bg-red-500/20',
+          barColor: 'bg-red-400',
+          label: 'Decreased',
           icon: (
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
             </svg>
           )
@@ -54,9 +58,11 @@ export default function LoadTrendIndicator({
       default:
         return {
           color: 'text-white/50',
-          bgColor: 'bg-white/5',
+          bgColor: 'bg-white/10',
+          barColor: 'bg-white/30',
+          label: 'No change',
           icon: (
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 12h14" />
             </svg>
           )
@@ -65,6 +71,11 @@ export default function LoadTrendIndicator({
   }
 
   const style = getTrendStyle()
+
+  // Calculate bar widths for visual comparison
+  const maxValue = Math.max(currentTotal, previousTotal) || 1
+  const currentWidth = (currentTotal / maxValue) * 100
+  const previousWidth = (previousTotal / maxValue) * 100
 
   // Format the difference display
   const formatDifference = () => {
@@ -77,54 +88,75 @@ export default function LoadTrendIndicator({
   // Format percentage display
   const formatPercentage = () => {
     const absPercent = Math.abs(percentChange)
-    if (trend === 'up') return `+${absPercent.toFixed(1)}%`
-    if (trend === 'down') return `-${absPercent.toFixed(1)}%`
-    return `${absPercent.toFixed(1)}%`
+    if (trend === 'up') return `+${absPercent.toFixed(0)}%`
+    if (trend === 'down') return `-${absPercent.toFixed(0)}%`
+    return `0%`
   }
 
   return (
     <div className="bg-white/10 rounded-2xl p-4">
       {/* Header */}
-      <div className="flex items-center justify-between mb-3">
-        <div>
-          <h3 className="text-xs font-semibold text-white/90 uppercase tracking-wide">
-            Weekly Comparison
-          </h3>
-          <p className="text-[10px] text-white/40">vs {period}</p>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <div className={`p-1.5 rounded-lg ${style.bgColor}`}>
+            <svg className="w-4 h-4 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-white">Weekly Load Comparison</h3>
+            <p className="text-[10px] text-white/40">vs {period}</p>
+          </div>
         </div>
         
         {/* Trend badge */}
-        <div className={`flex items-center gap-1 px-2 py-1 rounded-full ${style.bgColor}`}>
+        <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full ${style.bgColor}`}>
           <span className={style.color}>{style.icon}</span>
-          <span className={`text-xs font-semibold ${style.color}`}>
+          <span className={`text-sm font-bold ${style.color}`}>
             {formatPercentage()}
           </span>
         </div>
       </div>
 
-      {/* Stats row */}
-      <div className="flex items-center justify-between">
-        {/* This week */}
-        <div className="flex-1">
-          <div className="text-[10px] text-white/40 mb-0.5">This Week</div>
-          <div className="text-lg font-bold text-white">{currentTotal.toFixed(1)} <span className="text-xs text-white/50 font-normal">kg</span></div>
-        </div>
-
-        {/* Divider with arrow */}
-        <div className="px-4 flex flex-col items-center">
-          <div className={`text-sm font-semibold ${style.color}`}>
-            {formatDifference()} kg
+      {/* Visual bar comparison */}
+      <div className="space-y-3">
+        {/* This week bar */}
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-xs text-white/70 font-medium">This Week</span>
+            <span className="text-sm font-bold text-white">{currentTotal.toFixed(1)} kg</span>
           </div>
-          <svg className="w-4 h-4 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-          </svg>
+          <div className="h-3 bg-white/5 rounded-full overflow-hidden">
+            <div 
+              className={`h-full rounded-full transition-all duration-500 ${trend === 'up' ? 'bg-green-400' : trend === 'down' ? 'bg-amber-400' : 'bg-white/40'}`}
+              style={{ width: `${currentWidth}%` }}
+            />
+          </div>
         </div>
 
-        {/* Last week */}
-        <div className="flex-1 text-right">
-          <div className="text-[10px] text-white/40 mb-0.5">Last Week</div>
-          <div className="text-lg font-bold text-white/60">{previousTotal.toFixed(1)} <span className="text-xs text-white/40 font-normal">kg</span></div>
+        {/* Last week bar */}
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-xs text-white/50">Last Week</span>
+            <span className="text-sm font-medium text-white/60">{previousTotal.toFixed(1)} kg</span>
+          </div>
+          <div className="h-3 bg-white/5 rounded-full overflow-hidden">
+            <div 
+              className="h-full bg-white/20 rounded-full transition-all duration-500"
+              style={{ width: `${previousWidth}%` }}
+            />
+          </div>
         </div>
+      </div>
+
+      {/* Difference summary */}
+      <div className={`mt-4 pt-3 border-t border-white/10 flex items-center justify-center gap-2`}>
+        <span className={`text-sm font-semibold ${style.color}`}>
+          {formatDifference()} kg
+        </span>
+        <span className="text-xs text-white/40">
+          {trend === 'up' ? 'more than last week' : trend === 'down' ? 'less than last week' : 'same as last week'}
+        </span>
       </div>
     </div>
   )
