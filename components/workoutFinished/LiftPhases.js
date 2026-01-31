@@ -19,7 +19,7 @@ export default function LiftPhases() {
   const eccentricDelta = Math.round(eccentric * 8); // Example calculation
 
   return (
-    <div className="bg-white/5 backdrop-blur-sm rounded-3xl p-5 shadow-xl border border-white/10">
+    <div className="bg-white/10 backdrop-blur-sm rounded-3xl p-5 shadow-xl animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
       {/* Header */}
       <div className="mb-4">
         <h3 className="text-base font-semibold text-white">Movement Phases</h3>
@@ -67,7 +67,7 @@ export default function LiftPhases() {
       </div>
 
       {/* Average Time Section */}
-      <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between text-sm">
+      <div className="mt-4 pt-4 border-t border-white/5 flex items-center justify-between text-sm">
         <div className="flex items-center gap-2">
           <span className="text-gray-400">Avg Time:</span>
           <span className="text-teal-400 font-semibold">{concentric.toFixed(1)}s</span>

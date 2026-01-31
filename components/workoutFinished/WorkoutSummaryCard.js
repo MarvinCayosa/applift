@@ -230,7 +230,7 @@ export default function WorkoutSummaryCard({
   };
 
   return (
-    <div className="w-full bg-white/5 backdrop-blur-sm rounded-3xl p-5 shadow-xl border border-white/10">
+    <div className="w-full bg-white/10 backdrop-blur-sm rounded-3xl p-5 shadow-xl animate-fade-in-up">
       {/* Title Section */}
       <div className="mb-3">
         <h2 className="text-xl font-bold text-white mb-1">{workoutName || 'Training'}</h2>
@@ -238,7 +238,7 @@ export default function WorkoutSummaryCard({
       </div>
 
       {/* Chart Container */}
-      <div className="relative h-48 rounded-2xl overflow-hidden mb-4 bg-white/5 border border-white/10">
+      <div className="relative h-48 rounded-2xl overflow-hidden mb-4 bg-white/5">
         <canvas ref={canvasRef} className="w-full h-full" />
       </div>
 

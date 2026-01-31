@@ -153,8 +153,25 @@ body::after {
   100% { transform: translate(0,0) scale(1); }
 }
 
+/* Fade in up animation for cards */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.5s ease-out forwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
   body::before, body::after { animation: none; }
+  .animate-fade-in-up { animation: none; }
 }
 
 @layer utilities {

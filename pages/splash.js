@@ -233,8 +233,13 @@ export default function Splash() {
 
   return (
     <div 
-      className="min-h-screen h-screen w-screen fixed inset-0 bg-black text-white overflow-hidden touch-none"
-      style={{ overscrollBehavior: 'none' }}
+      className="h-screen w-screen fixed inset-0 bg-black text-white overflow-hidden touch-none select-none"
+      style={{ 
+        overscrollBehavior: 'none',
+        maxHeight: '100dvh',
+        height: '100dvh',
+        WebkitOverflowScrolling: 'touch',
+      }}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}

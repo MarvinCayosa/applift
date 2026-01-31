@@ -492,65 +492,58 @@ export default function Dashboard() {
 
       <main className="w-full px-4 sm:px-6 md:px-8 pt-10 sm:pt-10 pb-4 md:pb-6">
             <div className="w-full max-w-4xl mx-auto space-y-4">
-              {/* Top bar: greetings + avatar left, controls right */}
+              {/* Top bar: greetings left, avatar right */}
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  {/* Colored profile avatar with initials - clickable */}
-                  <div className="relative" ref={profileRef}>
-                    <button
-                      onClick={() => setProfileOpen(!profileOpen)}
-                      className="w-12 h-12 sm:w-12 sm:h-12 rounded-full border border-white/20 flex items-center justify-center flex-shrink-0 hover:border-white/40 transition-colors"
+                {/* Greetings on left */}
+                <div className="flex flex-col leading-tight">
+                  <span className="text-sm text-white/60 mb-1">Start your training today!</span>
+                  <span className="text-2xl sm:text-3xl font-bold text-white">
+                    Hi, <span style={{ color: getUserTextColor(user?.uid) }}>
+                      {getFirstWord(userProfile?.username || profile?.username || user?.displayName || 'User')}
+                    </span>
+                  </span>
+                </div>
+
+                {/* Colored profile avatar with initials - clickable, now on right */}
+                <div className="relative" ref={profileRef}>
+                  <button
+                    onClick={() => setProfileOpen(!profileOpen)}
+                    className="w-12 h-12 sm:w-12 sm:h-12 rounded-full border border-white/20 flex items-center justify-center flex-shrink-0 hover:border-white/40 transition-colors"
+                    style={{
+                      ...getUserAvatarColorStyle(user?.uid),
+                    }}
+                    aria-label="Profile menu"
+                  >
+                    <span className="text-lg font-semibold text-white">{userInitials}</span>
+                  </button>
+
+                  {/* Dropdown menu */}
+                  {profileOpen && (
+                    <div
+                      className="absolute top-14 right-0 z-50 min-w-[180px] rounded-2xl bg-[#00000066] border border-white/15 shadow-2xl modal-content-fade-in"
                       style={{
-                        ...getUserAvatarColorStyle(user?.uid),
+                        backdropFilter: 'blur(14px)',
+                        WebkitBackdropFilter: 'blur(14px)',
                       }}
-                      aria-label="Profile menu"
                     >
-                      <span className="text-lg font-semibold text-white">{userInitials}</span>
-                    </button>
-
-                    {/* Dropdown menu */}
-                    {profileOpen && (
-                      <div
-                        className="absolute top-14 left-0 z-50 min-w-[180px] rounded-2xl bg-[#00000066] border border-white/15 shadow-2xl modal-content-fade-in"
-                        style={{
-                          backdropFilter: 'blur(14px)',
-                          WebkitBackdropFilter: 'blur(14px)',
+                      <button
+                        onClick={() => {
+                          setProfileOpen(false);
+                          setShowSignOutModal(true);
                         }}
+                        className="w-full px-4 py-3 text-left text-red-400 hover:text-red-300 hover:bg-white/8 transition-colors rounded-2xl text-sm font-semibold first:rounded-t-2xl last:rounded-b-2xl flex items-center justify-between"
                       >
-                        <button
-                          onClick={() => {
-                            setProfileOpen(false);
-                            setShowSignOutModal(true);
-                          }}
-                          className="w-full px-4 py-3 text-left text-red-400 hover:text-red-300 hover:bg-white/8 transition-colors rounded-2xl text-sm font-semibold first:rounded-t-2xl last:rounded-b-2xl flex items-center justify-between"
-                        >
-                          <span>Sign out</span>
-                          <svg className="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M21 12L13 12" />
-                            <path d="M18 15L20.913 12.087V12.087C20.961 12.039 20.961 11.961 20.913 11.913V11.913L18 9" />
-                            <path d="M16 5V4.5V4.5C16 3.67157 15.3284 3 14.5 3H5C3.89543 3 3 3.89543 3 5V19C3 20.1046 3.89543 21 5 21H14.5C15.3284 21 16 20.3284 16 19.5V19.5V19" />
-                          </svg>
-                    </button>
-                  </div>
-                )}
+                        <span>Sign out</span>
+                        <svg className="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M21 12L13 12" />
+                          <path d="M18 15L20.913 12.087V12.087C20.961 12.039 20.961 11.961 20.913 11.913V11.913L18 9" />
+                          <path d="M16 5V4.5V4.5C16 3.67157 15.3284 3 14.5 3H5C3.89543 3 3 3.89543 3 5V19C3 20.1046 3.89543 21 5 21H14.5C15.3284 21 16 20.3284 16 19.5V19.5V19" />
+                        </svg>
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
-
-              {/* Greetings on upper-left */}
-              <div className="flex flex-col leading-tight">
-                <span className="text-2xl sm:text-3xl font-bold text-white">
-                  Hello, <span style={{ color: getUserTextColor(user?.uid) }}>
-                    {getFirstWord(userProfile?.username || profile?.username || user?.displayName || 'User')}
-                  </span>!
-                </span>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <button className="p-2 rounded-full text-white/90" aria-label="Notifications">
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg"><path strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0 1 18 14.158V11a6 6 0 1 0-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 1 1-6 0v-1h6z"/></svg>
-              </button>
-            </div>
-          </div>
 
           {/* Connection status pill */}
           <div className="flex justify-center content-fade-up-1">

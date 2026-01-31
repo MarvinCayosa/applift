@@ -267,7 +267,7 @@ export default function ActivityOverview({
             : 'opacity-0 -translate-x-full pointer-events-none'
         }`}>
           <div className="h-full flex flex-col">
-            <div className="bg-white/10 rounded-2xl p-4 h-full flex flex-col">
+            <div className="h-full flex flex-col">
               <p className="text-xs text-white/50 mb-3 uppercase tracking-wide font-semibold">This Week</p>
               
               <WeeklyDatePicker

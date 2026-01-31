@@ -1109,6 +1109,9 @@ You acknowledge the system's limits (e.g., single IMU, equipment-based sensing) 
             )}
           </button>
         </div>
+        {showPwReminder ? (
+          <div style={{ fontSize: 'clamp(0.7rem, 2.5vw, 0.75rem)', color: '#fb7185', marginTop: 'clamp(0.25rem, 1vh, 0.5rem)' }}>At least 8 characters with an uppercase, number, and symbol.</div>
+        ) : null}
       </label>
 
       <label className="block relative">
@@ -1645,10 +1648,11 @@ You acknowledge the system's limits (e.g., single IMU, equipment-based sensing) 
             <button
               onClick={handleBackToSplash}
               type="button"
-              className="absolute p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors touch-manipulation"
+              className="absolute p-2 hover:opacity-70 transition-opacity touch-manipulation"
               style={{ 
                 top: 'clamp(0.75rem, 2vh, 1rem)',
                 left: 'clamp(0.75rem, 2vw, 1rem)',
+                marginTop: '8px',
                 zIndex: 10,
                 cursor: 'pointer',
                 WebkitTapHighlightColor: 'transparent'
