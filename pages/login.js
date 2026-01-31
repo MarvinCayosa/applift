@@ -210,7 +210,7 @@ export default function Login() {
           
           <h1 className="font-semibold text-center" style={{
             color: 'var(--app-white)',
-            fontSize: 'clamp(1.5rem, 5vw, 2.25rem)',
+            fontSize: 'clamp(1.25rem, 4vw, 1.5rem)',
             marginBottom: 'clamp(0.125rem, 0.5vh, 0.25rem)',
           }}>Welcome Back!</h1>
           <p style={{
@@ -289,7 +289,9 @@ export default function Login() {
             </label>
 
             <div className="flex items-center justify-end">
-              <a href="#" style={{ fontSize: 'clamp(0.7rem, 2.5vw, 0.75rem)', color: '#a855f7', textDecoration: 'underline' }}>Forgot password?</a>
+              <Link href="/forgot-password">
+                <a style={{ fontSize: 'clamp(0.7rem, 2.5vw, 0.75rem)', color: '#a855f7', textDecoration: 'underline' }}>Forgot password?</a>
+              </Link>
             </div>
 
             {/* Submit Button */}

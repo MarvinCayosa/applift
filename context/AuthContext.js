@@ -14,7 +14,8 @@ import {
   getRedirectResult,
   GoogleAuthProvider,
   signOut as firebaseSignOut,
-  onIdTokenChanged
+  onIdTokenChanged,
+  sendPasswordResetEmail
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { app } from '../config/firebase';
@@ -286,6 +287,19 @@ export function AuthProvider({ children }) {
     }
   }, [auth]);
 
+  // Reset password - sends email using Firebase's built-in template
+  const resetPassword = useCallback(async (email) => {
+    setAuthError(null);
+    try {
+      await sendPasswordResetEmail(auth, email);
+      return { success: true };
+    } catch (error) {
+      const message = getAuthErrorMessage(error);
+      setAuthError(message);
+      throw new Error(message);
+    }
+  }, [auth]);
+
   // Listen to auth state changes
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -374,6 +388,7 @@ export function AuthProvider({ children }) {
     signInWithEmail,
     signInWithGoogle,
     signOut,
+    resetPassword,
     updateUserProfile,
     completeOnboarding,
     clearError,
@@ -387,6 +402,7 @@ export function AuthProvider({ children }) {
     signInWithEmail,
     signInWithGoogle,
     signOut,
+    resetPassword,
     updateUserProfile,
     completeOnboarding,
     clearError,
