@@ -1,7 +1,8 @@
 import Head from 'next/head';
 import { useRouter } from 'next/router';
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import ConnectPill from '../components/ConnectPill';
+import CustomSetModal from '../components/CustomSetModal';
 import RecommendedSetCard from '../components/RecommendedSetCard';
 import WarmUpBanner from '../components/WarmUpBanner';
 import WorkoutActionButton from '../components/WorkoutActionButton';
@@ -10,50 +11,86 @@ import { useBluetooth } from '../context/BluetoothProvider';
 const workoutDetails = {
   Barbell: {
     'Flat Bench Barbell Press': {
-      description: 'Target your chest, shoulders, and triceps with this fundamental compound movement.',
+      description: 'A fundamental compound movement that builds upper body strength. Lie on a flat bench, grip the bar slightly wider than shoulder-width, lower to your chest, and press up explosively.',
       recommendedSets: 4,
       recommendedReps: '6-8',
       difficulty: 'Intermediate',
       tutorialVideo: 'https://www.youtube.com/watch?v=rT7DgCr-3pg',
+      tips: [
+        'Keep your feet flat on the floor',
+        'Retract your shoulder blades for stability',
+        'Lower the bar to mid-chest level',
+        'Drive through your heels as you press'
+      ]
     },
     'Front Squats': {
-      description: 'Strengthen your quadriceps, core, and lower back with controlled leg movements.',
+      description: 'Hold the barbell across the front of your shoulders with elbows high. Squat down by pushing your hips back and bending your knees, keeping your torso upright throughout.',
       recommendedSets: 4,
       recommendedReps: '6-8',
       difficulty: 'Intermediate',
       tutorialVideo: 'https://www.youtube.com/watch?v=uYumuL_G_V0',
+      tips: [
+        'Keep your elbows high throughout',
+        'Push your knees out over your toes',
+        'Maintain an upright torso',
+        'Descend until thighs are parallel to floor'
+      ]
     },
   },
   Dumbell: {
     'Concentration Curls': {
-      description: 'Isolate your biceps for peak contraction and muscle growth.',
+      description: 'Sit on a bench with your elbow braced against your inner thigh. Curl the dumbbell up with control, squeeze at the top, then lower slowly to full extension.',
       recommendedSets: 3,
       recommendedReps: '8-12',
       difficulty: 'Beginner',
       tutorialVideo: 'https://www.youtube.com/watch?v=Jvj2wV0vOYU',
+      tips: [
+        'Brace your elbow firmly against your thigh',
+        'Squeeze at the top of the movement',
+        'Lower the weight slowly for 2-3 seconds',
+        'Avoid swinging or using momentum'
+      ]
     },
     'Single-arm Overhead Extension': {
-      description: 'Work your triceps and shoulders with controlled overhead movement.',
+      description: 'Hold a dumbbell overhead with one arm fully extended. Lower the weight behind your head by bending at the elbow, then extend back up to the starting position.',
       recommendedSets: 3,
       recommendedReps: '8-12',
       difficulty: 'Beginner',
       tutorialVideo: 'https://www.youtube.com/watch?v=YbX7Wd8jQ-Q',
+      tips: [
+        'Keep your upper arm stationary',
+        'Lower the weight behind your head slowly',
+        'Fully extend at the top without locking',
+        'Engage your core for stability'
+      ]
     },
   },
   'Weight Stack': {
     'Lateral Pulldown': {
-      description: 'Build a wider back and stronger lats with machine-guided movement.',
+      description: 'Grip the bar wider than shoulder-width, lean back slightly, and pull the bar down to your upper chest. Squeeze your lats at the bottom, then control the weight back up.',
       recommendedSets: 4,
       recommendedReps: '8-10',
       difficulty: 'Beginner',
       tutorialVideo: 'https://www.youtube.com/watch?v=CAwf7n6Luuc',
+      tips: [
+        'Lean back slightly at about 70-80 degrees',
+        'Pull with your elbows, not your hands',
+        'Squeeze your shoulder blades together',
+        'Control the weight on the way up'
+      ]
     },
     'Seated Leg Extension': {
-      description: 'Isolate and strengthen your quadriceps with smooth, controlled motion.',
+      description: 'Sit with your back against the pad and legs under the roller. Extend your legs until straight, pause at the top with a squeeze, then lower with control.',
       recommendedSets: 3,
       recommendedReps: '10-12',
       difficulty: 'Beginner',
       tutorialVideo: 'https://www.youtube.com/watch?v=YyvSfVjQeL0',
+      tips: [
+        'Keep your back pressed against the pad',
+        'Pause at the top and squeeze your quads',
+        'Lower the weight slowly for 2-3 seconds',
+        'Avoid locking your knees at full extension'
+      ]
     },
   },
 };
@@ -83,6 +120,52 @@ export default function SelectedWorkout() {
   const router = useRouter();
   const { equipment, workout } = router.query;
   const mainRef = useRef(null);
+
+  // Modal state for custom set
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalField, setModalField] = useState('weight');
+  
+  // Custom set values
+  const [customWeight, setCustomWeight] = useState(null);
+  const [customSets, setCustomSets] = useState(null);
+  const [customReps, setCustomReps] = useState(null);
+  const [customWeightUnit, setCustomWeightUnit] = useState('kg');
+
+  // Handle opening modal for specific field
+  const handleCustomFieldClick = (field) => {
+    setModalField(field);
+    setIsModalOpen(true);
+  };
+
+  // Handle save from modal
+  const handleModalSave = ({ value, weightUnit: wu, fieldType }) => {
+    switch (fieldType) {
+      case 'weight':
+        setCustomWeight(value);
+        setCustomWeightUnit(wu);
+        break;
+      case 'sets':
+        setCustomSets(value);
+        break;
+      case 'reps':
+        setCustomReps(value);
+        break;
+    }
+  };
+
+  // Get the current value for the modal based on field type
+  const getModalInitialValue = () => {
+    switch (modalField) {
+      case 'weight':
+        return customWeight || 5;
+      case 'sets':
+        return customSets || 3;
+      case 'reps':
+        return customReps || 10;
+      default:
+        return 5;
+    }
+  };
 
   const {
     connected,
@@ -121,8 +204,8 @@ export default function SelectedWorkout() {
         <title>{workout} — AppLift</title>
       </Head>
 
-      <main ref={mainRef} className="w-full px-4 sm:px-6 md:px-8 pt-10 sm:pt-10 pb-24 sm:pb-28 md:pb-32 h-screen overflow-y-auto scrollbar-hide">
-        <div className="mx-auto w-full max-w-4xl space-y-4 sm:space-y-5 md:space-y-6">
+      <main ref={mainRef} className="w-full px-4 sm:px-6 md:px-8 pt-6 pb-20 flex items-start justify-center">
+        <div className="mx-auto w-full max-w-4xl space-y-3 sm:space-y-4">
         {/* Header with back button and connection pill */}
         <div className="flex items-center justify-between content-fade-up-1">
           {/* Back button */}
@@ -160,47 +243,122 @@ export default function SelectedWorkout() {
             recommendedReps={details.recommendedReps}
             image={workoutImage}
             equipmentColor={equipmentColor}
+            customWeight={customWeight}
+            customSets={customSets}
+            customReps={customReps}
+            customWeightUnit={customWeightUnit}
+            onCustomFieldClick={handleCustomFieldClick}
           />
         </div>
 
-        {/* Target Muscles - Separate Container */}
-        <div className="content-fade-up-2 rounded-xl sm:rounded-2xl bg-white/5 p-3 sm:p-4 flex items-center gap-2 sm:gap-3" style={{ animationDelay: '0.15s' }}>
-          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-white/10 flex items-center justify-center shrink-0">
-            <svg className="w-5 h-5 sm:w-6 sm:h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-            </svg>
-          </div>
-          <div className="flex-1">
-            <h3 className="text-xs sm:text-sm font-semibold text-white mb-0.5 sm:mb-1">Target Muscles</h3>
-            <p className="text-[11px] sm:text-xs text-white/70">
-              {equipment === 'Barbell' && workout === 'Flat Bench Barbell Press'
-                ? 'Chest, Shoulders, Triceps'
-                : equipment === 'Barbell' && workout === 'Front Squats'
-                ? 'Quadriceps, Core, Lower Back'
-                : equipment === 'Dumbell' && workout === 'Concentration Curls'
-                ? 'Biceps'
-                : equipment === 'Dumbell' && workout === 'Single-arm Overhead Extension'
-                ? 'Triceps, Shoulders'
-                : equipment === 'Weight Stack' && workout === 'Lateral Pulldown'
-                ? 'Back, Lats'
-                : 'Quadriceps'}
-            </p>
+        {/* Target Muscles - Styled like LiftPhases */}
+        <div className="content-fade-up-2 max-w-sm mx-auto" style={{ animationDelay: '0.15s' }}>
+          <div className="bg-white/10 backdrop-blur-sm rounded-3xl p-4 shadow-xl">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                {/* Vertical Indicator Bar */}
+                <div className="w-1 h-10 bg-gradient-to-b from-purple-500 to-violet-400 rounded-full" />
+                
+                <div className="flex flex-col">
+                  <h3 className="text-sm font-semibold text-white">Target Muscles</h3>
+                  <p className="text-xs text-gray-400">
+                    {equipment === 'Barbell' && workout === 'Flat Bench Barbell Press'
+                      ? 'Chest, Shoulders, Triceps'
+                      : equipment === 'Barbell' && workout === 'Front Squats'
+                      ? 'Quadriceps, Core, Lower Back'
+                      : equipment === 'Dumbell' && workout === 'Concentration Curls'
+                      ? 'Biceps'
+                      : equipment === 'Dumbell' && workout === 'Single-arm Overhead Extension'
+                      ? 'Triceps, Shoulders'
+                      : equipment === 'Weight Stack' && workout === 'Lateral Pulldown'
+                      ? 'Back, Lats'
+                      : 'Quadriceps'}
+                  </p>
+                </div>
+              </div>
+              
+              {/* Muscle Icon */}
+              <div className="w-12 h-12 rounded-full bg-white/5 border border-red-500/30 flex items-center justify-center overflow-hidden">
+                <svg viewBox="0 0 64 64" className="w-10 h-10">
+                  {/* Body outline */}
+                  <ellipse cx="32" cy="14" rx="8" ry="9" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="1.5"/>
+                  <path d="M24 23 L20 45 L24 62 M40 23 L44 45 L40 62" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="1.5"/>
+                  <path d="M24 23 Q32 26 40 23 L40 45 Q32 48 24 45 Z" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="1.5"/>
+                  <path d="M24 26 L12 32 L10 45 M40 26 L52 32 L54 45" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="1.5"/>
+                  
+                  {/* Highlighted muscles based on exercise */}
+                  {equipment === 'Barbell' && workout === 'Flat Bench Barbell Press' && (
+                    <>
+                      {/* Chest */}
+                      <path d="M26 28 Q32 32 38 28 L38 36 Q32 40 26 36 Z" fill="rgba(239,68,68,0.7)"/>
+                      {/* Shoulders */}
+                      <circle cx="22" cy="26" r="4" fill="rgba(239,68,68,0.5)"/>
+                      <circle cx="42" cy="26" r="4" fill="rgba(239,68,68,0.5)"/>
+                    </>
+                  )}
+                  {equipment === 'Barbell' && workout === 'Front Squats' && (
+                    <>
+                      {/* Quadriceps */}
+                      <path d="M22 46 L20 58 L26 58 L28 46 Z" fill="rgba(239,68,68,0.7)"/>
+                      <path d="M42 46 L44 58 L38 58 L36 46 Z" fill="rgba(239,68,68,0.7)"/>
+                      {/* Core */}
+                      <ellipse cx="32" cy="40" rx="6" ry="4" fill="rgba(239,68,68,0.5)"/>
+                    </>
+                  )}
+                  {equipment === 'Dumbell' && workout === 'Concentration Curls' && (
+                    <>
+                      {/* Biceps */}
+                      <ellipse cx="16" cy="36" rx="3" ry="5" fill="rgba(239,68,68,0.7)"/>
+                      <ellipse cx="48" cy="36" rx="3" ry="5" fill="rgba(239,68,68,0.7)"/>
+                    </>
+                  )}
+                  {equipment === 'Dumbell' && workout === 'Single-arm Overhead Extension' && (
+                    <>
+                      {/* Triceps */}
+                      <ellipse cx="18" cy="38" rx="2.5" ry="5" fill="rgba(239,68,68,0.7)"/>
+                      <ellipse cx="46" cy="38" rx="2.5" ry="5" fill="rgba(239,68,68,0.7)"/>
+                      {/* Shoulders */}
+                      <circle cx="22" cy="26" r="4" fill="rgba(239,68,68,0.5)"/>
+                      <circle cx="42" cy="26" r="4" fill="rgba(239,68,68,0.5)"/>
+                    </>
+                  )}
+                  {equipment === 'Weight Stack' && workout === 'Lateral Pulldown' && (
+                    <>
+                      {/* Back/Lats */}
+                      <path d="M26 28 L24 42 Q32 46 40 42 L38 28 Q32 32 26 28 Z" fill="rgba(239,68,68,0.7)"/>
+                    </>
+                  )}
+                  {equipment === 'Weight Stack' && workout === 'Seated Leg Extension' && (
+                    <>
+                      {/* Quadriceps */}
+                      <path d="M22 46 L20 58 L26 58 L28 46 Z" fill="rgba(239,68,68,0.7)"/>
+                      <path d="M42 46 L44 58 L38 58 L36 46 Z" fill="rgba(239,68,68,0.7)"/>
+                    </>
+                  )}
+                </svg>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Exercise Information - No Container */}
-        <div className="content-fade-up-2 space-y-2 sm:space-y-3" style={{ animationDelay: '0.25s' }}>
-          <div>
-            <h3 className="text-xs sm:text-sm font-semibold text-white mb-1.5 sm:mb-2">About This Exercise</h3>
-            <p className="text-[11px] sm:text-xs text-white/70 leading-relaxed">{details.description}</p>
-          </div>
+        {/* Exercise Information - Aligned with target muscles container */}
+        <div className="content-fade-up-2 max-w-sm mx-auto space-y-3 px-1" style={{ animationDelay: '0.25s' }}>
+          {/* Exercise Description */}
+          <p className="text-xs text-white/70 leading-relaxed text-left">{details.description}</p>
           
+          {/* Form Tips */}
           <div>
-            <h3 className="text-xs sm:text-sm font-semibold text-white mb-1.5 sm:mb-2">Form Tips</h3>
-            <ul className="text-[11px] sm:text-xs text-white/70 space-y-0.5 sm:space-y-1 list-disc list-inside">
-              <li>Keep your core tight throughout the movement</li>
-              <li>Control the weight on the way down</li>
-              <li>Maintain steady breathing rhythm</li>
+            <h3 className="text-sm font-semibold text-white mb-1.5 text-left">Form Tips</h3>
+            <ul className="text-xs text-white/70 space-y-1 list-disc list-inside text-left">
+              {details.tips?.map((tip, idx) => (
+                <li key={idx}>{tip}</li>
+              )) || (
+                <>
+                  <li>Keep your core tight throughout the movement</li>
+                  <li>Control the weight on the way down</li>
+                  <li>Maintain steady breathing rhythm</li>
+                </>
+              )}
             </ul>
           </div>
 
@@ -221,7 +379,7 @@ export default function SelectedWorkout() {
         </div>
 
         {/* Warm Up Banner */}
-        <div className="content-fade-up-3 mb-16 sm:mb-20" style={{ animationDelay: '0.35s' }}>
+        <div className="content-fade-up-3" style={{ animationDelay: '0.35s' }}>
           <WarmUpBanner />
         </div>
         </div>
@@ -243,6 +401,16 @@ export default function SelectedWorkout() {
           />
         </div>
       </div>
+
+      {/* Custom Set Modal */}
+      <CustomSetModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSave={handleModalSave}
+        initialValue={getModalInitialValue()}
+        initialWeightUnit={customWeightUnit}
+        fieldType={modalField}
+      />
     </div>
   );
 }

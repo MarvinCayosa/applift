@@ -417,33 +417,34 @@ export default function Workouts() {
 
             {scannedEquipment && (scannedEquipment.type === 'Barbell' || scannedEquipment.type === 'Dumbell' || scannedEquipment.type === 'Weight Stack') && (
               <div className="text-center text-xs text-purple-100 font-medium tracking-wide">
-                Equipment Scanned Successfully ✪
+                Equipment Scanned Successfully
               </div>
             )}
           </section>
         </div>
 
         {/* Workout carousel */}
-        {scannedEquipment && (
-          <section className="pt-2 sm:pt-4 pb-8 sm:pb-12 space-y-4 sm:space-y-6">
+        {scannedEquipment && (scannedEquipment.type === 'Barbell' || scannedEquipment.type === 'Dumbell' || scannedEquipment.type === 'Weight Stack') && (
+          <section className="pt-2 sm:pt-4 pb-24 space-y-4 sm:space-y-6">
             <h2 className="text-center text-xs sm:text-sm font-semibold text-white/80 px-4 content-fade-up-3" style={{ animationDelay: '0.15s' }}>Choose Your Workout</h2>
 
           {/* Mobile Carousel - centered with peek */}
           <div 
             ref={workoutCarouselRef}
-            className="flex gap-3 sm:gap-4 overflow-x-auto pb-2 snap-x snap-center scrollbar-hide scroll-smooth content-fade-up-3 md:hidden"
+            className="flex gap-5 sm:gap-6 overflow-x-auto pb-2 snap-x snap-center scrollbar-hide scroll-smooth content-fade-up-3 md:hidden"
             style={{
-              paddingLeft: 'calc(50% - 140px)',
-              paddingRight: 'calc(50% - 140px)',
+              paddingLeft: 'calc(50% - 160px)',
+              paddingRight: 'calc(50% - 160px)',
               animationDelay: '0.3s'
             }}
           >
             {workouts.map((workout, idx) => (
               <article
                 key={workout.title + idx}
-                className="min-w-[280px] max-w-[280px] sm:min-w-[305px] sm:max-w-[305px] shrink-0 snap-center rounded-2xl sm:rounded-3xl overflow-hidden group relative h-72 sm:h-80 transition-all duration-300 cursor-pointer hover:scale-105"
+                className="min-w-[320px] max-w-[320px] sm:min-w-[345px] sm:max-w-[345px] shrink-0 snap-center rounded-2xl sm:rounded-3xl overflow-hidden group relative transition-all duration-300 cursor-pointer hover:scale-105"
                 style={{
                   boxShadow: '0 12px 24px rgba(0, 0, 0, 0.3)',
+                  height: 'clamp(320px, 42vh, 500px)'
                 }}
                 onClick={() => {
                   if (!workout.isComingSoon) {
