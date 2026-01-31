@@ -566,3 +566,51 @@ html:has(#__next > div > div:has(img[src*="AppLift_Logo"])) {
   background-color: #000000;
 }
 
+/* Shimmer animation for card borders */
+@keyframes shimmer {
+  0% {
+    background-position: 200% center;
+  }
+  100% {
+    background-position: -200% center;
+  }
+}
+
+/* Animated gradient text */
+@keyframes gradient-text-move {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 18s linear infinite;
+  background-size: 200% 100%;
+}
+
+.animate-gradient-text {
+  background-size: 200% 200%;
+  animation: gradient-text-move 4s ease-in-out infinite;
+}
+
+/* Slide up animation for bottom modals */
+@keyframes slide-up {
+  0% {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out forwards;
+}

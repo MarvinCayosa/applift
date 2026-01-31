@@ -1,4 +1,18 @@
+
 import { useState, useEffect, useRef } from 'react';
+
+// Helper to lighten a hex color
+function lightenColor(hex, amount = 0.2) {
+  if (!hex || hex[0] !== '#' || (hex.length !== 7 && hex.length !== 4)) return hex;
+  const expand = (h) => h.length === 4 ? `#${h[1]}${h[1]}${h[2]}${h[2]}${h[3]}${h[3]}` : h;
+  const full = expand(hex);
+  const clamp = (v) => Math.max(0, Math.min(255, v));
+  const r = clamp(Math.round(parseInt(full.substr(1, 2), 16) + (255 - parseInt(full.substr(1, 2), 16)) * amount));
+  const g = clamp(Math.round(parseInt(full.substr(3, 2), 16) + (255 - parseInt(full.substr(3, 2), 16)) * amount));
+  const b = clamp(Math.round(parseInt(full.substr(5, 2), 16) + (255 - parseInt(full.substr(5, 2), 16)) * amount));
+  const toHex = (v) => v.toString(16).padStart(2, '0');
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
 
 export default function RecommendedSetCard({ 
   equipment, 
@@ -7,11 +21,18 @@ export default function RecommendedSetCard({
   recommendedReps, 
   image, 
   equipmentColor,
-  weight = 60,
+  weight = 5,
   weightUnit = 'kg',
   time = 45,
   timeUnit = 'Secs',
-  burnCalories = 45
+  burnCalories = 45,
+  // Custom set values from parent
+  customWeight = null,
+  customSets = null,
+  customReps = null,
+  customWeightUnit = 'kg',
+  // Callback to open modal
+  onCustomFieldClick = () => {}
 }) {
   const darkenColor = (hex, amount = 0.12) => {
     if (!hex || hex[0] !== '#' || (hex.length !== 7 && hex.length !== 4)) return hex;
@@ -43,6 +64,11 @@ export default function RecommendedSetCard({
     return () => carousel.removeEventListener('scroll', handleScroll);
   }, []);
 
+  // Handle opening modal for specific field - calls parent callback
+  const handleCustomFieldClick = (field) => {
+    onCustomFieldClick(field);
+  };
+
   const cards = [
     {
       type: 'recommended',
@@ -56,10 +82,10 @@ export default function RecommendedSetCard({
     },
     {
       type: 'custom',
-      weight: 0,
-      weightUnit,
-      sets: 0,
-      reps: 0,
+      weight: customWeight,
+      weightUnit: customWeightUnit,
+      sets: customSets,
+      reps: customReps,
       time: 0,
       timeUnit,
       burnCalories: 0
@@ -68,26 +94,36 @@ export default function RecommendedSetCard({
 
   return (
     <div className="space-y-3">
-      <h3 className="text-sm font-medium text-center bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-500 bg-clip-text text-transparent">
+      <h3 
+        className="text-sm font-medium text-center bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-500 bg-clip-text text-transparent animate-gradient-text transition-opacity duration-300"
+        style={{ opacity: activeIndex === 0 ? 1 : 0 }}
+      >
         Here is a Recommended Set for You
       </h3>
       
       {/* Mobile Carousel container */}
       <div 
         ref={carouselRef}
-        className="flex gap-3 overflow-x-auto snap-x snap-mandatory scrollbar-hide scroll-smooth -mx-4 px-4 md:hidden"
+        className="flex gap-3 overflow-x-auto snap-x snap-mandatory scrollbar-hide scroll-smooth -mx-4 px-4 md:hidden content-fade-up-3"
+        style={{ animationDelay: '0.2s' }}
       >
         {cards.map((card, idx) => (
           <div key={idx} className="min-w-full shrink-0 snap-center">
-            {/* Main workout card with outer container */}
+            {/* Main workout card with animated outer container */}
             <div
-              className="rounded-3xl p-1 shadow-lg shadow-black/30"
+              className={`rounded-3xl shadow-lg shadow-black/30 ${card.type === 'custom' ? '' : 'animate-shimmer'}`}
               style={{
-                backgroundColor: darkenColor(equipmentColor, 0.14),
+                background: card.type === 'custom' 
+                  ? 'rgba(120,120,120,0.8)'
+                  : `linear-gradient(90deg, ${equipmentColor}, ${lightenColor(equipmentColor, 0.25)}, ${darkenColor(equipmentColor, 0.18)}, ${equipmentColor})`,
+                backgroundSize: '400% 100%',
+                animationDuration: card.type === 'custom' ? undefined : '7s',
+                padding: '8px',
               }}
             >
-              {/* Inner image container */}
-              <div className="rounded-[20px] overflow-hidden relative h-56 max-w-[360px] mx-auto">
+              {/* Inner container with image and stats */}
+              <div className="rounded-[21px] bg-black/90 overflow-hidden">
+              <div className="rounded-2xl overflow-hidden relative w-full max-w-[90vw] sm:max-w-[500px] md:max-w-[600px] mx-auto" style={{ height: 'clamp(240px, 35vh, 400px)' }}>
                 {/* Background image */}
                 <img
                   src={image}
@@ -106,91 +142,149 @@ export default function RecommendedSetCard({
                   }}
                 />
 
-                {/* Bottom gradient overlay */}
+                {/* Bottom gradient overlay - stronger for bottom content */}
                 <div 
-                  className="absolute bottom-0 left-0 right-0 h-32 pointer-events-none"
+                  className="absolute bottom-0 left-0 right-0 h-40 pointer-events-none"
                   style={{
-                    background: 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.4) 50%, transparent 100%)',
+                    background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.5) 50%, transparent 100%)',
                   }}
                 />
 
+                {/* Refresh button - fixed position */}
+                <button
+                  type="button"
+                  className="absolute top-4 right-4 w-10 h-10 rounded-xl flex items-center justify-center hover:bg-white/10 transition-colors z-10"
+                  aria-label="Refresh"
+                >
+                  <img src="/images/icons/refresh.png" alt="Refresh" className="w-5 h-5" />
+                </button>
+
                 {/* Content overlay */}
                 <div className="absolute inset-0 flex flex-col justify-between p-5">
-                  {/* Title and swap icon */}
-                  <div className="flex items-center justify-between">
+                  {/* Title */}
+                  <div className="flex items-center">
                     <h2 className="text-2xl font-bold text-white">
-                      {card.type === 'custom' ? 'Custom Set' : workout}
+                      {workout}
                     </h2>
-                    <button
-                      type="button"
-                      className="w-10 h-10 rounded-xl flex items-center justify-center"
-                      aria-label="Refresh"
-                    >
-                      <img src="/images/icons/refresh.png" alt="Refresh" className="w-5 h-5" />
-                    </button>
                   </div>
 
-                  {/* Stats - Weight, Sets, Reps */}
-                  <div className="flex justify-start gap-3">
-                    <div className="bg-white/8 backdrop-blur-sm rounded-2xl px-4 py-3 min-w-[90px]">
-                      <p className="text-[11px] text-white/70 mb-1">Weight</p>
-                      <div className="flex items-baseline gap-1">
-                        <p className="text-3xl font-bold text-white leading-none">
-                          {card.type === 'custom' ? '__' : card.weight}
-                        </p>
-                        <p className="text-xs text-white/70 leading-none">{card.weightUnit}</p>
+                  {/* Bottom content area */}
+                  <div className="space-y-3">
+                    {/* Stats - Weight, Sets, Reps - Compact dark background */}
+                    <div className="bg-black/70 rounded-3xl px-6 py-4 w-fit mx-auto shadow-lg shadow-black/40 border border-black/60">
+                      <div className="flex justify-center gap-4">
+                        {card.type === 'custom' ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleCustomFieldClick('weight')}
+                              className="px-2 py-1 hover:bg-white/10 rounded-xl transition-colors text-center"
+                            >
+                              <p className="text-xs text-white/70 mb-0.5">Weight</p>
+                              <div className="flex items-baseline justify-center gap-1">
+                                <p className="text-4xl font-bold leading-none" style={{ color: customWeight ? equipmentColor : 'rgba(255,255,255,0.4)' }}>
+                                  {customWeight || '-'}
+                                </p>
+                                <p className="text-xs text-white/70 leading-none">{card.weightUnit}</p>
+                              </div>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCustomFieldClick('sets')}
+                              className="px-2 py-1 hover:bg-white/10 rounded-xl transition-colors text-center"
+                            >
+                              <p className="text-xs text-white/70 mb-0.5">Sets</p>
+                              <p className="text-4xl font-bold leading-none" style={{ color: customSets ? equipmentColor : 'rgba(255,255,255,0.4)' }}>
+                                {customSets || '-'}
+                              </p>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCustomFieldClick('reps')}
+                              className="px-2 py-1 hover:bg-white/10 rounded-xl transition-colors text-center"
+                            >
+                              <p className="text-xs text-white/70 mb-0.5">Reps</p>
+                              <p className="text-4xl font-bold leading-none" style={{ color: customReps ? equipmentColor : 'rgba(255,255,255,0.4)' }}>
+                                {customReps || '-'}
+                              </p>
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <div className="px-2 py-1 text-center">
+                              <p className="text-xs text-white/70 mb-0.5">Weight</p>
+                              <div className="flex items-baseline justify-center gap-1">
+                                <p className="text-4xl font-bold leading-none" style={{ color: equipmentColor }}>
+                                  {card.weight}
+                                </p>
+                                <p className="text-xs text-white/70 leading-none">{card.weightUnit}</p>
+                              </div>
+                            </div>
+                            <div className="px-2 py-1 text-center">
+                              <p className="text-xs text-white/70 mb-0.5">Sets</p>
+                              <p className="text-4xl font-bold leading-none" style={{ color: equipmentColor }}>
+                                {card.sets}
+                              </p>
+                            </div>
+                            <div className="px-2 py-1 text-center">
+                              <p className="text-xs text-white/70 mb-0.5">Reps</p>
+                              <p className="text-4xl font-bold leading-none" style={{ color: equipmentColor }}>
+                                {card.reps}
+                              </p>
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
-                    <div className="bg-white/8 backdrop-blur-sm rounded-2xl px-4 py-3 min-w-[70px] text-center">
-                      <p className="text-[11px] text-white/70 mb-1">Sets</p>
-                      <p className="text-3xl font-bold text-white leading-none">
-                        {card.type === 'custom' ? '_' : card.sets}
-                      </p>
-                    </div>
-                    <div className="bg-white/8 backdrop-blur-sm rounded-2xl px-4 py-3 min-w-[70px] text-center">
-                      <p className="text-[11px] text-white/70 mb-1">Reps</p>
-                      <p className="text-3xl font-bold text-white leading-none">
-                        {card.type === 'custom' ? '_' : card.reps}
-                      </p>
-                    </div>
+
+                    {/* Bottom bar - inside image */}
+                    {card.type === 'recommended' && (
+                      <div className="flex items-center justify-between px-2">
+                        <div className="flex gap-4">
+                          {/* Time */}
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 flex items-center justify-center">
+                              <img src="/images/icons/time.png" alt="Time" className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <p className="text-[10px] text-white/80 leading-tight">Time</p>
+                              <p className="text-sm font-semibold text-white leading-tight">
+                                {`${card.time} ${card.timeUnit}`}
+                              </p>
+                            </div>
+                          </div>
+                          
+                          {/* Burn */}
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 flex items-center justify-center">
+                              <img src="/images/icons/burn.png" alt="Burn" className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <p className="text-[10px] text-white/80 leading-tight">Burn</p>
+                              <p className="text-sm font-semibold text-white leading-tight">
+                                {`${card.burnCalories} kcal`}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* Powered by */}
+                        <p className="text-[10px] text-white leading-tight text-right opacity-50">
+                          Powered by<br />Vertex AI Studio
+                        </p>
+                      </div>
+                    )}
+                    {card.type === 'custom' && (
+                      <div className="flex items-center justify-center gap-2 px-2">
+                        <svg className="w-4 h-4 text-white/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                        <p className="text-xs text-white/70">Enter your custom set</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
-
-              {/* Bottom section - Time, Burn, Powered by */}
-              <div className="flex items-center justify-between px-4 py-3">
-                <div className="flex gap-4">
-                  {/* Time */}
-                  <div className="flex items-center gap-2">
-                    <div className="w-9 h-9 flex items-center justify-center">
-                      <img src="/images/icons/time.png" alt="Time" className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-white/80 leading-tight">Time</p>
-                      <p className="text-sm font-semibold text-white leading-tight">
-                        {card.type === 'custom' ? '__' : `${card.time} ${card.timeUnit}`}
-                      </p>
-                    </div>
-                  </div>
-                  
-                  {/* Burn */}
-                  <div className="flex items-center gap-2">
-                    <div className="w-9 h-9 flex items-center justify-center">
-                      <img src="/images/icons/burn.png" alt="Burn" className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-white/80 leading-tight">Burn</p>
-                      <p className="text-sm font-semibold text-white leading-tight">
-                        {card.type === 'custom' ? '__' : `${card.burnCalories} kcal`}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                
-                {/* Powered by */}
-                <p className="text-[10px] text-white leading-tight text-right opacity-50">
-                  Powered by<br />Vertex AI Studio
-                </p>
               </div>
             </div>
           </div>
@@ -198,18 +292,24 @@ export default function RecommendedSetCard({
       </div>
 
       {/* Desktop Grid - Two Cards Side by Side */}
-      <div className="hidden md:grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="hidden md:grid grid-cols-1 lg:grid-cols-2 gap-4 content-fade-up-3" style={{ animationDelay: '0.2s' }}>
         {cards.map((card, idx) => (
           <div key={idx}>
-            {/* Main workout card with outer container */}
+            {/* Main workout card with animated outer container */}
             <div
-              className="rounded-3xl p-1 shadow-lg shadow-black/30"
+              className={`rounded-3xl shadow-lg shadow-black/30 ${card.type === 'custom' ? '' : 'animate-shimmer'}`}
               style={{
-                backgroundColor: darkenColor(equipmentColor, 0.14),
+                background: card.type === 'custom' 
+                  ? 'rgba(120,120,120,0.8)'
+                  : `linear-gradient(90deg, #fff 0%, ${equipmentColor} 20%, #fff 40%, ${equipmentColor} 60%, #fff 80%, ${equipmentColor} 100%)`,
+                backgroundSize: '400% 100%',
+                animationDuration: card.type === 'custom' ? undefined : '3s',
+                padding: '8px', // Thicker border
               }}
             >
-              {/* Inner image container */}
-              <div className="rounded-[20px] overflow-hidden relative h-56">
+              {/* Inner container with image and stats */}
+              <div className="rounded-[21px] bg-black/90 overflow-hidden">
+              <div className="rounded-2xl overflow-hidden relative" style={{ height: 'clamp(240px, 35vh, 400px)' }}>
                 {/* Background image */}
                 <img
                   src={image}
@@ -228,91 +328,151 @@ export default function RecommendedSetCard({
                   }}
                 />
 
-                {/* Bottom gradient overlay */}
+                {/* Bottom gradient overlay - stronger for bottom content */}
                 <div 
-                  className="absolute bottom-0 left-0 right-0 h-32 pointer-events-none"
+                  className="absolute bottom-0 left-0 right-0 h-40 pointer-events-none"
                   style={{
-                    background: 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.4) 50%, transparent 100%)',
+                    background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.5) 50%, transparent 100%)',
                   }}
                 />
 
+                {/* Refresh button - fixed position */}
+                <button
+                  type="button"
+                  className="absolute top-4 right-4 w-10 h-10 rounded-xl flex items-center justify-center hover:bg-white/10 transition-colors z-10"
+                  aria-label="Refresh"
+                >
+                  <img src="/images/icons/refresh.png" alt="Refresh" className="w-5 h-5" />
+                </button>
+
                 {/* Content overlay */}
                 <div className="absolute inset-0 flex flex-col justify-between p-5">
-                  {/* Title and swap icon */}
-                  <div className="flex items-center justify-between">
+                  {/* Title */}
+                  <div className="flex items-center">
                     <h2 className="text-2xl font-bold text-white">
-                      {card.type === 'custom' ? 'Custom Set' : workout}
+                      {workout}
                     </h2>
-                    <button
-                      type="button"
-                      className="w-10 h-10 rounded-xl flex items-center justify-center"
-                      aria-label="Refresh"
-                    >
-                      <img src="/images/icons/refresh.png" alt="Refresh" className="w-5 h-5" />
-                    </button>
                   </div>
 
-                  {/* Stats - Weight, Sets, Reps */}
-                  <div className="flex justify-start gap-3">
-                    <div className="bg-white/8 backdrop-blur-sm rounded-2xl px-4 py-3 min-w-[90px]">
-                      <p className="text-[11px] text-white/70 mb-1">Weight</p>
-                      <div className="flex items-baseline gap-1">
-                        <p className="text-3xl font-bold text-white leading-none">
-                          {card.type === 'custom' ? '__' : card.weight}
-                        </p>
-                        <p className="text-xs text-white/70 leading-none">{card.weightUnit}</p>
+                  {/* Bottom content area */}
+                  <div className="space-y-3">
+                    {/* Stats - Weight, Sets, Reps - Compact dark background */}
+                    <div className="bg-black/70 rounded-3xl px-6 py-4 w-fit mx-auto shadow-lg shadow-black/40 border border-black/60">
+// ...existing code...
+
+                      <div className="flex justify-center gap-4">
+                        {card.type === 'custom' ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleCustomFieldClick('weight')}
+                              className="rounded-xl px-3 py-1.5 min-w-[70px] hover:bg-white/10 transition-colors text-center"
+                            >
+                              <p className="text-xs text-white/70 mb-0.5">Weight</p>
+                              <div className="flex items-baseline justify-center gap-1">
+                                <p className="text-4xl font-bold leading-none" style={{ color: customWeight ? equipmentColor : 'rgba(255,255,255,0.4)' }}>
+                                  {customWeight || '-'}
+                                </p>
+                                <p className="text-xs text-white/70 leading-none">{card.weightUnit}</p>
+                              </div>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCustomFieldClick('sets')}
+                              className="rounded-xl px-3 py-1.5 min-w-[55px] text-center hover:bg-white/10 transition-colors"
+                            >
+                              <p className="text-xs text-white/70 mb-0.5">Sets</p>
+                              <p className="text-4xl font-bold leading-none" style={{ color: customSets ? equipmentColor : 'rgba(255,255,255,0.4)' }}>
+                                {customSets || '-'}
+                              </p>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCustomFieldClick('reps')}
+                              className="rounded-xl px-3 py-1.5 min-w-[55px] text-center hover:bg-white/10 transition-colors"
+                            >
+                              <p className="text-xs text-white/70 mb-0.5">Reps</p>
+                              <p className="text-4xl font-bold leading-none" style={{ color: customReps ? equipmentColor : 'rgba(255,255,255,0.4)' }}>
+                                {customReps || '-'}
+                              </p>
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <div className="rounded-xl px-3 py-1.5 min-w-[70px] text-center">
+                              <p className="text-xs text-white/70 mb-0.5">Weight</p>
+                              <div className="flex items-baseline justify-center gap-1">
+                                <p className="text-4xl font-bold leading-none" style={{ color: equipmentColor }}>
+                                  {card.weight}
+                                </p>
+                                <p className="text-xs text-white/70 leading-none">{card.weightUnit}</p>
+                              </div>
+                            </div>
+                            <div className="rounded-xl px-3 py-1.5 min-w-[55px] text-center">
+                              <p className="text-xs text-white/70 mb-0.5">Sets</p>
+                              <p className="text-4xl font-bold leading-none" style={{ color: equipmentColor }}>
+                                {card.sets}
+                              </p>
+                            </div>
+                            <div className="rounded-xl px-3 py-1.5 min-w-[55px] text-center">
+                              <p className="text-xs text-white/70 mb-0.5">Reps</p>
+                              <p className="text-4xl font-bold leading-none" style={{ color: equipmentColor }}>
+                                {card.reps}
+                              </p>
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
-                    <div className="bg-white/8 backdrop-blur-sm rounded-2xl px-4 py-3 min-w-[70px] text-center">
-                      <p className="text-[11px] text-white/70 mb-1">Sets</p>
-                      <p className="text-3xl font-bold text-white leading-none">
-                        {card.type === 'custom' ? '_' : card.sets}
-                      </p>
-                    </div>
-                    <div className="bg-white/8 backdrop-blur-sm rounded-2xl px-4 py-3 min-w-[70px] text-center">
-                      <p className="text-[11px] text-white/70 mb-1">Reps</p>
-                      <p className="text-3xl font-bold text-white leading-none">
-                        {card.type === 'custom' ? '_' : card.reps}
-                      </p>
-                    </div>
+
+                    {/* Bottom bar - inside image */}
+                    {card.type === 'recommended' && (
+                      <div className="flex items-center justify-between px-2">
+                        <div className="flex gap-4">
+                          {/* Time */}
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 flex items-center justify-center">
+                              <img src="/images/icons/time.png" alt="Time" className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <p className="text-[10px] text-white/80 leading-tight">Time</p>
+                              <p className="text-sm font-semibold text-white leading-tight">
+                                {`${card.time} ${card.timeUnit}`}
+                              </p>
+                            </div>
+                          </div>
+                          
+                          {/* Burn */}
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 flex items-center justify-center">
+                              <img src="/images/icons/burn.png" alt="Burn" className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <p className="text-[10px] text-white/80 leading-tight">Burn</p>
+                              <p className="text-sm font-semibold text-white leading-tight">
+                                {`${card.burnCalories} kcal`}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* Powered by */}
+                        <p className="text-[10px] text-white leading-tight text-right opacity-50">
+                          Powered by<br />Vertex AI Studio
+                        </p>
+                      </div>
+                    )}
+                    {card.type === 'custom' && (
+                      <div className="flex items-center justify-center gap-2 px-2">
+                        <svg className="w-4 h-4 text-white/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                        <p className="text-xs text-white/70">Enter your custom set</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
-
-              {/* Bottom section - Time, Burn, Powered by */}
-              <div className="flex items-center justify-between px-4 py-3">
-                <div className="flex gap-4">
-                  {/* Time */}
-                  <div className="flex items-center gap-2">
-                    <div className="w-9 h-9 flex items-center justify-center">
-                      <img src="/images/icons/time.png" alt="Time" className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-white/80 leading-tight">Time</p>
-                      <p className="text-sm font-semibold text-white leading-tight">
-                        {card.type === 'custom' ? '__' : `${card.time} ${card.timeUnit}`}
-                      </p>
-                    </div>
-                  </div>
-                  
-                  {/* Burn */}
-                  <div className="flex items-center gap-2">
-                    <div className="w-9 h-9 flex items-center justify-center">
-                      <img src="/images/icons/burn.png" alt="Burn" className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-white/80 leading-tight">Burn</p>
-                      <p className="text-sm font-semibold text-white leading-tight">
-                        {card.type === 'custom' ? '__' : `${card.burnCalories} kcal`}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                
-                {/* Powered by */}
-                <p className="text-[10px] text-white leading-tight text-right opacity-50">
-                  Powered by<br />Vertex AI Studio
-                </p>
               </div>
             </div>
           </div>
@@ -320,7 +480,7 @@ export default function RecommendedSetCard({
       </div>
 
       {/* Carousel dots - Mobile only */}
-      <div className="flex justify-center gap-2.5 px-4 md:hidden">
+      <div className="flex justify-center gap-2.5 px-4 md:hidden content-fade-up-3" style={{ animationDelay: '0.3s' }}>
         {cards.map((_, idx) => (
           <span
             key={idx}
@@ -329,8 +489,13 @@ export default function RecommendedSetCard({
         ))}
       </div>
 
-      {/* Subtext */}
-      <p className="text-xs text-center text-white/10">Swipe right for custom set</p>
+      {/* Subtext - fades with header */}
+      <p 
+        className="text-xs text-center text-white/10 content-fade-up-3 transition-opacity duration-300" 
+        style={{ animationDelay: '0.35s', opacity: activeIndex === 0 ? 1 : 0 }}
+      >
+        Swipe right for custom set
+      </p>
     </div>
   );
 }
