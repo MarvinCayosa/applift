@@ -3,9 +3,9 @@
  * Handles user profile and settings
  */
 
-import httpClient from '../api/httpClient'
+import httpClient from '../apiUtils/httpClient'
 import { ENDPOINTS } from '../config/api'
-import { handleApiError } from '../api/errorHandler'
+import { handleApiError } from '../apiUtils/errorHandler'
 import { authService } from './authService'
 
 export const userService = {
