@@ -22,22 +22,53 @@ function BirthdayPicker({ months, years, selectedMonth, selectedYear, onMonthCha
   const monthRef = useRef(null)
   const yearRef = useRef(null)
   const scrollTimeoutRef = useRef(null)
+  const lastIndexRef = useRef({ month: -1, year: -1 }) // Track last index for haptic feedback
   const itemHeight = 44
 
   // Initialize scroll position on mount
   useEffect(() => {
     if (monthRef.current && selectedMonth !== undefined) {
       const idx = months.indexOf(selectedMonth)
-      if (idx !== -1) monthRef.current.scrollTop = idx * itemHeight
+      if (idx !== -1) {
+        monthRef.current.scrollTop = idx * itemHeight
+        lastIndexRef.current.month = idx
+      }
     }
     if (yearRef.current && selectedYear !== undefined) {
       const idx = years.indexOf(selectedYear)
-      if (idx !== -1) yearRef.current.scrollTop = idx * itemHeight
+      if (idx !== -1) {
+        yearRef.current.scrollTop = idx * itemHeight
+        lastIndexRef.current.year = idx
+      }
     }
   }, [])
 
+  // Haptic feedback helper for PWA
+  const triggerHaptic = () => {
+    if (navigator.vibrate) {
+      navigator.vibrate(15) // Slightly more noticeable haptic feedback
+    }
+  }
+
   const handleScroll = (ref, items, setter, isMonth) => {
     if (!ref.current) return
+    
+    // Get current index while scrolling
+    const scrollTop = ref.current.scrollTop
+    const currentIndex = Math.round(scrollTop / itemHeight)
+    const clamped = Math.max(0, Math.min(items.length - 1, currentIndex))
+    
+    // Check if index changed and trigger haptic for each tick
+    const lastIndex = isMonth ? lastIndexRef.current.month : lastIndexRef.current.year
+    if (lastIndex !== clamped) {
+      triggerHaptic() // Haptic feedback for each value change
+      if (isMonth) {
+        lastIndexRef.current.month = clamped
+      } else {
+        lastIndexRef.current.year = clamped
+      }
+    }
+    
     if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current)
     scrollTimeoutRef.current = setTimeout(() => {
       const scrollTop = ref.current.scrollTop
@@ -61,6 +92,12 @@ function BirthdayPicker({ months, years, selectedMonth, selectedYear, onMonthCha
     const selected = items[index]
     setter(selected)
     if (ref.current) ref.current.scrollTop = index * itemHeight
+    triggerHaptic() // Haptic feedback on date change
+    if (isMonth) {
+      lastIndexRef.current.month = index
+    } else {
+      lastIndexRef.current.year = index
+    }
     if (updateProfile) {
       if (isMonth) {
         updateProfile({ birthMonth: selected })

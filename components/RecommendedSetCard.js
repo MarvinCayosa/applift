@@ -32,7 +32,9 @@ export default function RecommendedSetCard({
   customReps = null,
   customWeightUnit = 'kg',
   // Callback to open modal
-  onCustomFieldClick = () => {}
+  onCustomFieldClick = () => {},
+  // Callback when carousel slide changes
+  onActiveIndexChange = () => {}
 }) {
   const darkenColor = (hex, amount = 0.12) => {
     if (!hex || hex[0] !== '#' || (hex.length !== 7 && hex.length !== 4)) return hex;
@@ -58,11 +60,13 @@ export default function RecommendedSetCard({
       const cardWidth = carousel.offsetWidth;
       const index = Math.round(scrollLeft / cardWidth);
       setActiveIndex(index);
+      // Notify parent of active index change
+      onActiveIndexChange(index);
     };
 
     carousel.addEventListener('scroll', handleScroll);
     return () => carousel.removeEventListener('scroll', handleScroll);
-  }, []);
+  }, [onActiveIndexChange]);
 
   // Handle opening modal for specific field - calls parent callback
   const handleCustomFieldClick = (field) => {

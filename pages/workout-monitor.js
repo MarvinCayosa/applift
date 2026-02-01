@@ -1,15 +1,34 @@
 import Head from 'next/head';
 import { useRouter } from 'next/router';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import AccelerationChart from '../components/workoutMonitor/AccelerationChart';
 import WorkoutNotification from '../components/workoutMonitor/WorkoutNotification';
 import ConnectPill from '../components/ConnectPill';
 import { useBluetooth } from '../context/BluetoothProvider';
 import { useWorkoutSession } from '../utils/useWorkoutSession';
+import { useWorkoutLogging } from '../context/WorkoutLoggingContext';
 
 export default function WorkoutMonitor() {
   const router = useRouter();
-  const { equipment, workout } = router.query;
+  const { equipment, workout, plannedSets, plannedReps, weight, weightUnit, setType } = router.query;
+  
+  // Workout logging context - streaming version
+  const { 
+    startStreaming, 
+    streamIMUSample, 
+    handleRepDetected, 
+    handleSetComplete, 
+    finishWorkout,
+    cancelWorkout,
+    isStreaming,
+    workoutId,
+    currentLog,
+    workoutConfig 
+  } = useWorkoutLogging();
+  
+  // Track last rep count for detecting new reps
+  const lastRepCountRef = useRef(0);
+  const lastSetRef = useRef(1);
   
   // Helper function to get the correct background image based on equipment and workout
   const getWorkoutImage = () => {
@@ -60,9 +79,30 @@ export default function WorkoutMonitor() {
   // Notification state
   const [lastRepNotification, setLastRepNotification] = useState(null);
   
-  // Workout tracking - Backend integration ready
-  const [recommendedSets] = useState(4); // Placeholder - will be from backend
-  const [recommendedReps] = useState(2); // Placeholder - will be from backend
+  // Workout tracking - Use values from query params (passed from selectedWorkout)
+  // Use useEffect to update when router.query changes (needed for client-side hydration)
+  const [recommendedSets, setRecommendedSets] = useState(4);
+  const [recommendedReps, setRecommendedReps] = useState(2);
+  const [workoutWeight, setWorkoutWeight] = useState(0);
+  const [workoutWeightUnit, setWorkoutWeightUnit] = useState('kg');
+  const [workoutSetType, setWorkoutSetType] = useState('recommended');
+
+  // Update workout config when query params are available
+  useEffect(() => {
+    if (plannedSets) setRecommendedSets(parseInt(plannedSets));
+    if (plannedReps) setRecommendedReps(parseInt(plannedReps));
+    if (weight) setWorkoutWeight(parseFloat(weight));
+    if (weightUnit) setWorkoutWeightUnit(weightUnit);
+    if (setType) setWorkoutSetType(setType);
+    
+    console.log('📋 Workout Config Updated:', {
+      sets: plannedSets,
+      reps: plannedReps,
+      weight: weight,
+      weightUnit: weightUnit,
+      setType: setType,
+    });
+  }, [plannedSets, plannedReps, weight, weightUnit, setType]);
   
   // Use the workout session hook for all algorithm logic
   const {
@@ -85,7 +125,7 @@ export default function WorkoutMonitor() {
     rawAccelData,
     filteredAccelData,
     isSubscribed,
-    startRecording,
+    startRecording: startRecordingSession,
     stopRecording: stopSession,
     togglePause,
     toggleBreakPause,
@@ -99,17 +139,49 @@ export default function WorkoutMonitor() {
     connected,
     recommendedReps,
     recommendedSets,
-    onWorkoutComplete: ({ workoutStats: finalStats, repData, chartData }) => {
+    // Stream IMU samples to GCS as they come in
+    onIMUSample: (sample) => {
+      if (isStreaming) {
+        streamIMUSample(sample);
+      }
+    },
+    // Handle rep detection - save rep data to GCS
+    onRepDetected: async (repInfo) => {
+      if (isStreaming) {
+        console.log('🏋️ Rep detected:', repInfo);
+        await handleRepDetected(repInfo);
+      }
+    },
+    // Handle set completion - move to next set folder in GCS
+    onSetComplete: async (setNumber) => {
+      if (isStreaming) {
+        console.log('✅ Set complete:', setNumber);
+        await handleSetComplete();
+      }
+    },
+    onWorkoutComplete: async ({ workoutStats: finalStats, repData, chartData }) => {
+      // Finish streaming and determine completion status
+      const result = await finishWorkout();
+      
       // Calculate avg concentric/eccentric
       const avgRepDuration = finalStats.allRepDurations.length > 0
         ? finalStats.allRepDurations.reduce((a, b) => a + b, 0) / finalStats.allRepDurations.length
         : 0;
       
-      // Generate CSV data and store in sessionStorage
-      const csvContent = getCSV();
-      if (typeof window !== 'undefined' && csvContent) {
-        sessionStorage.setItem('workoutCSV', csvContent);
-        sessionStorage.setItem('workoutCSVFilename', `applift_${workout}_${new Date().toISOString().replace(/[:.]/g, '-')}.csv`);
+      // Store workout results in sessionStorage for workout-finished page
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('workoutResults', JSON.stringify({
+          totalSets: finalStats.completedSets,
+          totalReps: finalStats.totalReps,
+          totalTime: finalStats.totalTime,
+          calories: Math.round(finalStats.totalReps * 5),
+          avgConcentric: (avgRepDuration * 0.4).toFixed(1),
+          avgEccentric: (avgRepDuration * 0.6).toFixed(1),
+          setData: finalStats.setData,
+          // Include streaming result status
+          status: result?.status || 'completed',
+          workoutId: result?.workoutId || workoutId,
+        }));
       }
       
       // Navigate to workout finished page with set-grouped data
@@ -119,39 +191,64 @@ export default function WorkoutMonitor() {
           workoutName: workout,
           equipment: equipment,
           totalReps: finalStats.totalReps,
-          calories: Math.round(finalStats.totalReps * 5), // Placeholder
+          calories: Math.round(finalStats.totalReps * 5),
           totalTime: finalStats.totalTime,
           avgConcentric: (avgRepDuration * 0.4).toFixed(1),
           avgEccentric: (avgRepDuration * 0.6).toFixed(1),
           chartData: JSON.stringify(chartData.filteredAccelData),
           timeData: JSON.stringify(chartData.timeData),
-          setsData: JSON.stringify(finalStats.setData), // Pass all sets data
-          recommendedSets: recommendedSets, // Pass recommended sets
-          recommendedReps: recommendedReps, // Pass recommended reps per set
-          hasCSV: 'true'
+          setsData: JSON.stringify(finalStats.setData),
+          recommendedSets: recommendedSets,
+          recommendedReps: recommendedReps,
+          weight: workoutWeight,
+          weightUnit: workoutWeightUnit,
+          setType: workoutSetType,
+          status: result?.status || 'completed',
+          workoutId: result?.workoutId || workoutId,
         }
       });
     }
   });
   
-  // Handle stop recording with CSV export option
-  const stopRecording = () => {
+  // Start recording with streaming
+  const startRecording = async () => {
+    console.log('🎬 Starting recording with config:', {
+      exercise: workout,
+      equipment: equipment,
+      plannedSets: recommendedSets,
+      plannedReps: recommendedReps,
+      weight: workoutWeight,
+      weightUnit: workoutWeightUnit,
+      setType: workoutSetType
+    });
+
+    // Start the streaming session (creates workout folder in GCS)
+    const result = await startStreaming({
+      exercise: workout,
+      equipment: equipment,
+      plannedSets: recommendedSets,
+      plannedReps: recommendedReps,
+      weight: workoutWeight,
+      weightUnit: workoutWeightUnit,
+      setType: workoutSetType
+    });
+    
+    if (result?.success) {
+      console.log('🎬 Streaming started:', result.workoutId);
+      startRecordingSession();
+    } else {
+      console.error('Failed to start streaming');
+      alert('Failed to start workout recording. Please try again.');
+    }
+  };
+  
+  // Handle stop recording
+  const stopRecording = async () => {
     stopSession();
     
-    if (rawDataLog.current.length > 0) {
-      const shouldExport = confirm(`Recorded ${repStats.repCount} reps with ${rawDataLog.current.length} samples. Download CSV?`);
-      if (shouldExport) {
-        const csvContent = getCSV();
-        const blob = new Blob([csvContent], { type: 'text/csv' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `applift_${workout}_${new Date().toISOString().replace(/[:.]/g, '-')}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
-      }
+    // Cancel the workout if stopped manually
+    if (isStreaming) {
+      await cancelWorkout();
     }
   };
 
@@ -307,6 +404,25 @@ export default function WorkoutMonitor() {
         <div className="text-center">
           <h1 className="text-2xl sm:text-3xl font-bold text-white mb-1">{workout}</h1>
           <p className="text-sm text-white/70">{equipment}</p>
+          
+          {/* Workout Config Indicator */}
+          <div className="flex items-center justify-center gap-2 mt-2">
+            {/* Set Type Badge */}
+            <span className={`text-xs px-2 py-0.5 rounded-full ${
+              workoutSetType === 'custom' 
+                ? 'bg-purple-500/30 text-purple-300 border border-purple-500/50' 
+                : 'bg-green-500/30 text-green-300 border border-green-500/50'
+            }`}>
+              {workoutSetType === 'custom' ? '✏️ Custom' : '🤖 AI Recommended'}
+            </span>
+            
+            {/* Weight Badge (only show if weight > 0) */}
+            {workoutWeight > 0 && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-500/30 text-yellow-300 border border-yellow-500/50">
+                {workoutWeight} {workoutWeightUnit}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 

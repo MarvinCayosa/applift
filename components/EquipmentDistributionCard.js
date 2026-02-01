@@ -16,21 +16,15 @@ export default function EquipmentDistributionCard({
   data = [],
   period = 'This Month',
   animate = false,
+  hasData = false,
 }) {
   const [activeIndex, setActiveIndex] = useState(null)
   const [carouselIndex, setCarouselIndex] = useState(0)
   const carouselRef = useRef(null)
 
-  // Default mock data with distinct contrasting colors
-  const defaultData = [
-    { name: 'Dumbbell', value: 45, color: '#3b82f6' },     // Blue
-    { name: 'Barbell', value: 30, color: '#ef4444' },      // Red
-    { name: 'Stack', value: 25, color: '#eab308' }, // Yellow
-  ]
-
-  const equipmentData = data.length > 0 ? data : defaultData
+  // Use provided data directly (no mock data)
+  const equipmentData = data.length > 0 ? data : []
   const totalExercises = equipmentData.reduce((sum, item) => sum + item.value, 0)
-  const hasData = totalExercises > 0
 
   // Carousel navigation
   const scrollToCarouselIndex = (index) => {
@@ -169,11 +163,12 @@ export default function EquipmentDistributionCard({
                       dataKey="value"
                       onMouseEnter={onPieEnter}
                       onMouseLeave={onPieLeave}
-                      animationBegin={animate ? 0 : 0}
+                      animationBegin={0}
                       animationDuration={animate ? 600 : 0}
                       animationEasing="ease-out"
                       cornerRadius={6}
                       stroke="none"
+                      isAnimationActive={animate}
                     >
                       {equipmentData.map((entry, index) => (
                         <Cell 
@@ -254,22 +249,8 @@ export default function EquipmentDistributionCard({
                   <BarChart
                     data={equipmentData}
                     margin={{ top: 30, right: 0, left: 0, bottom: 5 }}
-                    barCategoryGap="40%"
+                    barCategoryGap="30%"
                   >
-                    <defs>
-                      <pattern id="gridPattern" patternUnits="userSpaceOnUse" width="12" height="12">
-                        <path d="M 12,0 l 0,12 M 0,12 l 12,0" stroke="rgba(255,255,255,0.2)" strokeWidth="1"/>
-                      </pattern>
-                    </defs>
-                    {/* Full chart background with grid */}
-                    <rect
-                      x={0}
-                      y={0}
-                      width="100%"
-                      height="100%"
-                      fill="url(#gridPattern)"
-                      opacity={0.3}
-                    />
                     <XAxis 
                       dataKey="name"
                       axisLine={false}
@@ -284,10 +265,11 @@ export default function EquipmentDistributionCard({
                       dataKey="value" 
                       shape={CustomBar}
                       radius={[4, 4, 0, 0]}
-                      maxBarSize={40}
-                      animationBegin={animate ? 200 : 0}
+                      maxBarSize={60}
+                      animationBegin={0}
                       animationDuration={animate ? 800 : 0}
                       animationEasing="ease-out"
+                      isAnimationActive={animate}
                     />
                   </BarChart>
                 </ResponsiveContainer>

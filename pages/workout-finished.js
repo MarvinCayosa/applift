@@ -3,9 +3,16 @@ import { useEffect, useState } from 'react';
 import WorkoutSummaryCard from '../components/workoutFinished/WorkoutSummaryCard';
 import LiftPhases from '../components/workoutFinished/LiftPhases';
 import RepByRepCard from '../components/workoutFinished/RepByRepCard';
+import { useWorkoutLogging } from '../context/WorkoutLoggingContext';
+import { useWorkoutStreak } from '../utils/useWorkoutStreak';
+import LoadingScreen from '../components/LoadingScreen';
 
 export default function WorkoutFinished() {
   const router = useRouter();
+  const { completeLog, cancelLog, uploadProgress, logError, hasActiveLog } = useWorkoutLogging();
+  const { recordWorkout } = useWorkoutStreak();
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
   const { 
     workoutName, 
     equipment, 
@@ -87,15 +94,43 @@ export default function WorkoutFinished() {
     window.URL.revokeObjectURL(url);
   };
 
+  // Handle going back without saving (cancel the log)
+  const handleGoBack = async () => {
+    if (hasActiveLog) {
+      // Ask for confirmation
+      const confirmed = confirm('Are you sure you want to leave? Your workout data will not be saved.');
+      if (!confirmed) return;
+      
+      // Cancel the log
+      await cancelLog('user_abandoned');
+    }
+    
+    // Clean up sessionStorage
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('workoutCSV');
+      sessionStorage.removeItem('workoutCSVFilename');
+      sessionStorage.removeItem('workoutResults');
+    }
+    
+    router.push('/dashboard');
+  };
+
   return (
     <div className="h-screen bg-black text-white overflow-hidden">
+      {/* Full-screen analyzing loading screen */}
+      {isSaving && (
+        <div className="fixed inset-0 z-50">
+          <LoadingScreen message="Analyzing your session..." showLogo={true} />
+        </div>
+      )}
+      
       {/* Scrollable content - includes header */}
       <div className="h-full overflow-y-auto px-4 space-y-3 max-w-2xl mx-auto pb-6">
         
         {/* Header with back button and title on same line */}
         <div className="pt-6 pb-1 flex items-center justify-between">
           <button
-            onClick={() => router.push('/dashboard')}
+            onClick={handleGoBack}
             className="flex items-center justify-center h-10 w-10 rounded-full hover:bg-white/10 transition-all"
             aria-label="Go back"
           >
@@ -137,12 +172,99 @@ export default function WorkoutFinished() {
           recommendedSets={recommendedSets}
         />
 
+        {/* Upload status indicator */}
+        {uploadProgress && uploadProgress !== 'completed' && (
+          <div className="flex items-center justify-center gap-2 py-2">
+            {uploadProgress === 'uploading' && (
+              <>
+                <div className="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                <span className="text-sm text-white/70">Uploading workout data...</span>
+              </>
+            )}
+            {uploadProgress === 'failed' && (
+              <span className="text-sm text-red-400">Upload failed. Data saved locally.</span>
+            )}
+          </div>
+        )}
+
+        {/* Error message */}
+        {(saveError || logError) && (
+          <div className="bg-red-500/20 border border-red-500/50 rounded-xl p-3 text-center">
+            <p className="text-sm text-red-400">{saveError || logError}</p>
+          </div>
+        )}
+
         {/* Single Save Workout button */}
         <button
-          onClick={() => router.push('/workouts')}
-          className="w-full py-3.5 rounded-full font-semibold text-white text-base transition-all bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 shadow-lg shadow-purple-500/30"
+          onClick={async () => {
+            if (isSaving) return;
+            
+            setIsSaving(true);
+            setSaveError(null);
+            
+            try {
+              // Get workout results from sessionStorage
+              const resultsStr = typeof window !== 'undefined' 
+                ? sessionStorage.getItem('workoutResults') 
+                : null;
+              const results = resultsStr ? JSON.parse(resultsStr) : {
+                totalSets: parseInt(recommendedSets) || parsedSetsData?.length || 0,
+                totalReps: parseInt(totalReps) || 0,
+                totalTime: parseInt(totalTime) || 0,
+                calories: parseInt(calories) || 0,
+                avgConcentric: parseFloat(avgConcentric) || 0,
+                avgEccentric: parseFloat(avgEccentric) || 0,
+                setData: parsedSetsData || [],
+              };
+
+              // Complete the workout log (uploads IMU data and saves to Firestore)
+              if (hasActiveLog) {
+                const success = await completeLog(results);
+                
+                if (!success) {
+                  throw new Error('Failed to save workout');
+                }
+              }
+              
+              // Update workout streak - this will immediately update the user's streak
+              try {
+                await recordWorkout(new Date());
+                console.log('[WorkoutFinished] Streak updated successfully');
+              } catch (streakError) {
+                console.warn('[WorkoutFinished] Failed to update streak:', streakError);
+                // Don't fail the save if streak update fails
+              }
+              
+              // Clean up sessionStorage
+              if (typeof window !== 'undefined') {
+                sessionStorage.removeItem('workoutCSV');
+                sessionStorage.removeItem('workoutCSVFilename');
+                sessionStorage.removeItem('workoutResults');
+              }
+              
+              // Navigate to workouts page
+              router.push('/workouts');
+            } catch (error) {
+              console.error('Error saving workout:', error);
+              setSaveError(error.message || 'Failed to save workout. Please try again.');
+              setIsSaving(false);
+            }
+          }}
+          disabled={isSaving}
+          className={`w-full py-3.5 rounded-full font-semibold text-white text-base transition-all ${
+            isSaving 
+              ? 'bg-gray-600 cursor-not-allowed' 
+              : 'bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 shadow-lg shadow-purple-500/30'
+          }`}
         >
-          Save Workout
+          {isSaving ? (
+            <span className="flex items-center justify-center gap-2">
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              Saving...
+            </span>
+          ) : (
+            'Save Workout'
+          )}
         </button>
       </div>
     </div>

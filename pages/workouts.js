@@ -170,6 +170,7 @@ export default function Workouts() {
           buttonBg: 'bg-[#e69b00]',
           buttonHover: 'hover:bg-[#f0b233]',
         };
+      case 'Dumbbell':
       case 'Dumbell':
         return {
           outerBg: 'bg-[#0C4A6E]', // dark blue
@@ -183,14 +184,14 @@ export default function Workouts() {
         };
       case 'Weight Stack':
         return {
-          outerBg: 'bg-[#7C2D12]', // dark orange
+          outerBg: 'bg-[#7F1D1D]', // dark red
           outerBorder: 'border-[#DC2626]',
-          outerShadow: 'shadow-orange-900/20',
-          innerBg: 'bg-[#F97316]',
-          innerBorder: 'border-[#FB923C]',
-          innerShadow: 'shadow-orange-600',
-          buttonBg: 'bg-[#EA580C]',
-          buttonHover: 'hover:bg-[#F97316]',
+          outerShadow: 'shadow-red-900/20',
+          innerBg: 'bg-[#EF4444]',
+          innerBorder: 'border-[#F87171]',
+          innerShadow: 'shadow-red-600',
+          buttonBg: 'bg-[#DC2626]',
+          buttonHover: 'hover:bg-[#EF4444]',
         };
       default:
         return {

@@ -20,11 +20,15 @@ export default function LastWorkoutCard({ equipment, equipmentColor }) {
         <p className="text-2xl font-bold text-white">
           55<span className="text-sm text-white/70 ml-1">kg</span>
         </p>
-        <img 
-          src="/images/icons/arrow-point-to-right.png" 
-          alt="View details" 
-          className="w-4 h-4 opacity-60"
-        />
+        <svg 
+          className="w-4 h-4 opacity-60" 
+          fill="none" 
+          stroke="currentColor" 
+          viewBox="0 0 24 24"
+          strokeWidth={2}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 18l6-6-6-6" />
+        </svg>
       </div>
     </div>
   );

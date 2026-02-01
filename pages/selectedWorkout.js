@@ -7,6 +7,7 @@ import RecommendedSetCard from '../components/RecommendedSetCard';
 import WarmUpBanner from '../components/WarmUpBanner';
 import WorkoutActionButton from '../components/WorkoutActionButton';
 import { useBluetooth } from '../context/BluetoothProvider';
+import { useWorkoutLogging } from '../context/WorkoutLoggingContext';
 
 const workoutDetails = {
   Barbell: {
@@ -96,9 +97,10 @@ const workoutDetails = {
 };
 
 const equipmentColors = {
-  Barbell: '#fbbf24', // yellow
-  Dumbell: '#3b82f6', // blue
-  'Weight Stack': '#f97316', // orange
+  Barbell: '#FBBF24', // Yellow
+  Dumbell: '#3B82F6', // Blue
+  Dumbbell: '#3B82F6', // Blue (alternate spelling)
+  'Weight Stack': '#EF4444', // Red
 };
 
 const workoutImages = {
@@ -121,15 +123,31 @@ export default function SelectedWorkout() {
   const { equipment, workout } = router.query;
   const mainRef = useRef(null);
 
+  // Workout logging
+  const { initializeLog, isLogging } = useWorkoutLogging();
+
   // Modal state for custom set
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalField, setModalField] = useState('weight');
+  const [isStartingWorkout, setIsStartingWorkout] = useState(false);
+  
+  // Carousel active index state (0 = AI Generated/Recommended, 1 = Custom)
+  const [carouselActiveIndex, setCarouselActiveIndex] = useState(0);
   
   // Custom set values
   const [customWeight, setCustomWeight] = useState(null);
   const [customSets, setCustomSets] = useState(null);
   const [customReps, setCustomReps] = useState(null);
   const [customWeightUnit, setCustomWeightUnit] = useState('kg');
+
+  // Handle carousel index change and log it
+  const handleCarouselIndexChange = (index) => {
+    setCarouselActiveIndex(index);
+    const carouselType = index === 0 ? 'AI Generated (Recommended)' : 'Custom';
+    console.log('📊 Carousel changed to:', carouselType);
+    console.log('   - Index:', index);
+    console.log('   - Type:', carouselType);
+  };
 
   // Handle opening modal for specific field
   const handleCustomFieldClick = (field) => {
@@ -157,13 +175,13 @@ export default function SelectedWorkout() {
   const getModalInitialValue = () => {
     switch (modalField) {
       case 'weight':
-        return customWeight || 5;
+        return customWeight; // Start at null to use default 0.5
       case 'sets':
-        return customSets || 3;
+        return customSets; // Start at null to use default 1
       case 'reps':
-        return customReps || 10;
+        return customReps; // Start at null to use default 1
       default:
-        return 5;
+        return null;
     }
   };
 
@@ -248,6 +266,7 @@ export default function SelectedWorkout() {
             customReps={customReps}
             customWeightUnit={customWeightUnit}
             onCustomFieldClick={handleCustomFieldClick}
+            onActiveIndexChange={handleCarouselIndexChange}
           />
         </div>
 
@@ -391,12 +410,83 @@ export default function SelectedWorkout() {
       }}>
         <div className="mx-auto w-full max-w-4xl">
           <WorkoutActionButton
-            onClick={() => {
-              // Navigate to workout monitor with workout context
-              router.push({
-                pathname: '/workout-monitor',
-                query: { equipment, workout }
-              });
+            disabled={isStartingWorkout}
+            onClick={async () => {
+              if (isStartingWorkout) return;
+              
+              setIsStartingWorkout(true);
+              
+              try {
+                // Get target muscles based on exercise
+                const targetMuscles = 
+                  equipment === 'Barbell' && workout === 'Flat Bench Barbell Press'
+                    ? ['Chest', 'Shoulders', 'Triceps']
+                    : equipment === 'Barbell' && workout === 'Front Squats'
+                    ? ['Quadriceps', 'Core', 'Lower Back']
+                    : equipment === 'Dumbell' && workout === 'Concentration Curls'
+                    ? ['Biceps']
+                    : equipment === 'Dumbell' && workout === 'Single-arm Overhead Extension'
+                    ? ['Triceps', 'Shoulders']
+                    : equipment === 'Weight Stack' && workout === 'Lateral Pulldown'
+                    ? ['Back', 'Lats']
+                    : ['Quadriceps'];
+                
+                // Determine set type based on carousel selection
+                const isCustomSet = carouselActiveIndex === 1;
+                const setType = isCustomSet ? 'custom' : 'recommended';
+                
+                // Parse recommended reps (e.g., "6-8" -> 6)
+                const parseReps = (repsStr) => {
+                  if (typeof repsStr === 'number') return repsStr;
+                  const match = String(repsStr).match(/(\d+)/);
+                  return match ? parseInt(match[1]) : 8;
+                };
+
+                // Determine final values based on set type
+                const finalSets = isCustomSet ? (customSets || details.recommendedSets) : details.recommendedSets;
+                const finalReps = isCustomSet ? (customReps || parseReps(details.recommendedReps)) : parseReps(details.recommendedReps);
+                const finalWeight = isCustomSet ? (customWeight || 0) : 0;
+                const finalWeightUnit = customWeightUnit;
+
+                console.log('🏋️ Starting Workout:', {
+                  exercise: workout,
+                  equipment: equipment,
+                  setType: setType,
+                  sets: finalSets,
+                  reps: finalReps,
+                  weight: finalWeight,
+                  weightUnit: finalWeightUnit,
+                });
+
+                // Initialize workout log before navigating
+                await initializeLog({
+                  exercise: workout,
+                  equipment: equipment,
+                  targetMuscles: targetMuscles,
+                  sets: finalSets,
+                  reps: finalReps,
+                  weight: finalWeight,
+                  weightUnit: finalWeightUnit,
+                  setType: setType,
+                });
+
+                // Navigate to workout monitor with workout context
+                router.push({
+                  pathname: '/workout-monitor',
+                  query: { 
+                    equipment, 
+                    workout,
+                    plannedSets: finalSets,
+                    plannedReps: finalReps,
+                    weight: finalWeight,
+                    weightUnit: finalWeightUnit,
+                    setType: setType,
+                  }
+                });
+              } catch (error) {
+                console.error('Failed to initialize workout:', error);
+                setIsStartingWorkout(false);
+              }
             }}
           />
         </div>

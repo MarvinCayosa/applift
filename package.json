@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@google-cloud/storage": "^7.7.0",
     "apexcharts": "^5.3.6",
     "chart.js": "^4.5.1",
     "firebase": "^12.8.0",
@@ -22,6 +23,7 @@
   },
   "devDependencies": {
     "baseline-browser-mapping": "^2.9.19",
+    "dotenv": "^17.2.3",
     "eslint": "^9.39.1",
     "eslint-config-next": "^16.0.5",
     "ip": "^2.0.1",

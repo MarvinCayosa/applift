@@ -1,226 +1,317 @@
 import { useState, useRef, useEffect } from 'react';
 
-// Horizontal Wheel Picker Component for numbers (sets, reps) - Auto-snapping
-function WheelPicker({ items, selectedValue, onValueChange }) {
+// Haptic feedback helper for PWA
+const triggerHaptic = () => {
+  if (navigator.vibrate) {
+    navigator.vibrate(10);
+  }
+};
+
+// Ruler Picker - For weight with 0.5 increments (starting at 1)
+function RulerPicker({ value, onValueChange, unit, onUnitChange }) {
   const wheelRef = useRef(null);
   const scrollTimeoutRef = useRef(null);
-  const itemWidth = 56;
+  const lastValueRef = useRef(-1);
+  const [displayValue, setDisplayValue] = useState(value);
+  
+  const config = { min: 1, max: 200, step: 0.5 };
+  const tickWidth = 14;
+  const totalTicks = Math.floor((config.max - config.min) / config.step) + 1;
 
-  // Initialize scroll position on mount
+  const valueToIndex = (val) => Math.round((val - config.min) / config.step);
+  const indexToValue = (idx) => config.min + idx * config.step;
+
+  // Sync display value with prop
   useEffect(() => {
-    if (wheelRef.current && selectedValue !== undefined) {
-      const idx = items.indexOf(selectedValue);
-      if (idx !== -1) {
-        wheelRef.current.scrollLeft = idx * itemWidth;
-      }
-    }
-  }, [selectedValue, items]);
+    setDisplayValue(value);
+  }, [value]);
 
-  const handleScroll = () => {
-    if (!wheelRef.current) return;
-    if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
-    scrollTimeoutRef.current = setTimeout(() => {
-      const scrollLeft = wheelRef.current.scrollLeft;
-      const index = Math.round(scrollLeft / itemWidth);
-      const clamped = Math.max(0, Math.min(items.length - 1, index));
-      const selected = items[clamped];
-      onValueChange(selected);
-      // Smooth snap to center
-      wheelRef.current.scrollTo({
-        left: clamped * itemWidth,
-        behavior: 'smooth'
-      });
-    }, 50);
-  };
-
-  const handleClickItem = (index) => {
-    const selected = items[index];
-    onValueChange(selected);
-    if (wheelRef.current) {
-      wheelRef.current.scrollTo({
-        left: index * itemWidth,
-        behavior: 'smooth'
-      });
-    }
-  };
-
-  return (
-    <div className="relative">
-      {/* Selection indicator - purple theme */}
-      <div
-        className="absolute inset-y-0 z-10 pointer-events-none"
-        style={{
-          left: '50%',
-          transform: 'translateX(-50%)',
-          width: itemWidth,
-          backgroundColor: 'rgba(139, 92, 246, 0.12)',
-          borderLeft: '2px solid rgba(139, 92, 246, 0.5)',
-          borderRight: '2px solid rgba(139, 92, 246, 0.5)',
-          borderRadius: '12px',
-        }}
-      />
-
-      {/* Left fade - stronger gradient */}
-      <div
-        className="absolute inset-y-0 left-0 z-20 pointer-events-none"
-        style={{
-          width: '80px',
-          background: 'linear-gradient(to right, rgba(23,23,23,1) 0%, rgba(23,23,23,0.8) 40%, rgba(23,23,23,0) 100%)',
-        }}
-      />
-
-      {/* Right fade - stronger gradient */}
-      <div
-        className="absolute inset-y-0 right-0 z-20 pointer-events-none"
-        style={{
-          width: '80px',
-          background: 'linear-gradient(to left, rgba(23,23,23,1) 0%, rgba(23,23,23,0.8) 40%, rgba(23,23,23,0) 100%)',
-        }}
-      />
-
-      <div
-        ref={wheelRef}
-        className="w-full h-24 overflow-x-scroll scrollbar-hide relative flex items-center"
-        style={{ scrollSnapType: 'x mandatory' }}
-        onScroll={handleScroll}
-      >
-        <div style={{ width: itemWidth * 2.5 }} className="flex-shrink-0" />
-        {items.map((item, idx) => {
-          const isCentered = item === selectedValue;
-          return (
-            <div
-              key={idx}
-              className="flex items-center justify-center text-center cursor-pointer flex-shrink-0"
-              style={{ 
-                scrollSnapAlign: 'center', 
-                width: itemWidth,
-                fontSize: isCentered ? '2.5rem' : '1.25rem',
-                fontWeight: isCentered ? 700 : 500,
-                color: isCentered ? 'white' : 'rgba(255,255,255,0.3)',
-                transition: 'font-size 0.2s ease-out, color 0.2s ease-out, font-weight 0.2s ease-out',
-              }}
-              onClick={() => handleClickItem(idx)}
-            >
-              {item}
-            </div>
-          );
-        })}
-        <div style={{ width: itemWidth * 2.5 }} className="flex-shrink-0" />
-      </div>
-    </div>
-  );
-}
-
-// Weight Picker Component - Ruler/Scale style, allows any value but snaps nicely
-function WeightPicker({ value, onValueChange, unit, onUnitChange }) {
-  const wheelRef = useRef(null);
-  const scrollTimeoutRef = useRef(null);
-  const tickWidth = 8;
-  const maxWeight = 200;
-
-  // Initialize scroll position on mount
+  // Sync scroll position when value changes (including on mount)
   useEffect(() => {
     if (wheelRef.current && value !== undefined) {
-      wheelRef.current.scrollLeft = value * tickWidth;
+      const idx = valueToIndex(value);
+      wheelRef.current.scrollLeft = idx * tickWidth;
+      lastValueRef.current = value;
     }
   }, [value]);
 
   const handleScroll = () => {
     if (!wheelRef.current) return;
+    
+    const scrollLeft = wheelRef.current.scrollLeft;
+    const rawIndex = scrollLeft / tickWidth;
+    const snappedIndex = Math.round(rawIndex);
+    const clampedIndex = Math.max(0, Math.min(totalTicks - 1, snappedIndex));
+    const currentValue = indexToValue(clampedIndex);
+    
+    // Real-time display update
+    setDisplayValue(currentValue);
+    
+    // Haptic feedback for each tick
+    if (lastValueRef.current !== currentValue) {
+      triggerHaptic();
+      lastValueRef.current = currentValue;
+      onValueChange(currentValue);
+    }
+    
+    // Auto-snap to closest value after scrolling stops
     if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
     scrollTimeoutRef.current = setTimeout(() => {
-      const scrollLeft = wheelRef.current.scrollLeft;
-      const rawValue = scrollLeft / tickWidth;
-      // Snap to nearest whole number - allows any weight (1, 2, 14, etc.)
-      const snappedValue = Math.round(rawValue);
-      const clamped = Math.max(1, Math.min(maxWeight, snappedValue));
-      onValueChange(clamped);
-      // Smooth snap to position
+      if (!wheelRef.current) return;
+      const finalScrollLeft = wheelRef.current.scrollLeft;
+      const finalIndex = Math.round(finalScrollLeft / tickWidth);
+      const finalClamped = Math.max(0, Math.min(totalTicks - 1, finalIndex));
+      
       wheelRef.current.scrollTo({
-        left: clamped * tickWidth,
+        left: finalClamped * tickWidth,
         behavior: 'smooth'
       });
-    }, 50);
+    }, 100);
   };
 
-  // Generate tick marks
-  const ticks = Array.from({ length: maxWeight + 1 }, (_, i) => i);
+  const ticks = Array.from({ length: totalTicks }, (_, i) => ({
+    index: i,
+    value: indexToValue(i)
+  }));
+
+  const formatValue = (val) => {
+    return val % 1 === 0 ? `${val}.0` : val.toFixed(1);
+  };
+
+  const isMajorTick = (tickValue) => tickValue % 1 === 0;
 
   return (
     <div className="relative">
-      {/* Value display */}
-      <div className="text-center mb-3">
-        <span className="text-4xl font-bold text-white" style={{ transition: 'all 0.15s ease-out' }}>{value}</span>
+      <div className="text-center mb-4">
+        <span 
+          className="text-6xl font-bold text-white tabular-nums"
+          style={{ 
+            fontVariantNumeric: 'tabular-nums',
+            letterSpacing: '-0.02em',
+          }}
+        >
+          {formatValue(displayValue)}
+        </span>
         <button
           type="button"
-          onClick={() => onUnitChange(unit === 'kg' ? 'lbs' : 'kg')}
-          className="ml-2 text-lg text-white/60 hover:text-white/80 transition-colors"
+          onClick={() => onUnitChange?.(unit === 'kg' ? 'lbs' : 'kg')}
+          className="ml-2 text-lg font-semibold text-white/40 hover:text-white/60 transition-colors"
         >
           {unit}
         </button>
       </div>
 
-      {/* Center indicator line - slightly taller than major ticks */}
       <div
-        className="absolute z-30 pointer-events-none"
+        className="absolute z-30 pointer-events-none left-1/2 -translate-x-1/2 bottom-0"
         style={{
-          left: '50%',
-          transform: 'translateX(-50%)',
-          bottom: 0,
           width: '3px',
-          height: '34px',
-          backgroundColor: 'rgba(139, 92, 246, 1)',
+          height: '40px',
+          backgroundColor: '#8b5cf6',
           borderRadius: '2px',
+        }}
+      />
+
+      <div
+        className="absolute bottom-0 left-0 z-20 pointer-events-none h-14"
+        style={{
+          width: '50px',
+          background: 'linear-gradient(to right, rgb(38,38,38) 0%, transparent 100%)',
+        }}
+      />
+
+      <div
+        className="absolute bottom-0 right-0 z-20 pointer-events-none h-14"
+        style={{
+          width: '50px',
+          background: 'linear-gradient(to left, rgb(38,38,38) 0%, transparent 100%)',
+        }}
+      />
+
+      <div
+        ref={wheelRef}
+        className="w-full h-14 overflow-x-scroll scrollbar-hide flex items-end"
+        onScroll={handleScroll}
+      >
+        {/* Left padding: 50% minus half of tick width to center the first tick */}
+        <div style={{ minWidth: 'calc(50% - 7px)' }} className="flex-shrink-0" />
+        {ticks.map(({ index, value: tickValue }) => {
+          const isMajor = isMajorTick(tickValue);
+          return (
+            <div
+              key={index}
+              className="flex-shrink-0 flex flex-col items-center justify-end"
+              style={{ width: tickWidth }}
+            >
+              <div
+                style={{ 
+                  width: isMajor ? '2px' : '1px',
+                  height: isMajor ? '28px' : '14px',
+                  backgroundColor: isMajor ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.2)',
+                  borderRadius: '1px',
+                }}
+              />
+            </div>
+          );
+        })}
+        {/* Right padding: 50% minus half of tick width */}
+        <div style={{ minWidth: 'calc(50% - 7px)' }} className="flex-shrink-0" />
+      </div>
+    </div>
+  );
+}
+
+// Horizontal Wheel Picker - For sets and reps (horizontal scroll with numbers)
+function WheelPicker({ value, onValueChange, min, max, label }) {
+  const wheelRef = useRef(null);
+  const scrollTimeoutRef = useRef(null);
+  const lastValueRef = useRef(null);
+  const isUserScrolling = useRef(false);
+  
+  const values = Array.from({ length: max - min + 1 }, (_, i) => min + i);
+  
+  // Fixed item width for consistent centering
+  const ITEM_WIDTH = 56;
+  const HALF_ITEM = ITEM_WIDTH / 2;
+
+  // Sync scroll position when value changes - always update on value change
+  useEffect(() => {
+    if (wheelRef.current && value !== undefined) {
+      const index = values.indexOf(value);
+      if (index >= 0) {
+        // Always scroll to the correct position when value prop changes
+        // This handles modal opening with a new field type
+        wheelRef.current.scrollLeft = index * ITEM_WIDTH;
+        lastValueRef.current = value;
+        isUserScrolling.current = false;
+      }
+    }
+  }, [value, min, max]); // Also reset when range changes (switching between sets/reps)
+
+  const handleScroll = () => {
+    if (!wheelRef.current) return;
+    
+    isUserScrolling.current = true;
+    
+    const scrollLeft = wheelRef.current.scrollLeft;
+    const index = Math.round(scrollLeft / ITEM_WIDTH);
+    const clampedIndex = Math.max(0, Math.min(values.length - 1, index));
+    const currentValue = values[clampedIndex];
+    
+    // Haptic feedback for each value change
+    if (lastValueRef.current !== currentValue) {
+      triggerHaptic();
+      lastValueRef.current = currentValue;
+      onValueChange(currentValue);
+    }
+
+    // Auto-snap after scrolling stops
+    if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+    scrollTimeoutRef.current = setTimeout(() => {
+      if (!wheelRef.current) return;
+      
+      const finalScrollLeft = wheelRef.current.scrollLeft;
+      const finalIndex = Math.round(finalScrollLeft / ITEM_WIDTH);
+      const finalClamped = Math.max(0, Math.min(values.length - 1, finalIndex));
+      const targetScroll = finalClamped * ITEM_WIDTH;
+      
+      // Only snap if not already at target
+      if (Math.abs(finalScrollLeft - targetScroll) > 1) {
+        wheelRef.current.scrollTo({
+          left: targetScroll,
+          behavior: 'smooth'
+        });
+      }
+      
+      // Reset scrolling flag after animation
+      setTimeout(() => {
+        isUserScrolling.current = false;
+      }, 150);
+    }, 80);
+  };
+
+  const handleClickItem = (clickedValue) => {
+    if (clickedValue !== value) {
+      triggerHaptic();
+      onValueChange(clickedValue);
+      
+      const index = values.indexOf(clickedValue);
+      wheelRef.current?.scrollTo({
+        left: index * ITEM_WIDTH,
+        behavior: 'smooth'
+      });
+    }
+  };
+
+  return (
+    <div className="relative">
+      {/* Label */}
+      <div className="text-center mb-4">
+        <span className="text-sm font-semibold text-white/60">{label}</span>
+      </div>
+      
+      {/* Center highlight box - precisely centered */}
+      <div 
+        className="absolute left-1/2 -translate-x-1/2 bottom-0 z-10 pointer-events-none"
+        style={{
+          width: `${ITEM_WIDTH}px`,
+          height: '64px',
+          border: '2px solid #8b5cf6',
+          borderRadius: '12px',
+          backgroundColor: 'rgba(139, 92, 246, 0.15)',
         }}
       />
 
       {/* Left fade */}
       <div
-        className="absolute bottom-0 left-0 z-20 pointer-events-none"
+        className="absolute bottom-0 left-0 z-20 pointer-events-none h-16"
         style={{
-          width: '80px',
-          height: '48px',
-          background: 'linear-gradient(to right, rgba(23,23,23,1) 0%, rgba(23,23,23,0.8) 40%, rgba(23,23,23,0) 100%)',
+          width: '60px',
+          background: 'linear-gradient(to right, rgb(38,38,38) 0%, transparent 100%)',
         }}
       />
 
       {/* Right fade */}
       <div
-        className="absolute bottom-0 right-0 z-20 pointer-events-none"
+        className="absolute bottom-0 right-0 z-20 pointer-events-none h-16"
         style={{
-          width: '80px',
-          height: '48px',
-          background: 'linear-gradient(to left, rgba(23,23,23,1) 0%, rgba(23,23,23,0.8) 40%, rgba(23,23,23,0) 100%)',
+          width: '60px',
+          background: 'linear-gradient(to left, rgb(38,38,38) 0%, transparent 100%)',
         }}
       />
 
-      {/* Ruler track */}
+      {/* Horizontal scrollable wheel - smooth scrolling */}
       <div
         ref={wheelRef}
-        className="w-full h-12 overflow-x-scroll scrollbar-hide relative flex items-end"
+        className="w-full h-16 overflow-x-auto scrollbar-hide flex items-center"
         onScroll={handleScroll}
+        style={{ 
+          WebkitOverflowScrolling: 'touch',
+        }}
       >
-        <div style={{ width: '50%' }} className="flex-shrink-0" />
-        {ticks.map((tick) => {
-          const isMajor = tick % 10 === 0;
-          const isMid = tick % 5 === 0 && !isMajor;
-          const isMinor = !isMajor && !isMid;
+        {/* Left padding - exactly half container minus half item to center first item */}
+        <div style={{ minWidth: `calc(50% - ${HALF_ITEM}px)` }} className="flex-shrink-0" />
+        {values.map((val) => {
+          const isSelected = val === value;
           return (
             <div
-              key={tick}
-              className="flex-shrink-0 flex flex-col items-center justify-end"
-              style={{ width: tickWidth }}
+              key={val}
+              onClick={() => handleClickItem(val)}
+              className="flex-shrink-0 flex items-center justify-center cursor-pointer"
+              style={{
+                width: `${ITEM_WIDTH}px`,
+                height: '64px',
+                color: isSelected ? '#fff' : 'rgba(255,255,255,0.35)',
+                fontSize: isSelected ? '28px' : '18px',
+                fontWeight: isSelected ? 'bold' : 'normal',
+                transition: 'color 0.15s, font-size 0.15s',
+              }}
             >
-              <div
-                className={`w-0.5 rounded-full ${
-                  isMajor ? 'bg-violet-400' : isMid ? 'bg-white/40' : 'bg-white/20'
-                }`}
-                style={{ height: isMajor ? '28px' : isMid ? '18px' : '8px' }}
-              />
+              {val}
             </div>
           );
         })}
-        <div style={{ width: '50%' }} className="flex-shrink-0" />
+        {/* Right padding - exactly half container minus half item */}
+        <div style={{ minWidth: `calc(50% - ${HALF_ITEM}px)` }} className="flex-shrink-0" />
       </div>
     </div>
   );
@@ -230,54 +321,79 @@ export default function CustomSetModal({
   isOpen, 
   onClose, 
   onSave,
-  initialValue = 5,
+  initialValue = null,
   initialWeightUnit = 'kg',
-  fieldType = 'weight' // 'weight', 'sets', 'reps'
+  fieldType = 'weight'
 }) {
-  const [value, setValue] = useState(initialValue);
+  // Default values for each field type - start at the lowest value
+  const getDefaultValue = (type) => {
+    switch (type) {
+      case 'weight': return 1;
+      case 'sets': return 1;
+      case 'reps': return 1;
+      default: return 1;
+    }
+  };
+
+  // If initialValue is null, undefined, empty string, or 0 - use default (lowest)
+  const getInitialValue = () => {
+    if (initialValue === null || initialValue === undefined || initialValue === '' || initialValue === 0) {
+      return getDefaultValue(fieldType);
+    }
+    return initialValue;
+  };
+
+  const [value, setValue] = useState(getInitialValue());
   const [weightUnit, setWeightUnit] = useState(initialWeightUnit);
+  const [isClosing, setIsClosing] = useState(false);
+  const [dragStartY, setDragStartY] = useState(0);
+  const [dragCurrentY, setDragCurrentY] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
 
-  // Generate arrays for wheel pickers based on field type
-  const getOptions = () => {
-    switch (fieldType) {
-      case 'sets':
-        return Array.from({ length: 10 }, (_, i) => i + 1);
-      case 'reps':
-        return Array.from({ length: 30 }, (_, i) => i + 1);
-      default:
-        return Array.from({ length: 50 }, (_, i) => i + 1);
-    }
-  };
-
-  const getFieldLabel = () => {
-    switch (fieldType) {
-      case 'weight':
-        return 'Weight';
-      case 'sets':
-        return 'Sets';
-      case 'reps':
-        return 'Reps';
-      default:
-        return 'Value';
-    }
-  };
-
-  // Reset to initial values when modal opens
+  // Reset value when modal opens or fieldType changes
   useEffect(() => {
     if (isOpen) {
-      setValue(initialValue || (fieldType === 'weight' ? 5 : getOptions()[0]));
+      setValue(getInitialValue());
       setWeightUnit(initialWeightUnit);
     }
-  }, [isOpen, initialValue, initialWeightUnit, fieldType]);
-
-  const [isClosing, setIsClosing] = useState(false);
+  }, [isOpen, fieldType, initialValue, initialWeightUnit]);
 
   const handleClose = () => {
     setIsClosing(true);
     setTimeout(() => {
       setIsClosing(false);
       onClose();
-    }, 300); // Match animation duration
+    }, 250);
+  };
+
+  // Touch handlers for swipe-down-to-dismiss
+  const handleTouchStart = (e) => {
+    setDragStartY(e.touches[0].clientY);
+    setIsDragging(true);
+  };
+
+  const handleTouchMove = (e) => {
+    if (!isDragging) return;
+    const currentY = e.touches[0].clientY;
+    const diff = currentY - dragStartY;
+    
+    // Only allow dragging down
+    if (diff > 0) {
+      setDragCurrentY(diff);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (!isDragging) return;
+    setIsDragging(false);
+    
+    // If dragged down more than 100px, close the modal
+    if (dragCurrentY > 100) {
+      handleClose();
+    }
+    
+    // Reset drag position
+    setDragCurrentY(0);
   };
 
   if (!isOpen) return null;
@@ -289,35 +405,36 @@ export default function CustomSetModal({
 
   return (
     <div 
-      className={`fixed inset-0 z-50 flex items-end justify-center px-4 transition-opacity duration-300 ${isClosing ? 'opacity-0' : 'opacity-100'}`}
-      style={{ 
-        backgroundColor: 'rgba(0, 0, 0, 0.75)', 
-        backdropFilter: 'blur(16px)', 
-        WebkitBackdropFilter: 'blur(16px)' 
-      }}
+      className={`fixed inset-0 z-50 flex items-end justify-center transition-opacity duration-250 ${isClosing ? 'opacity-0' : 'opacity-100'}`}
+      style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)' }}
       onClick={handleClose}
     >
-      {/* Modal at bottom with padding from sides */}
+      {/* Modal */}
       <div 
-        className={`w-full max-w-lg mb-6 transition-all duration-300 ease-out ${isClosing ? 'opacity-0 translate-y-8' : 'opacity-100 translate-y-0 animate-slide-up'}`}
+        className={`w-full transition-transform ease-out ${isClosing ? 'translate-y-full' : 'translate-y-0'}`}
         onClick={(e) => e.stopPropagation()}
+        style={{ 
+          animation: !isClosing ? 'slideUp 0.25s cubic-bezier(0.32, 0.72, 0, 1)' : undefined,
+          transform: isDragging ? `translateY(${dragCurrentY}px)` : undefined,
+          transition: isDragging ? 'none' : 'transform 0.25s ease-out',
+        }}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
       >
-        {/* Modal content - taller */}
         <div 
-          className="bg-neutral-900 rounded-2xl p-5 border border-white/10"
-          style={{ 
-            boxShadow: '0 20px 40px rgba(0,0,0,0.5)' 
-          }}
+          className="rounded-t-3xl pt-3 pb-8 px-5"
+          style={{ backgroundColor: 'rgb(38, 38, 38)' }}
         >
-          {/* Header */}
-          <div className="text-center mb-4">
-            <h2 className="text-base font-semibold text-white">{getFieldLabel()}</h2>
+          {/* Handle */}
+          <div className="flex justify-center mb-6">
+            <div className="w-9 h-1 rounded-full bg-white/20" />
           </div>
 
-          {/* Picker - different style for weight vs sets/reps */}
-          <div className="mb-5">
+          {/* Picker */}
+          <div className="mb-8">
             {fieldType === 'weight' ? (
-              <WeightPicker
+              <RulerPicker
                 value={value}
                 onValueChange={setValue}
                 unit={weightUnit}
@@ -325,32 +442,32 @@ export default function CustomSetModal({
               />
             ) : (
               <WheelPicker
-                items={getOptions()}
-                selectedValue={value}
+                value={value}
                 onValueChange={setValue}
+                min={fieldType === 'sets' ? 1 : 1}
+                max={fieldType === 'sets' ? 20 : 50}
+                label={fieldType === 'sets' ? 'Sets' : 'Reps'}
               />
             )}
           </div>
 
-          {/* Action Buttons - More rounded */}
-          <div className="flex gap-3">
-            <button
-              type="button"
-              onClick={handleClose}
-              className="flex-1 py-3 text-sm bg-neutral-700 hover:bg-neutral-600 text-white/80 font-medium rounded-full transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              className="flex-1 py-3 text-sm bg-violet-600 hover:bg-violet-500 text-white font-medium rounded-full transition-colors"
-            >
-              Save
-            </button>
-          </div>
+          {/* Single confirm button - minimalist */}
+          <button
+            type="button"
+            onClick={handleSave}
+            className="w-full py-4 text-base bg-violet-600 hover:bg-violet-500 active:bg-violet-700 text-white font-bold rounded-xl transition-all duration-150"
+          >
+            Done
+          </button>
         </div>
       </div>
+
+      <style jsx>{`
+        @keyframes slideUp {
+          from { transform: translateY(100%); }
+          to { transform: translateY(0); }
+        }
+      `}</style>
     </div>
   );
 }

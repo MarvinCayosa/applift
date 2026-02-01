@@ -1,7 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useLayoutEffect } from 'react';
+
+// Use useLayoutEffect on client, useEffect on server (SSR safety)
+const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
 /**
  * Custom hook for scroll animations using Intersection Observer
+ * 
+ * IMPORTANT: This hook starts with isVisible=false to allow animation.
+ * The CSS must use progressive enhancement - elements visible by default,
+ * hidden class only applied when JS adds it.
+ * 
  * @param {Object} options - Configuration options
  * @param {number} options.threshold - Threshold for triggering animation (0.1 = 10% visible)
  * @param {string} options.rootMargin - Root margin for intersection observer
@@ -18,24 +26,57 @@ export const useScrollAnimation = ({
   const ref = useRef(null);
   const [isVisible, setIsVisible] = useState(false);
   const [hasTriggered, setHasTriggered] = useState(false);
+  const observerRef = useRef(null);
+  const timeoutRef = useRef(null);
+  const hasTriggeredRef = useRef(false);
 
-  useEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     const element = ref.current;
-    if (!element) return;
+    if (!element) {
+      // If no element, make visible immediately (fallback)
+      setIsVisible(true);
+      return;
+    }
 
-    const observer = new IntersectionObserver(
+    // Trigger visibility with optional delay
+    const triggerVisible = () => {
+      if (hasTriggeredRef.current) return;
+      
+      const doTrigger = () => {
+        hasTriggeredRef.current = true;
+        setIsVisible(true);
+        setHasTriggered(true);
+      };
+
+      if (delay > 0) {
+        timeoutRef.current = setTimeout(doTrigger, delay);
+      } else {
+        doTrigger();
+      }
+    };
+
+    // Check if element is in viewport
+    const isElementInViewport = () => {
+      const rect = element.getBoundingClientRect();
+      const windowHeight = window.innerHeight || document.documentElement.clientHeight;
+      return rect.top < windowHeight && rect.bottom > 0;
+    };
+
+    // Immediate check - if already in viewport, trigger animation
+    if (isElementInViewport()) {
+      triggerVisible();
+      return;
+    }
+
+    // Set up Intersection Observer for elements not initially visible
+    observerRef.current = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) {
-          if (delay > 0) {
-            setTimeout(() => {
-              setIsVisible(true);
-              setHasTriggered(true);
-            }, delay);
-          } else {
-            setIsVisible(true);
-            setHasTriggered(true);
+        if (entry.isIntersecting && !hasTriggeredRef.current) {
+          triggerVisible();
+          if (triggerOnce && observerRef.current) {
+            observerRef.current.disconnect();
           }
-        } else if (!triggerOnce) {
+        } else if (!triggerOnce && !entry.isIntersecting) {
           setIsVisible(false);
         }
       },
@@ -45,18 +86,22 @@ export const useScrollAnimation = ({
       }
     );
 
-    observer.observe(element);
+    observerRef.current.observe(element);
 
+    // Cleanup
     return () => {
-      if (element) {
-        observer.unobserve(element);
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      if (observerRef.current) {
+        observerRef.current.disconnect();
       }
     };
   }, [threshold, rootMargin, triggerOnce, delay]);
 
   return {
     ref,
-    isVisible: triggerOnce ? hasTriggered : isVisible,
+    isVisible,
     hasTriggered
   };
 };

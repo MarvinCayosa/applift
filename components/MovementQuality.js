@@ -19,43 +19,24 @@ export default function MovementQuality({
   equipmentData = null,
   loading = false,
   animate = false,
+  hasData = false,
   onFilterChange = () => {}
 }) {
   const [activeFilter, setActiveFilter] = useState('dumbbell');
   const [displayScore, setDisplayScore] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
 
-  // Default data structure for backend integration
-  const defaultData = {
-    all: {
-      score: 86,
-      angularVelocity: 82,
-      smoothness: 89,
-      romConsistency: 87
-    },
-    dumbbell: {
-      score: 88,
-      angularVelocity: 85,
-      smoothness: 90,
-      romConsistency: 89
-    },
-    barbell: {
-      score: 84,
-      angularVelocity: 80,
-      smoothness: 87,
-      romConsistency: 85
-    },
-    weightStack: {
-      score: 82,
-      angularVelocity: 78,
-      smoothness: 86,
-      romConsistency: 82
-    }
+  // Empty data structure - no mock data
+  const emptyData = {
+    all: { score: 0, angularVelocity: 0, smoothness: 0, romConsistency: 0 },
+    dumbbell: { score: 0, angularVelocity: 0, smoothness: 0, romConsistency: 0 },
+    barbell: { score: 0, angularVelocity: 0, smoothness: 0, romConsistency: 0 },
+    weightStack: { score: 0, angularVelocity: 0, smoothness: 0, romConsistency: 0 }
   };
 
-  // Use provided data or default
-  const qualityData = equipmentData || defaultData;
-  const currentData = qualityData[activeFilter] || qualityData.dumbbell;
+  // Use provided data or empty
+  const qualityData = equipmentData || emptyData;
+  const currentData = qualityData[activeFilter] || qualityData.dumbbell || emptyData.dumbbell;
 
   // Animate score when component becomes visible or filter changes
   useEffect(() => {
@@ -121,7 +102,7 @@ export default function MovementQuality({
     {
       id: 'dumbbell',
       label: 'Dumbbell',
-      color: '#3b82f6', // blue
+      color: '#3B82F6', // Blue
       icon: (
         <img 
           src="/svg/dumbbell.svg" 
@@ -134,7 +115,7 @@ export default function MovementQuality({
     {
       id: 'barbell',
       label: 'Barbell',
-      color: '#ef4444', // red
+      color: '#FBBF24', // Yellow
       icon: (
         <img 
           src="/svg/barbell.svg" 
@@ -147,7 +128,7 @@ export default function MovementQuality({
     {
       id: 'weightStack',
       label: 'Cable',
-      color: '#eab308', // yellow
+      color: '#EF4444', // Red
       icon: (
         <img 
           src="/svg/weight-stack.svg" 
@@ -164,17 +145,17 @@ export default function MovementQuality({
     {
       label: 'Angular Velocity',
       value: currentData.angularVelocity,
-      color: '#3b82f6' // blue (matches dumbbell)
+      color: '#3B82F6' // Blue (matches dumbbell)
     },
     {
       label: 'Smoothness',
       value: currentData.smoothness,
-      color: '#ef4444' // red (matches barbell)
+      color: '#FBBF24' // Yellow (matches barbell)
     },
     {
       label: 'ROM Consistency',
       value: currentData.romConsistency,
-      color: '#eab308' // yellow (matches weight stack/cable)
+      color: '#EF4444' // Red (matches weight stack/cable)
     }
   ];
 
@@ -200,6 +181,34 @@ export default function MovementQuality({
             {[1, 2, 3].map((i) => (
               <div key={i} className="h-8 bg-white/10 rounded-lg"></div>
             ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Empty state when no data
+  if (!hasData) {
+    return (
+      <div className="w-full">
+        <div className="relative overflow-hidden bg-white/5 border border-white/10 rounded-2xl p-4">
+          {/* Header */}
+          <div className="flex items-center justify-between gap-3 mb-4 relative z-10">
+            <div>
+              <h3 className="text-sm font-semibold text-white">Movement Quality</h3>
+              <p className="text-[10px] text-white/40">Weekly aggregated result</p>
+            </div>
+          </div>
+          
+          {/* Empty State */}
+          <div className="flex flex-col items-center justify-center py-8">
+            <div className="text-white/30 mb-2">
+              <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+            </div>
+            <p className="text-sm text-white/40">No movement data yet</p>
+            <p className="text-[10px] text-white/30 mt-1">Complete workouts with IMU sensors to track quality</p>
           </div>
         </div>
       </div>

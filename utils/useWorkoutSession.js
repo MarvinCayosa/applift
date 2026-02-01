@@ -8,6 +8,8 @@ export function useWorkoutSession({
   connected, 
   recommendedReps = 5, 
   recommendedSets = 2,
+  onIMUSample,       // NEW: Called for each IMU sample (for streaming)
+  onRepDetected,     // NEW: Called when a rep is detected
   onSetComplete,
   onWorkoutComplete 
 }) {
@@ -75,6 +77,19 @@ export function useWorkoutSession({
   const [dataRate, setDataRate] = useState(0);
   const lastSampleTime = useRef(Date.now());
   const sampleCounter = useRef(0);
+  
+  // Track last rep count for detecting new reps
+  const lastRepCountRef = useRef(0);
+  
+  // Refs for callbacks to avoid closure issues
+  const onIMUSampleRef = useRef(onIMUSample);
+  const onRepDetectedRef = useRef(onRepDetected);
+  
+  // Keep refs updated
+  useEffect(() => {
+    onIMUSampleRef.current = onIMUSample;
+    onRepDetectedRef.current = onRepDetected;
+  }, [onIMUSample, onRepDetected]);
 
   // Handle IMU data callback
   const handleIMUData = useCallback((data) => {
@@ -98,6 +113,15 @@ export function useWorkoutSession({
       }
       
       const relativeTime = data.timestamp - recordingStartTime.current;
+      
+      // Call onIMUSample callback for streaming
+      if (onIMUSampleRef.current) {
+        onIMUSampleRef.current({
+          ...data,
+          timestamp: data.timestamp,
+          relativeTime
+        });
+      }
       
       // Log raw data
       rawDataLog.current.push({
@@ -139,7 +163,23 @@ export function useWorkoutSession({
         data.filteredMagnitude, relativeTime
       );
       
-      setRepStats(repCounterRef.current.getStats());
+      const newStats = repCounterRef.current.getStats();
+      setRepStats(newStats);
+      
+      // Check if a new rep was detected
+      if (newStats.repCount > lastRepCountRef.current) {
+        console.log(`[WorkoutSession] Rep ${newStats.repCount} detected!`);
+        lastRepCountRef.current = newStats.repCount;
+        
+        // Call onRepDetected callback
+        if (onRepDetectedRef.current) {
+          onRepDetectedRef.current({
+            repNumber: newStats.repCount,
+            duration: newStats.avgRepDuration,
+            peakAcceleration: newStats.thresholdHigh
+          });
+        }
+      }
     }
   }, []);
 
@@ -413,6 +453,11 @@ export function useWorkoutSession({
     fullFilteredAccelData.current = [];
     setSampleCount(0);
     setElapsedTime(0);
+    
+    // Reset rep tracking for streaming
+    lastRepCountRef.current = 0;
+    
+    console.log('[WorkoutSession] Starting recording...');
     
     // Run countdown
     await runCountdown();

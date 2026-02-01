@@ -6,6 +6,7 @@ import { UserProfileProvider } from '../utils/userProfileStore';
 import { AuthProvider } from '../context/AuthContext';
 import { isPWA, logPWAStatus } from '../utils/pwaDetection';
 import { BluetoothProvider } from '../context/BluetoothProvider';
+import { WorkoutLoggingProvider } from '../context/WorkoutLoggingContext';
 
 function MyApp({ Component, pageProps }) {
   const router = useRouter();
@@ -79,9 +80,11 @@ function MyApp({ Component, pageProps }) {
   return (
     <AuthProvider>
       <BluetoothProvider>
-        <UserProfileProvider>
-          <Component {...pageProps} />
-        </UserProfileProvider>
+        <WorkoutLoggingProvider>
+          <UserProfileProvider>
+            <Component {...pageProps} />
+          </UserProfileProvider>
+        </WorkoutLoggingProvider>
       </BluetoothProvider>
     </AuthProvider>
   );

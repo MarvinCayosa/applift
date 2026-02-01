@@ -738,7 +738,7 @@
       // Update UI
       document.getElementById('nfc-equipment').textContent = equipmentName;
       const now = new Date();
-      document.getElementById('nfc-timestamp').textContent = now.toLocaleTimeString();
+      document.getElementById('nfc-timestamp').textContent = now.toLocaleTimeString([], { hour12: true });
       
       // Display NFC equipment notification
       showNFCNotification(equipmentName);

@@ -15,31 +15,60 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { useUserProfile } from '../utils/userProfileStore';
 import { useWorkoutStreak } from '../utils/useWorkoutStreak';
 import { useAuth } from '../context/AuthContext';
+import { useWorkoutLogs } from '../utils/useWorkoutLogs';
 import ActivityOverview from '../components/ActivityOverview';
 import WorkoutStreak from '../components/WorkoutStreak';
 import { useBluetooth } from '../context/BluetoothProvider';
 import { shouldUseAppMode } from '../utils/pwaInstalled';
 import { getUserAvatarColorStyle, getUserTextColor, getFirstWord } from '../utils/colorUtils';
-import useScrollAnimation from '../hooks/useScrollAnimation';
 
 // Profile colors for custom avatar (must match settings.js)
 const PROFILE_COLORS = [
-  { name: 'Purple', value: 'purple', bg: 'rgb(147, 51, 234)', gradient: 'linear-gradient(135deg, rgb(192, 132, 250), rgb(147, 51, 234))' },
-  { name: 'Blue', value: 'blue', bg: 'rgb(37, 99, 235)', gradient: 'linear-gradient(135deg, rgb(96, 165, 250), rgb(37, 99, 235))' },
-  { name: 'Pink', value: 'pink', bg: 'rgb(219, 39, 119)', gradient: 'linear-gradient(135deg, rgb(244, 114, 182), rgb(219, 39, 119))' },
-  { name: 'Green', value: 'green', bg: 'rgb(34, 197, 94)', gradient: 'linear-gradient(135deg, rgb(74, 222, 128), rgb(34, 197, 94))' },
-  { name: 'Orange', value: 'orange', bg: 'rgb(234, 88, 12)', gradient: 'linear-gradient(135deg, rgb(251, 146, 60), rgb(234, 88, 12))' },
-  { name: 'Cyan', value: 'cyan', bg: 'rgb(14, 165, 233)', gradient: 'linear-gradient(135deg, rgb(34, 211, 238), rgb(14, 165, 233))' },
-  { name: 'Indigo', value: 'indigo', bg: 'rgb(79, 70, 229)', gradient: 'linear-gradient(135deg, rgb(129, 140, 248), rgb(79, 70, 229))' },
-  { name: 'Rose', value: 'rose', bg: 'rgb(225, 29, 72)', gradient: 'linear-gradient(135deg, rgb(251, 113, 133), rgb(225, 29, 72))' },
-  { name: 'Amber', value: 'amber', bg: 'rgb(217, 119, 6)', gradient: 'linear-gradient(135deg, rgb(251, 191, 36), rgb(217, 119, 6))' },
-  { name: 'Lime', value: 'lime', bg: 'rgb(132, 204, 22)', gradient: 'linear-gradient(135deg, rgb(163, 230, 53), rgb(132, 204, 22))' },
+  { name: 'Purple', value: 'purple', bg: 'rgb(147, 51, 234)', gradient: 'linear-gradient(135deg, rgb(192, 132, 250), rgb(147, 51, 234))', textColor: '#c4b5fd' },
+  { name: 'Blue', value: 'blue', bg: 'rgb(37, 99, 235)', gradient: 'linear-gradient(135deg, rgb(96, 165, 250), rgb(37, 99, 235))', textColor: '#93c5fd' },
+  { name: 'Pink', value: 'pink', bg: 'rgb(219, 39, 119)', gradient: 'linear-gradient(135deg, rgb(244, 114, 182), rgb(219, 39, 119))', textColor: '#f9a8d4' },
+  { name: 'Green', value: 'green', bg: 'rgb(34, 197, 94)', gradient: 'linear-gradient(135deg, rgb(74, 222, 128), rgb(34, 197, 94))', textColor: '#86efac' },
+  { name: 'Orange', value: 'orange', bg: 'rgb(234, 88, 12)', gradient: 'linear-gradient(135deg, rgb(251, 146, 60), rgb(234, 88, 12))', textColor: '#fdba74' },
+  { name: 'Cyan', value: 'cyan', bg: 'rgb(14, 165, 233)', gradient: 'linear-gradient(135deg, rgb(34, 211, 238), rgb(14, 165, 233))', textColor: '#67e8f9' },
+  { name: 'Indigo', value: 'indigo', bg: 'rgb(79, 70, 229)', gradient: 'linear-gradient(135deg, rgb(129, 140, 248), rgb(79, 70, 229))', textColor: '#a5b4fc' },
+  { name: 'Rose', value: 'rose', bg: 'rgb(225, 29, 72)', gradient: 'linear-gradient(135deg, rgb(251, 113, 133), rgb(225, 29, 72))', textColor: '#fda4af' },
+  { name: 'Amber', value: 'amber', bg: 'rgb(217, 119, 6)', gradient: 'linear-gradient(135deg, rgb(251, 191, 36), rgb(217, 119, 6))', textColor: '#fcd34d' },
+  { name: 'Lime', value: 'lime', bg: 'rgb(132, 204, 22)', gradient: 'linear-gradient(135deg, rgb(163, 230, 53), rgb(132, 204, 22))', textColor: '#bef264' },
 ];
+
+// Get text color based on user's selected profile color or fallback to UID-based color
+const getNameTextColor = (userProfile, uid) => {
+  if (userProfile?.profileColor) {
+    const color = PROFILE_COLORS.find(c => c.value === userProfile.profileColor);
+    if (color) return color.textColor;
+  }
+  return getUserTextColor(uid);
+};
 
 export default function Dashboard() {
   const { profile } = useUserProfile();
   const { user, userProfile, signOut, loading, isAuthenticated } = useAuth();
-  const { streakData, loading: streakLoading, error: streakError } = useWorkoutStreak();
+  const { streakData, loading: streakLoading, error: streakError, refreshStreakData } = useWorkoutStreak();
+  
+  // Fetch real workout data from Firestore
+  const { 
+    logs,
+    stats,
+    lastWorkout,
+    recentWorkouts,
+    equipmentDistribution,
+    calendarData,
+    hasWorkouts,
+    loading: workoutsLoading,
+    error: workoutsError,
+    refresh: refreshWorkouts,
+    fetchCalendarData,
+  } = useWorkoutLogs({ 
+    autoFetch: true, 
+    limitCount: 20,
+    includeStats: true,
+    includeCalendar: true,
+  });
   
   const router = useRouter();
   const currentPath = router.pathname;
@@ -73,17 +102,6 @@ export default function Dashboard() {
   const [slideMetrics, setSlideMetrics] = useState({ width: 0, gap: 16 });
   const PEEK_OFFSET = 56;
   const [liftViewType, setLiftViewType] = useState('week');
-
-  // Scroll animations for dashboard sections - Fast and snappy, all fade-up with minimal delays
-  const headerAnimation = useScrollAnimation({ delay: 50 });
-  const connectPillAnimation = useScrollAnimation({ delay: 75 });
-  const overviewLabelAnimation = useScrollAnimation({ delay: 100 });
-  const streakAnimation = useScrollAnimation({ delay: 125 });
-  const carouselAnimation = useScrollAnimation({ delay: 150 });
-  const loadLiftedAnimation = useScrollAnimation({ delay: 175 });
-  const trendAnimation = useScrollAnimation({ delay: 200 });
-  const halfCardsAnimation = useScrollAnimation({ delay: 225 });
-  const movementQualityAnimation = useScrollAnimation({ delay: 250 });
 
   // Protect the dashboard - redirect if not authenticated and auth is done loading
   useEffect(() => {
@@ -292,13 +310,6 @@ export default function Dashboard() {
     }
   };
 
-  // Sample recent workouts data (empty by default - will be populated from backend)
-  const recentWorkouts = [
-    // Example structure for when data is available:
-    // { id: 1, exercise: 'Concentration Curls', equipment: 'Dumbbell', weight: 15, reps: 10, date: '2 days ago' },
-    // { id: 2, exercise: 'Overhead Extension', equipment: 'Dumbbell', weight: 18, reps: 12, date: '2 days ago' },
-  ];
-
   // expose a UI-facing disconnect that also clears UI state
   const handleDisconnect = () => {
     disconnect();
@@ -316,20 +327,96 @@ export default function Dashboard() {
     }
   };
 
-  // Real workout history data - empty by default, will be populated from backend/database
+  // Build workout history from real Firebase data
+  const buildWorkoutDaysByMonth = () => {
+    const workoutDaysByMonth = {};
+    
+    logs.forEach((log) => {
+      // Handle both timestamp formats
+      const createdAt = log.timestamps?.started?.toDate?.() || 
+                        log.timestamps?.created?.toDate?.() ||
+                        (log.startTime ? new Date(log.startTime) : null);
+      if (createdAt) {
+        const month = createdAt.getMonth();
+        const day = createdAt.getDate();
+        
+        if (!workoutDaysByMonth[month]) {
+          workoutDaysByMonth[month] = [];
+        }
+        
+        if (!workoutDaysByMonth[month].includes(day)) {
+          workoutDaysByMonth[month].push(day);
+        }
+      }
+    });
+    
+    return workoutDaysByMonth;
+  };
+
+  // Real workout history data from Firestore
   const workoutHistory = {
-    // Store workout days per month for the last 3 months (empty by default)
-    workoutDaysByMonth: {
-      // 10: [], // November - no workouts logged
-      // 0: [],  // January - no workouts logged  
-      // 1: [],  // February - no workouts logged
-    },
-    lastWorkout: null, // No last workout yet
+    workoutDaysByMonth: buildWorkoutDaysByMonth(),
+    lastWorkout: lastWorkout,
   };
 
   // Check if user has any workout history
-  const hasWorkoutHistory = Object.values(workoutHistory.workoutDaysByMonth).some(days => days && days.length > 0);
+  const hasWorkoutHistory = hasWorkouts;
   const hasRecentWorkouts = recentWorkouts && recentWorkouts.length > 0;
+
+  // Build workoutLogs for ActivityOverview from calendarData
+  // Format: { dayNumber: [{ id, exercise, equipment, duration, startTime, exerciseCount }] }
+  const buildWorkoutLogsForCalendar = () => {
+    const workoutLogs = {};
+    const today = new Date();
+    const currentMonth = today.getMonth();
+    const currentYear = today.getFullYear();
+    
+    // Get calendar data for current month
+    const monthKey = `${currentYear}-${currentMonth}`;
+    const monthData = calendarData[monthKey] || {};
+    
+    // Also check logs directly for current month
+    logs.forEach((log) => {
+      // Handle both timestamp formats
+      const createdAt = log.timestamps?.started?.toDate?.() || 
+                        log.timestamps?.created?.toDate?.() ||
+                        (log.startTime ? new Date(log.startTime) : null);
+      if (!createdAt) return;
+      
+      // Only include current month
+      if (createdAt.getMonth() !== currentMonth || createdAt.getFullYear() !== currentYear) return;
+      
+      const day = createdAt.getDate();
+      
+      if (!workoutLogs[day]) {
+        workoutLogs[day] = [];
+      }
+      
+      // Handle both old format (log.exercise.name) and new format (log.exercise as string)
+      const exerciseName = log.exercise?.name || log.exercise || 'Unknown Exercise';
+      const equipment = log.exercise?.equipment || log.equipment || 'Unknown';
+      const totalReps = log.results?.totalReps || log.totalReps || 0;
+      const totalSets = log.results?.totalSets || (log.sets ? Object.keys(log.sets).length : 0);
+      const weight = log.planned?.weight || log.weight || 0;
+      
+      workoutLogs[day].push({
+        id: log.id,
+        exercise: exerciseName,
+        equipment: equipment,
+        duration: Math.round((log.results?.totalTime || 0) / 60), // Convert seconds to minutes
+        startTime: createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }),
+        exerciseCount: 1,
+        status: log.status || 'completed',
+        reps: totalReps,
+        sets: totalSets,
+        weight: weight,
+      });
+    });
+    
+    return workoutLogs;
+  };
+
+  const workoutLogsForCalendar = buildWorkoutLogsForCalendar();
 
   // Generate 3-month mini calendar data
   const generate3MonthCalendar = () => {
@@ -421,31 +508,129 @@ export default function Dashboard() {
 
   const currentWeek = generateCurrentWeek();
 
-  // Load lifted data for different time periods (sample data with days of week for empty state)
-  const loadLiftedDataByPeriod = {
-    day: [
-      // Empty by default - no workout data logged yet
-      // Example structure:
-      // { time: '6 AM', load: 0 },
-      // { time: '9 AM', load: 12 },
-    ],
-    week: [
-      // Sample data to show axes with days of the week
-      { day: 'Mon', load: 85 },
-      { day: 'Tue', load: 92 },
-      { day: 'Wed', load: 78 },
-      { day: 'Thu', load: 95 },
-      { day: 'Fri', load: 88 },
-      { day: 'Sat', load: 102 },
-      { day: 'Sun', load: 0 },
-    ],
-    month: [
-      // Empty by default - no workout data logged yet
-      // Example structure:
-      // { week: 'W1', load: 85 },
-      // { week: 'W2', load: 92 },
-    ],
+  // Calculate load from real workout data
+  // Load formula: weight × reps (volume-load)
+  const calculateLoadData = () => {
+    const today = new Date();
+    const dayOfWeek = today.getDay();
+    const sunday = new Date(today);
+    sunday.setDate(today.getDate() - dayOfWeek);
+    
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    
+    // Initialize week data with 0 load for each day
+    const weekData = dayNames.map(day => ({ day, load: 0 }));
+    
+    // Calculate load from workout logs
+    logs.forEach((log) => {
+      // Handle both timestamp formats
+      const createdAt = log.timestamps?.started?.toDate?.() || 
+                        log.timestamps?.created?.toDate?.() ||
+                        (log.startTime ? new Date(log.startTime) : null);
+      
+      console.log('[Dashboard] Processing log:', {
+        id: log.id,
+        createdAt,
+        startTime: log.startTime,
+        timestampsStarted: log.timestamps?.started,
+        weight: log.planned?.weight || log.weight,
+        totalReps: log.results?.totalReps || log.totalReps
+      });
+      
+      if (!createdAt) {
+        console.log('[Dashboard] Skipping log - no valid date');
+        return;
+      }
+      
+      // Check if workout is in current week
+      const logDate = new Date(createdAt);
+      logDate.setHours(0, 0, 0, 0);
+      const sundayDate = new Date(sunday);
+      sundayDate.setHours(0, 0, 0, 0);
+      const saturdayDate = new Date(sunday);
+      saturdayDate.setDate(sunday.getDate() + 6);
+      saturdayDate.setHours(23, 59, 59, 999);
+      
+      console.log('[Dashboard] Date check:', {
+        logDate: logDate.toISOString(),
+        sundayDate: sundayDate.toISOString(),
+        saturdayDate: saturdayDate.toISOString(),
+        isInWeek: logDate >= sundayDate && logDate <= saturdayDate
+      });
+      
+      if (logDate >= sundayDate && logDate <= saturdayDate) {
+        const dayIndex = logDate.getDay();
+        // Handle both data formats
+        const weight = log.planned?.weight || log.weight || 0;
+        const reps = log.results?.totalReps || log.totalReps || 0;
+        const load = weight * reps; // Volume load formula
+        weekData[dayIndex].load += load;
+        console.log('[Dashboard] Added load:', { dayIndex, dayName: dayNames[dayIndex], weight, reps, load });
+      }
+    });
+    
+    console.log('[Dashboard] Week data before reorder:', weekData);
+    
+    // Reorder to start from Monday
+    const reorderedWeek = [
+      weekData[1], // Mon
+      weekData[2], // Tue
+      weekData[3], // Wed
+      weekData[4], // Thu
+      weekData[5], // Fri
+      weekData[6], // Sat
+      weekData[0], // Sun
+    ];
+    
+    return reorderedWeek;
   };
+
+  // Calculate month data (weekly totals)
+  const calculateMonthLoadData = () => {
+    const today = new Date();
+    const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    
+    // Group by week
+    const weeks = { W1: 0, W2: 0, W3: 0, W4: 0, W5: 0 };
+    
+    logs.forEach((log) => {
+      // Handle both timestamp formats
+      const createdAt = log.timestamps?.started?.toDate?.() || 
+                        log.timestamps?.created?.toDate?.() ||
+                        (log.startTime ? new Date(log.startTime) : null);
+      if (!createdAt) return;
+      
+      const logDate = new Date(createdAt);
+      
+      // Check if in current month
+      if (logDate.getMonth() === today.getMonth() && logDate.getFullYear() === today.getFullYear()) {
+        const dayOfMonth = logDate.getDate();
+        const weekNum = Math.ceil(dayOfMonth / 7);
+        const weekKey = `W${weekNum}`;
+        
+        // Handle both data formats
+        const weight = log.planned?.weight || log.weight || 0;
+        const reps = log.results?.totalReps || log.totalReps || 0;
+        const load = weight * reps;
+        
+        if (weeks[weekKey] !== undefined) {
+          weeks[weekKey] += load;
+        }
+      }
+    });
+    
+    return Object.entries(weeks).map(([week, load]) => ({ week, load }));
+  };
+
+  // Load lifted data for different time periods (real data from Firestore)
+  const loadLiftedDataByPeriod = {
+    day: [], // Day view not implemented yet
+    week: calculateLoadData(),
+    month: calculateMonthLoadData(),
+  };
+
+  console.log('[Dashboard] loadLiftedDataByPeriod.week:', loadLiftedDataByPeriod.week);
+  console.log('[Dashboard] logs count:', logs.length);
 
   // Get data based on current view
   const currentLoadData = loadLiftedDataByPeriod[liftViewType] || [];
@@ -454,21 +639,99 @@ export default function Dashboard() {
   const maxLoad = currentLoadData.length > 0 ? Math.max(...currentLoadData.map(item => item.load)) : 0;
   const hasChartData = currentLoadData.length > 0 && currentLoadData.some(item => item.load > 0);
 
-  // Trend data - Backend will provide this comparison data
-  // Mock data for development showing different trend scenarios
-  const loadTrendData = {
-    difference: 12.5, // kg difference from last week (positive = up, negative = down, 0 = neutral)
-    percentChange: 8.3, // percentage change from last week
-    period: 'last week' // comparison period text
+  console.log('[Dashboard] Chart data:', { currentLoadData, totalLoad, maxLoad, hasChartData });
+
+  // Calculate trend data from real workout logs
+  const calculateTrendData = () => {
+    const today = new Date();
+    const oneWeekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const twoWeeksAgo = new Date(today.getTime() - 14 * 24 * 60 * 60 * 1000);
+    
+    let thisWeekLoad = 0;
+    let lastWeekLoad = 0;
+    
+    logs.forEach((log) => {
+      // Handle both timestamp formats
+      const createdAt = log.timestamps?.started?.toDate?.() || 
+                        log.timestamps?.created?.toDate?.() ||
+                        (log.startTime ? new Date(log.startTime) : null);
+      if (!createdAt) return;
+      
+      // Handle both data formats
+      const weight = log.planned?.weight || log.weight || 0;
+      const reps = log.results?.totalReps || log.totalReps || 0;
+      const load = weight * reps;
+      
+      if (createdAt >= oneWeekAgo) {
+        thisWeekLoad += load;
+      } else if (createdAt >= twoWeeksAgo) {
+        lastWeekLoad += load;
+      }
+    });
+    
+    const difference = thisWeekLoad - lastWeekLoad;
+    const percentChange = lastWeekLoad > 0 
+      ? ((difference / lastWeekLoad) * 100) 
+      : (thisWeekLoad > 0 ? 100 : 0);
+    
+    return {
+      difference: Math.round(difference * 10) / 10,
+      percentChange: Math.round(percentChange * 10) / 10,
+      period: 'last week',
+      thisWeekLoad,
+      lastWeekLoad,
+    };
   };
 
-  // Equipment distribution data - Backend will provide this per month
-  // Mock data showing distribution of exercises per equipment type
-  const equipmentDistributionData = [
-    { name: 'Dumbbell', value: 45, icon: '🏋️', color: '#3b82f6' },     // Blue
-    { name: 'Barbell', value: 30, icon: '⚖️', color: '#ef4444' },      // Red
-    { name: 'Stack', value: 25, icon: '⛓️', color: '#eab308' }, // Yellow
-  ];
+  const loadTrendData = calculateTrendData();
+
+  // Build equipment distribution from real data
+  const buildEquipmentDistribution = () => {
+    const colorMap = {
+      'Dumbbell': '#3B82F6',     // Blue
+      'Dumbell': '#3B82F6',      // Blue (alternate spelling)
+      'Barbell': '#FBBF24',      // Yellow
+      'Weight Stack': '#EF4444', // Red
+      'custom': '#7c3aed',       // Purple for unknown
+    };
+    
+    const distribution = {};
+    let total = 0;
+    
+    logs.forEach((log) => {
+      // Handle both data formats
+      const equipment = log.exercise?.equipment || log.equipment;
+      if (equipment) {
+        distribution[equipment] = (distribution[equipment] || 0) + 1;
+        total++;
+      }
+    });
+    
+    return Object.entries(distribution).map(([name, count]) => ({
+      name,
+      value: total > 0 ? Math.round((count / total) * 100) : 0,
+      count,
+      color: colorMap[name] || '#7c3aed',
+    }));
+  };
+
+  const equipmentDistributionData = buildEquipmentDistribution();
+
+  // Build movement quality data from real workout logs
+  // If no workouts, return null to show empty state
+  const buildMovementQualityData = () => {
+    if (!hasWorkouts || logs.length === 0) {
+      return null; // No data - component will show empty state
+    }
+    
+    // Group workouts by equipment type and calculate quality metrics
+    // For now, we don't have actual movement quality data from IMU
+    // This returns null to indicate "no data available yet"
+    // Once ML model provides classification, this can be populated
+    return null;
+  };
+
+  const movementQualityData = buildMovementQualityData();
 
   // Equipment icon mapper
   const getEquipmentIcon = (equipment) => {
@@ -524,15 +787,12 @@ export default function Dashboard() {
       <main className="w-full px-4 sm:px-6 md:px-8 pt-10 sm:pt-10 pb-4 md:pb-6">
             <div className="w-full max-w-4xl mx-auto space-y-4">
               {/* Top bar: greetings left, avatar right */}
-              <div 
-                ref={headerAnimation.ref}
-                className={`flex items-center justify-between scroll-animate-fade-up ${headerAnimation.isVisible ? 'scroll-animate-visible' : ''}`}
-              >
+              <div className="flex items-center justify-between content-fade-up-1">
                 {/* Greetings on left */}
                 <div className="flex flex-col leading-tight">
                   <span className="text-sm text-white/40 mb-1">Start your training today!</span>
                   <span className="text-2xl sm:text-3xl font-bold text-white">
-                    Hi, <span style={{ color: getUserTextColor(user?.uid) }}>
+                    Hi, <span style={{ color: getNameTextColor(userProfile, user?.uid) }}>
                       {getFirstWord(userProfile?.username || profile?.username || user?.displayName || 'User')}
                     </span>
                   </span>
@@ -582,10 +842,7 @@ export default function Dashboard() {
               </div>
 
           {/* Connection status pill */}
-          <div 
-            ref={connectPillAnimation.ref}
-            className={`flex justify-center scroll-animate-fade-up ${connectPillAnimation.isVisible ? 'scroll-animate-visible' : ''}`}
-          >
+          <div className="flex justify-center content-fade-up-2">
             <ConnectPill 
               connected={connected}
               device={device}
@@ -599,18 +856,12 @@ export default function Dashboard() {
           </div>
 
           {/* Overview label outside the carousel */}
-          <div 
-            ref={overviewLabelAnimation.ref}
-            className={`flex items-center justify-between mb-1 md:mb-3 scroll-animate-fade-up ${overviewLabelAnimation.isVisible ? 'scroll-animate-visible' : ''}`}
-          >
+          <div className="flex items-center justify-between mb-1 md:mb-3 content-fade-up-2">
             <h2 className="text-lg sm:text-xl font-semibold text-white">Overview</h2>
           </div>
 
           {/* Workout Streak Section - positioned under Overview */}
-          <div 
-            ref={streakAnimation.ref}
-            className={`scroll-animate-fade-up ${streakAnimation.isVisible ? 'scroll-animate-visible' : ''}`}
-          >
+          <div className="content-fade-up-2">
             <WorkoutStreak 
               streakDays={streakData.currentStreak}
               lastWorkoutDate={streakData.lastWorkoutDate ? new Date(streakData.lastWorkoutDate.seconds * 1000).toISOString() : null}
@@ -619,10 +870,7 @@ export default function Dashboard() {
           </div>
 
           {/* Overview Card Carousel */}
-          <section 
-            ref={carouselAnimation.ref}
-            className={`mb-4 md:mb-6 -mx-4 sm:mx-0 scroll-animate-fade-up ${carouselAnimation.isVisible ? 'scroll-animate-visible' : ''}`}
-          >
+          <section className="mb-4 md:mb-6 -mx-4 sm:mx-0 content-fade-up-3">
             <div>
               {/* Mobile Carousel - Scroll-snap centered with peek */}
               <div className="block md:hidden mb-3">
@@ -635,6 +883,7 @@ export default function Dashboard() {
                     <ActivityOverview
                       currentWeek={currentWeek}
                       calendar3Months={calendar3Months}
+                      workoutLogs={workoutLogsForCalendar}
                       onDaySelect={(day) => router.push(`/history?day=${day.day}`)}
                       onMonthSelect={(month, year) => router.push(`/history?month=${month}&year=${year}`)}
                       variant="mobile"
@@ -701,6 +950,7 @@ export default function Dashboard() {
                   <ActivityOverview
                     currentWeek={currentWeek}
                     calendar3Months={calendar3Months}
+                    workoutLogs={workoutLogsForCalendar}
                     onDaySelect={(day) => router.push(`/history?day=${day.day}`)}
                     onMonthSelect={(month, year) => router.push(`/history?month=${month}&year=${year}`)}
                     variant="desktop"
@@ -750,10 +1000,7 @@ export default function Dashboard() {
           </section>
 
           {/* Load Lifted Section */}
-          <section 
-            ref={loadLiftedAnimation.ref}
-            className={`mb-4 md:mb-6 scroll-animate-fade-up ${loadLiftedAnimation.isVisible ? 'scroll-animate-visible' : ''}`}
-          >
+          <section className="mb-4 md:mb-6 content-fade-up-3">
             <div className="bg-black rounded-3xl p-5 sm:p-6 shadow-2xl">
               {/* Header with title and stats */}
               <div className="flex items-start justify-between mb-4">
@@ -807,6 +1054,15 @@ export default function Dashboard() {
                       labelStyle={{ color: '#fef08a' }}
                       formatter={(value) => [`${value} kg`, 'Load']}
                     />
+                    <Line
+                      type="monotone"
+                      dataKey="load"
+                      stroke="#fef08a"
+                      strokeWidth={3}
+                      dot={{ fill: '#fef08a', strokeWidth: 2, r: 4 }}
+                      activeDot={{ r: 6, fill: '#fef08a' }}
+                      animationDuration={500}
+                    />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -814,33 +1070,27 @@ export default function Dashboard() {
           </section>
 
           {/* Weekly Comparison Card - Full width gray card */}
-          <section 
-            ref={trendAnimation.ref}
-            className={`mb-4 md:mb-5 scroll-animate-fade-up ${trendAnimation.isVisible ? 'scroll-animate-visible' : ''}`}
-          >
+          <section className="mb-4 md:mb-5 content-fade-up-3">
             <LoadTrendIndicator
               difference={loadTrendData.difference}
               percentChange={loadTrendData.percentChange}
               period={loadTrendData.period}
-              currentTotal={540}
-              previousTotal={527.5}
+              currentTotal={loadTrendData.thisWeekLoad}
+              previousTotal={loadTrendData.lastWeekLoad}
+              hasData={logs.length > 0}
             />
           </section>
 
           {/* Two half-width cards side by side */}
-          <section 
-            ref={halfCardsAnimation.ref}
-            className={`mb-4 md:mb-6 scroll-animate-fade-up ${halfCardsAnimation.isVisible ? 'scroll-animate-visible' : ''}`}
-          >
+          <section className="mb-4 md:mb-6 content-fade-up-4">
             <div className="grid grid-cols-2 gap-4">
               {/* Left: Equipment Distribution */}
-              <EquipmentDistributionCard
-                data={equipmentDistributionData}
-                period="This Month"
-                animate={halfCardsAnimation.isVisible}
-              />
-              
-              {/* Right: Placeholder for future feature */}
+            <EquipmentDistributionCard
+              data={equipmentDistributionData}
+              period="This Month"
+              animate={true}
+              hasData={equipmentDistributionData.length > 0}
+            />              {/* Right: Placeholder for future feature */}
               <PlaceholderCard
                 title="Quick Stats"
                 subtitle="Coming soon"
@@ -849,13 +1099,12 @@ export default function Dashboard() {
           </section>
 
           {/* Movement Quality Card - Weekly aggregated IMU metrics */}
-          <section 
-            ref={movementQualityAnimation.ref}
-            className={`mb-4 md:mb-5 scroll-animate-fade-up ${movementQualityAnimation.isVisible ? 'scroll-animate-visible' : ''}`}
-          >
+          <section className="mb-4 md:mb-5 content-fade-up-4">
             <MovementQuality
-              loading={false}
-              animate={movementQualityAnimation.isVisible}
+              equipmentData={movementQualityData}
+              hasData={logs.length > 0}
+              loading={workoutsLoading}
+              animate={true}
               onFilterChange={(filter) => console.log('Filter changed:', filter)}
             />
           </section>

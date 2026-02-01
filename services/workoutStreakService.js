@@ -16,6 +16,10 @@ import {
 /**
  * Workout Streak Service
  * Manages user workout streaks and statistics
+ * 
+ * Streak data is stored in two places for flexibility:
+ * 1. `userStreaks` collection - Easy to view/edit in Firebase console
+ * 2. `users/{userId}/workoutStreak` - For backward compatibility
  */
 export class WorkoutStreakService {
   
@@ -28,32 +32,46 @@ export class WorkoutStreakService {
    */
   static async updateWorkoutStreak(userId, workoutDate = new Date()) {
     try {
+      // Try to get streak from userStreaks collection first, then fallback to users collection
+      const streakRef = doc(db, 'userStreaks', userId);
       const userRef = doc(db, 'users', userId);
-      const userDoc = await getDoc(userRef);
       
-      if (!userDoc.exists()) {
-        throw new Error('User document not found');
+      // Try userStreaks first
+      let streakDoc = await getDoc(streakRef);
+      let currentStreak;
+      
+      if (streakDoc.exists()) {
+        currentStreak = streakDoc.data();
+      } else {
+        // Fallback to users collection
+        const userDoc = await getDoc(userRef);
+        if (userDoc.exists()) {
+          currentStreak = userDoc.data().workoutStreak || null;
+        }
+      }
+      
+      // Default values if no streak data found
+      if (!currentStreak) {
+        currentStreak = {
+          currentStreak: 0,
+          longestStreak: 0,
+          lastWorkoutDate: null,
+          totalWorkoutDays: 0,
+          streakStartDate: null
+        };
       }
 
-      const userData = userDoc.data();
       const today = new Date(workoutDate);
       today.setHours(0, 0, 0, 0); // Start of day
       
       const yesterday = new Date(today);
       yesterday.setDate(yesterday.getDate() - 1);
 
-      // Get user's current streak data
-      const currentStreak = userData.workoutStreak || {
-        currentStreak: 0,
-        longestStreak: 0,
-        lastWorkoutDate: null,
-        totalWorkoutDays: 0,
-        streakStartDate: null
-      };
-
       // Check if user already worked out today
       const lastWorkoutDate = currentStreak.lastWorkoutDate 
-        ? new Date(currentStreak.lastWorkoutDate.seconds * 1000) 
+        ? (currentStreak.lastWorkoutDate.seconds 
+          ? new Date(currentStreak.lastWorkoutDate.seconds * 1000)
+          : new Date(currentStreak.lastWorkoutDate))
         : null;
 
       if (lastWorkoutDate) {
@@ -85,9 +103,10 @@ export class WorkoutStreakService {
       const newLongestStreak = Math.max(newStreak, currentStreak.longestStreak);
       
       // Increment total workout days
-      const newTotalWorkoutDays = currentStreak.totalWorkoutDays + 1;
+      const newTotalWorkoutDays = (currentStreak.totalWorkoutDays || 0) + 1;
 
       const updatedStreakData = {
+        userId: userId,
         currentStreak: newStreak,
         longestStreak: newLongestStreak,
         lastWorkoutDate: Timestamp.fromDate(today),
@@ -96,10 +115,13 @@ export class WorkoutStreakService {
         lastUpdated: Timestamp.now()
       };
 
-      // Update user document
-      await updateDoc(userRef, {
+      // Save to userStreaks collection (primary - easy to manage in Firebase console)
+      await setDoc(streakRef, updatedStreakData, { merge: true });
+      
+      // Also update users collection for backward compatibility
+      await setDoc(userRef, {
         workoutStreak: updatedStreakData
-      });
+      }, { merge: true });
 
       return updatedStreakData;
     } catch (error) {
@@ -115,10 +137,26 @@ export class WorkoutStreakService {
    */
   static async getUserStreakData(userId) {
     try {
-      const userRef = doc(db, 'users', userId);
-      const userDoc = await getDoc(userRef);
+      // Try userStreaks collection first
+      const streakRef = doc(db, 'userStreaks', userId);
+      let streakDoc = await getDoc(streakRef);
       
-      if (!userDoc.exists()) {
+      let streakData;
+      
+      if (streakDoc.exists()) {
+        streakData = streakDoc.data();
+      } else {
+        // Fallback to users collection
+        const userRef = doc(db, 'users', userId);
+        const userDoc = await getDoc(userRef);
+        
+        if (userDoc.exists()) {
+          streakData = userDoc.data().workoutStreak;
+        }
+      }
+      
+      // Default values
+      if (!streakData) {
         return {
           currentStreak: 0,
           longestStreak: 0,
@@ -128,18 +166,11 @@ export class WorkoutStreakService {
         };
       }
 
-      const userData = userDoc.data();
-      const streakData = userData.workoutStreak || {
-        currentStreak: 0,
-        longestStreak: 0,
-        lastWorkoutDate: null,
-        totalWorkoutDays: 0,
-        streakStartDate: null
-      };
-
       // Check if streak should be reset (if last workout was more than 1 day ago)
       if (streakData.lastWorkoutDate && streakData.currentStreak > 0) {
-        const lastWorkout = new Date(streakData.lastWorkoutDate.seconds * 1000);
+        const lastWorkout = streakData.lastWorkoutDate.seconds 
+          ? new Date(streakData.lastWorkoutDate.seconds * 1000)
+          : new Date(streakData.lastWorkoutDate);
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         lastWorkout.setHours(0, 0, 0, 0);
@@ -154,10 +185,13 @@ export class WorkoutStreakService {
             streakStartDate: null
           };
           
-          // Update in database
-          await updateDoc(userRef, {
+          // Update in both collections
+          await setDoc(streakRef, resetStreakData, { merge: true });
+          
+          const userRef = doc(db, 'users', userId);
+          await setDoc(userRef, {
             workoutStreak: resetStreakData
-          });
+          }, { merge: true });
           
           return resetStreakData;
         }

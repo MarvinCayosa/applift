@@ -171,11 +171,15 @@ export default function EquipmentSelectionModal({ isOpen, onClose, onSelect, con
                 <div className="text-left flex-1">
                   <div className="text-white font-semibold text-lg tracking-tight">{equipment.type}</div>
                 </div>
-                <img 
-                  src="/images/icons/arrow-point-to-right.png" 
-                  alt="" 
-                  className="w-5 h-5 opacity-40"
-                />
+                <svg 
+                  className="w-5 h-5 opacity-40" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 18l6-6-6-6" />
+                </svg>
               </button>
             );
           })}

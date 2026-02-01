@@ -5,9 +5,10 @@ const WorkoutCard = ({ workout, onWorkoutClick, selectedDay }) => {
   // Equipment color mapping (matching EquipmentDistributionCard)
   const getEquipmentColor = (equipment) => {
     const colorMap = {
-      'Dumbbell': '#FF4D4D',     // Red
-      'Barbell': '#3B82F6',      // Blue  
-      'Weight Stack': '#FBBF24', // Yellow
+      'Dumbbell': '#3B82F6',     // Blue
+      'Dumbell': '#3B82F6',      // Blue (alternate spelling)
+      'Barbell': '#FBBF24',      // Yellow  
+      'Weight Stack': '#EF4444', // Red
     };
     return colorMap[equipment] || '#7c3aed';
   };
@@ -163,51 +164,9 @@ export default function ActivityOverview({
     }
   }, [currentWeek, selectedDay]);
 
-  // Use workoutLogs from props, fallback to mock data for development
-  const currentWorkoutLogs = Object.keys(workoutLogs).length > 0 ? workoutLogs : {
-    30: [
-      {
-        id: 'workout_001',
-        exercise: 'Flat Bench Press',
-        equipment: 'Barbell',
-        duration: 45,
-        startTime: '07:30',
-        exerciseCount: 3,
-        status: 'completed'
-      },
-      {
-        id: 'workout_002', 
-        exercise: 'Concentration Curls',
-        equipment: 'Dumbbell',
-        duration: 20,
-        startTime: '18:00',
-        exerciseCount: 1,
-        status: 'completed'
-      }
-    ],
-    29: [
-      {
-        id: 'workout_003',
-        exercise: 'Lateral Pulldown',
-        equipment: 'Weight Stack', 
-        duration: 50,
-        startTime: '08:00',
-        exerciseCount: 4,
-        status: 'completed'
-      }
-    ],
-    28: [
-      {
-        id: 'workout_004',
-        exercise: 'Front Squats',
-        equipment: 'Barbell',
-        duration: 60,
-        startTime: '09:15',
-        exerciseCount: 5,
-        status: 'completed'
-      }
-    ]
-  }
+  // Use workoutLogs from props (real data from Firestore)
+  // No mock data - empty state shows "No workouts logged"
+  const currentWorkoutLogs = workoutLogs || {};
 
   // Get current month name
   const getCurrentMonthName = () => {

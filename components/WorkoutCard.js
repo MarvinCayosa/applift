@@ -7,9 +7,10 @@ export default function WorkoutCard({ workout }) {
   // Map equipment to background color
   const getEquipmentColor = (equipment) => {
     const colorMap = {
-      'Barbell': '#f0b233', // gold
-      'Dumbbell': '#3B82F6', // blue
-      'Weight Stack': '#F97316', // orange
+      'Barbell': '#FBBF24', // Yellow
+      'Dumbbell': '#3B82F6', // Blue
+      'Dumbell': '#3B82F6', // Blue (alternate spelling)
+      'Weight Stack': '#EF4444', // Red
     };
     return colorMap[equipment] || '#7c3aed'; // default to purple
   };
@@ -36,11 +37,15 @@ export default function WorkoutCard({ workout }) {
         <div className="text-xs text-white/70 mt-0.5 truncate">{workout.weight} kg · {workout.reps} reps</div>
       </div>
       <div className="text-white/40">
-        <img 
-          src="/images/icons/arrow-point-to-right.png" 
-          alt="" 
-          className="w-4 h-4 opacity-40"
-        />
+        <svg 
+          className="w-4 h-4" 
+          fill="none" 
+          stroke="currentColor" 
+          viewBox="0 0 24 24"
+          strokeWidth={2}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 18l6-6-6-6" />
+        </svg>
       </div>
     </div>
   );

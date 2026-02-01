@@ -4,9 +4,10 @@ import EquipmentIcon from './EquipmentIcon'
 export default function EquipmentTag({ equipment }) {
   const getEquipmentColor = (type) => {
     const map = {
-      Barbell: '#fbbf24', // yellow
-      Dumbbell: '#3b82f6', // blue
-      'Weight Stack': '#f97316', // orange
+      Barbell: '#FBBF24', // Yellow
+      Dumbbell: '#3B82F6', // Blue
+      Dumbell: '#3B82F6', // Blue (alternate spelling)
+      'Weight Stack': '#EF4444', // Red
     }
     return map[type] || '#7c3aed'
   }
