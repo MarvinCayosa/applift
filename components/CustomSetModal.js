@@ -8,6 +8,7 @@ const triggerHaptic = () => {
 };
 
 // Ruler Picker - For weight with 0.5 increments (starting at 1)
+// UI matches the reference image with vertical tick marks and center indicator
 function RulerPicker({ value, onValueChange, unit, onUnitChange }) {
   const wheelRef = useRef(null);
   const scrollTimeoutRef = useRef(null);
@@ -15,7 +16,7 @@ function RulerPicker({ value, onValueChange, unit, onUnitChange }) {
   const [displayValue, setDisplayValue] = useState(value);
   
   const config = { min: 1, max: 200, step: 0.5 };
-  const tickWidth = 14;
+  const tickWidth = 20;
   const totalTicks = Math.floor((config.max - config.min) / config.step) + 1;
 
   const valueToIndex = (val) => Math.round((val - config.min) / config.step);
@@ -78,62 +79,73 @@ function RulerPicker({ value, onValueChange, unit, onUnitChange }) {
     return val % 1 === 0 ? `${val}.0` : val.toFixed(1);
   };
 
+  // Major tick every 1kg, minor tick every 0.5kg
   const isMajorTick = (tickValue) => tickValue % 1 === 0;
+  // Show number label every 0.5kg (like 75.5, 76.0, 76.5)
+  const showLabel = (tickValue) => tickValue % 0.5 === 0;
 
   return (
     <div className="relative">
-      <div className="text-center mb-4">
+      {/* Weight Label */}
+      <div className="text-center mb-1">
+        <p className="text-sm text-white/50 font-medium">Weight</p>
+      </div>
+      
+      {/* Large value display with kg unit */}
+      <div className="text-center mb-2 flex items-baseline justify-center gap-2">
         <span 
-          className="text-6xl font-bold text-white tabular-nums"
+          className="text-7xl font-bold text-white tabular-nums tracking-tight"
           style={{ 
             fontVariantNumeric: 'tabular-nums',
-            letterSpacing: '-0.02em',
+            letterSpacing: '-0.03em',
           }}
         >
           {formatValue(displayValue)}
         </span>
-        <button
-          type="button"
-          onClick={() => onUnitChange?.(unit === 'kg' ? 'lbs' : 'kg')}
-          className="ml-2 text-lg font-semibold text-white/40 hover:text-white/60 transition-colors"
-        >
-          {unit}
-        </button>
+        <span className="text-lg font-semibold text-violet-400">{unit}</span>
       </div>
 
+      {/* Center indicator - purple line inline with the ruler */}
       <div
-        className="absolute z-30 pointer-events-none left-1/2 -translate-x-1/2 bottom-0"
+        className="absolute z-30 pointer-events-none left-1/2 -translate-x-1/2"
         style={{
-          width: '3px',
-          height: '40px',
-          backgroundColor: '#8b5cf6',
+          bottom: '0px',
+          width: '4px',
+          height: '50px',
+          background: 'linear-gradient(to bottom, #8B5CF6, #7C3AED)',
           borderRadius: '2px',
         }}
       />
 
+      {/* Left fade gradient */}
       <div
-        className="absolute bottom-0 left-0 z-20 pointer-events-none h-14"
+        className="absolute bottom-0 left-0 z-20 pointer-events-none"
         style={{
-          width: '50px',
+          width: '80px',
+          height: '85px',
           background: 'linear-gradient(to right, rgb(38,38,38) 0%, transparent 100%)',
         }}
       />
 
+      {/* Right fade gradient */}
       <div
-        className="absolute bottom-0 right-0 z-20 pointer-events-none h-14"
+        className="absolute bottom-0 right-0 z-20 pointer-events-none"
         style={{
-          width: '50px',
+          width: '80px',
+          height: '85px',
           background: 'linear-gradient(to left, rgb(38,38,38) 0%, transparent 100%)',
         }}
       />
 
+      {/* Scrollable ruler */}
       <div
         ref={wheelRef}
-        className="w-full h-14 overflow-x-scroll scrollbar-hide flex items-end"
+        className="w-full h-24 overflow-x-scroll scrollbar-hide flex items-end"
         onScroll={handleScroll}
+        style={{ touchAction: 'pan-x' }}
       >
         {/* Left padding: 50% minus half of tick width to center the first tick */}
-        <div style={{ minWidth: 'calc(50% - 7px)' }} className="flex-shrink-0" />
+        <div style={{ minWidth: 'calc(50% - 10px)' }} className="flex-shrink-0" />
         {ticks.map(({ index, value: tickValue }) => {
           const isMajor = isMajorTick(tickValue);
           return (
@@ -142,19 +154,20 @@ function RulerPicker({ value, onValueChange, unit, onUnitChange }) {
               className="flex-shrink-0 flex flex-col items-center justify-end"
               style={{ width: tickWidth }}
             >
+              {/* Tick mark */}
               <div
                 style={{ 
-                  width: isMajor ? '2px' : '1px',
-                  height: isMajor ? '28px' : '14px',
-                  backgroundColor: isMajor ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.2)',
-                  borderRadius: '1px',
+                  width: isMajor ? '3px' : '2px',
+                  height: isMajor ? '42px' : '24px',
+                  backgroundColor: isMajor ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.35)',
+                  borderRadius: '1.5px',
                 }}
               />
             </div>
           );
         })}
         {/* Right padding: 50% minus half of tick width */}
-        <div style={{ minWidth: 'calc(50% - 7px)' }} className="flex-shrink-0" />
+        <div style={{ minWidth: 'calc(50% - 10px)' }} className="flex-shrink-0" />
       </div>
     </div>
   );
@@ -366,13 +379,13 @@ export default function CustomSetModal({
     }, 250);
   };
 
-  // Touch handlers for swipe-down-to-dismiss
-  const handleTouchStart = (e) => {
+  // Touch handlers for swipe-down-to-dismiss - ONLY on handle area
+  const handleHandleTouchStart = (e) => {
     setDragStartY(e.touches[0].clientY);
     setIsDragging(true);
   };
 
-  const handleTouchMove = (e) => {
+  const handleHandleTouchMove = (e) => {
     if (!isDragging) return;
     const currentY = e.touches[0].clientY;
     const diff = currentY - dragStartY;
@@ -383,7 +396,7 @@ export default function CustomSetModal({
     }
   };
 
-  const handleTouchEnd = () => {
+  const handleHandleTouchEnd = () => {
     if (!isDragging) return;
     setIsDragging(false);
     
@@ -418,17 +431,19 @@ export default function CustomSetModal({
           transform: isDragging ? `translateY(${dragCurrentY}px)` : undefined,
           transition: isDragging ? 'none' : 'transform 0.25s ease-out',
         }}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
       >
         <div 
           className="rounded-t-3xl pt-3 pb-8 px-5"
           style={{ backgroundColor: 'rgb(38, 38, 38)' }}
         >
-          {/* Handle */}
-          <div className="flex justify-center mb-6">
-            <div className="w-9 h-1 rounded-full bg-white/20" />
+          {/* Handle - only this area allows swipe to dismiss */}
+          <div 
+            className="flex justify-center mb-6 py-2 cursor-grab active:cursor-grabbing"
+            onTouchStart={handleHandleTouchStart}
+            onTouchMove={handleHandleTouchMove}
+            onTouchEnd={handleHandleTouchEnd}
+          >
+            <div className="w-9 h-1 rounded-full bg-white/30" />
           </div>
 
           {/* Picker */}
