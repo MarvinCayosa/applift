@@ -13,34 +13,67 @@ import { getAuth } from 'firebase-admin/auth';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 
-// Initialize Firebase Admin if not already initialized
-if (!getApps().length) {
+// Lazy initialization - will be initialized on first request
+let firebaseInitialized = false;
+let firebaseInitError = null;
+let storage = null;
+let storageInitError = null;
+
+/**
+ * Initialize Firebase Admin on demand
+ */
+function initFirebase() {
+  if (firebaseInitialized || firebaseInitError) return;
+  
   try {
-    initializeApp({
-      credential: cert({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-      }),
-    });
+    if (!getApps().length) {
+      const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+      
+      if (!process.env.FIREBASE_PROJECT_ID || !process.env.FIREBASE_CLIENT_EMAIL || !privateKey) {
+        throw new Error('Missing Firebase environment variables');
+      }
+      
+      initializeApp({
+        credential: cert({
+          projectId: process.env.FIREBASE_PROJECT_ID,
+          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+          privateKey: privateKey,
+        }),
+      });
+    }
+    firebaseInitialized = true;
+    console.log('[IMU Stream API] Firebase initialized');
   } catch (error) {
     console.error('Firebase Admin initialization error:', error);
+    firebaseInitError = error;
   }
 }
 
-// Initialize Google Cloud Storage with separate credentials
-let storage;
-try {
-  storage = new Storage({
-    projectId: process.env.GCS_PROJECT_ID,
-    credentials: {
-      client_email: process.env.GCS_CLIENT_EMAIL,
-      private_key: process.env.GCS_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-    },
-  });
-  console.log('[IMU Stream API] GCS initialized with project:', process.env.GCS_PROJECT_ID);
-} catch (error) {
-  console.error('GCS initialization error:', error);
+/**
+ * Initialize GCS on demand
+ */
+function initGCS() {
+  if (storage || storageInitError) return;
+  
+  try {
+    const privateKey = process.env.GCS_PRIVATE_KEY?.replace(/\\n/g, '\n');
+    
+    if (!process.env.GCS_PROJECT_ID || !process.env.GCS_CLIENT_EMAIL || !privateKey) {
+      throw new Error('Missing GCS environment variables');
+    }
+    
+    storage = new Storage({
+      projectId: process.env.GCS_PROJECT_ID,
+      credentials: {
+        client_email: process.env.GCS_CLIENT_EMAIL,
+        private_key: privateKey,
+      },
+    });
+    console.log('[IMU Stream API] GCS initialized with project:', process.env.GCS_PROJECT_ID);
+  } catch (error) {
+    console.error('GCS initialization error:', error);
+    storageInitError = error;
+  }
 }
 
 const BUCKET_NAME = process.env.GCS_BUCKET_NAME || 'applift-imu-data';
@@ -145,6 +178,29 @@ export default async function handler(req, res) {
       error: 'Method not allowed',
       allowedMethods: ['POST'],
       received: req.method 
+    });
+  }
+
+  // Initialize services on demand
+  initFirebase();
+  initGCS();
+
+  // Check for initialization errors
+  if (firebaseInitError) {
+    console.error('[IMU Stream API] Firebase init error:', firebaseInitError.message);
+    return res.status(500).json({
+      error: 'Service configuration error',
+      message: 'Firebase not properly configured',
+      details: process.env.NODE_ENV === 'development' ? firebaseInitError.message : undefined
+    });
+  }
+
+  if (storageInitError) {
+    console.error('[IMU Stream API] GCS init error:', storageInitError.message);
+    return res.status(500).json({
+      error: 'Service configuration error', 
+      message: 'Cloud Storage not properly configured',
+      details: process.env.NODE_ENV === 'development' ? storageInitError.message : undefined
     });
   }
 

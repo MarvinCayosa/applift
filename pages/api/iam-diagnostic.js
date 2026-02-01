@@ -1,12 +1,8 @@
 /**
  * IAM Permissions Diagnostic API
  * Tests both Firebase and GCS permissions
+ * Uses dynamic imports to prevent module-level failures
  */
-
-import { Storage } from '@google-cloud/storage';
-import { getAuth } from 'firebase-admin/auth';
-import { initializeApp, getApps, cert } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -22,20 +18,40 @@ export default async function handler(req, res) {
     timestamp: new Date().toISOString(),
     environment: process.env.VERCEL_ENV || process.env.NODE_ENV || 'development',
     projects: {
-      firebase: process.env.FIREBASE_PROJECT_ID,
-      gcs: process.env.GCS_PROJECT_ID,
+      firebase: process.env.FIREBASE_PROJECT_ID || 'NOT SET',
+      gcs: process.env.GCS_PROJECT_ID || 'NOT SET',
       mismatch: process.env.FIREBASE_PROJECT_ID !== process.env.GCS_PROJECT_ID
     },
     serviceAccounts: {
-      firebase: process.env.FIREBASE_CLIENT_EMAIL,
-      gcs: process.env.GCS_CLIENT_EMAIL,
+      firebase: process.env.FIREBASE_CLIENT_EMAIL || 'NOT SET',
+      gcs: process.env.GCS_CLIENT_EMAIL || 'NOT SET',
       mismatch: process.env.FIREBASE_CLIENT_EMAIL !== process.env.GCS_CLIENT_EMAIL
+    },
+    envVars: {
+      FIREBASE_PROJECT_ID: !!process.env.FIREBASE_PROJECT_ID,
+      FIREBASE_CLIENT_EMAIL: !!process.env.FIREBASE_CLIENT_EMAIL,
+      FIREBASE_PRIVATE_KEY: !!process.env.FIREBASE_PRIVATE_KEY,
+      GCS_PROJECT_ID: !!process.env.GCS_PROJECT_ID,
+      GCS_BUCKET_NAME: !!process.env.GCS_BUCKET_NAME,
+      GCS_CLIENT_EMAIL: !!process.env.GCS_CLIENT_EMAIL,
+      GCS_PRIVATE_KEY: !!process.env.GCS_PRIVATE_KEY,
     },
     tests: {}
   };
 
+  // Check if minimum env vars are present
+  if (!process.env.FIREBASE_PROJECT_ID || !process.env.FIREBASE_PRIVATE_KEY) {
+    diagnostics.tests.envCheck = { 
+      success: false, 
+      error: 'Missing Firebase environment variables. Please check Vercel settings.' 
+    };
+    return res.status(200).json(diagnostics);
+  }
+
   // Test 1: Firebase Admin Initialization
   try {
+    const { initializeApp, getApps, cert } = await import('firebase-admin/app');
+    
     if (!getApps().length) {
       initializeApp({
         credential: cert({
@@ -51,57 +67,55 @@ export default async function handler(req, res) {
   }
 
   // Test 2: Firestore Access
-  try {
-    const db = getFirestore();
-    await db.collection('test').limit(1).get();
-    diagnostics.tests.firestoreAccess = { success: true, message: 'Firestore accessible' };
-  } catch (error) {
-    diagnostics.tests.firestoreAccess = { success: false, error: error.message };
+  if (diagnostics.tests.firebaseInit?.success) {
+    try {
+      const { getFirestore } = await import('firebase-admin/firestore');
+      const db = getFirestore();
+      await db.collection('test').limit(1).get();
+      diagnostics.tests.firestoreAccess = { success: true, message: 'Firestore accessible' };
+    } catch (error) {
+      diagnostics.tests.firestoreAccess = { success: false, error: error.message };
+    }
   }
 
   // Test 3: Firebase Auth Access
-  try {
-    await getAuth().listUsers(1);
-    diagnostics.tests.firebaseAuth = { success: true, message: 'Firebase Auth accessible' };
-  } catch (error) {
-    diagnostics.tests.firebaseAuth = { success: false, error: error.message };
+  if (diagnostics.tests.firebaseInit?.success) {
+    try {
+      const { getAuth } = await import('firebase-admin/auth');
+      await getAuth().listUsers(1);
+      diagnostics.tests.firebaseAuth = { success: true, message: 'Firebase Auth accessible' };
+    } catch (error) {
+      diagnostics.tests.firebaseAuth = { success: false, error: error.message };
+    }
   }
 
   // Test 4: GCS Access
-  try {
-    const storage = new Storage({
-      projectId: process.env.GCS_PROJECT_ID,
-      credentials: {
-        client_email: process.env.GCS_CLIENT_EMAIL,
-        private_key: process.env.GCS_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-      },
-    });
-    
-    const bucket = storage.bucket(process.env.GCS_BUCKET_NAME);
-    await bucket.exists();
-    diagnostics.tests.gcsAccess = { success: true, message: 'GCS bucket accessible' };
-  } catch (error) {
-    diagnostics.tests.gcsAccess = { success: false, error: error.message };
-  }
-
-  // Test 5: Cross-project permissions (if different projects)
-  if (diagnostics.projects.mismatch) {
+  if (process.env.GCS_PROJECT_ID && process.env.GCS_PRIVATE_KEY) {
     try {
-      // Try to access GCS with Firebase credentials
+      const { Storage } = await import('@google-cloud/storage');
       const storage = new Storage({
         projectId: process.env.GCS_PROJECT_ID,
         credentials: {
-          client_email: process.env.FIREBASE_CLIENT_EMAIL,
-          private_key: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+          client_email: process.env.GCS_CLIENT_EMAIL,
+          private_key: process.env.GCS_PRIVATE_KEY?.replace(/\\n/g, '\n'),
         },
       });
       
       const bucket = storage.bucket(process.env.GCS_BUCKET_NAME);
-      await bucket.exists();
-      diagnostics.tests.crossProjectAccess = { success: true, message: 'Firebase service account can access GCS' };
+      const [exists] = await bucket.exists();
+      diagnostics.tests.gcsAccess = { 
+        success: true, 
+        message: 'GCS bucket accessible',
+        bucketExists: exists 
+      };
     } catch (error) {
-      diagnostics.tests.crossProjectAccess = { success: false, error: error.message };
+      diagnostics.tests.gcsAccess = { success: false, error: error.message };
     }
+  } else {
+    diagnostics.tests.gcsAccess = { 
+      success: false, 
+      error: 'Missing GCS environment variables' 
+    };
   }
 
   // IAM Recommendations
