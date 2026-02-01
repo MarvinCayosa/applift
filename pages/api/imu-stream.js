@@ -13,6 +13,13 @@ import { getAuth } from 'firebase-admin/auth';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 
+// API route config for Vercel
+export const config = {
+  api: {
+    bodyParser: true,
+  },
+};
+
 // Lazy initialization - will be initialized on first request
 let firebaseInitialized = false;
 let firebaseInitError = null;
