@@ -9,6 +9,17 @@ const withPWA = require('next-pwa')({
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
+  // Vercel-specific optimizations
+  experimental: {
+    serverComponentsExternalPackages: ['@google-cloud/storage'],
+  },
+  // API routes configuration for Vercel
+  api: {
+    bodyParser: {
+      sizeLimit: '10mb',
+    },
+    responseLimit: '10mb',
+  },
   async headers() {
     return [
       {

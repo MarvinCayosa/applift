@@ -18,9 +18,9 @@ if (!getApps().length) {
   try {
     initializeApp({
       credential: cert({
-        projectId: process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL || process.env.GCS_CLIENT_EMAIL,
-        privateKey: (process.env.FIREBASE_PRIVATE_KEY || process.env.GCS_PRIVATE_KEY)?.replace(/\\n/g, '\n'),
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
       }),
     });
   } catch (error) {
@@ -28,16 +28,17 @@ if (!getApps().length) {
   }
 }
 
-// Initialize Google Cloud Storage
+// Initialize Google Cloud Storage with separate credentials
 let storage;
 try {
   storage = new Storage({
-    projectId: process.env.GCS_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+    projectId: process.env.GCS_PROJECT_ID,
     credentials: {
       client_email: process.env.GCS_CLIENT_EMAIL,
       private_key: process.env.GCS_PRIVATE_KEY?.replace(/\\n/g, '\n'),
     },
   });
+  console.log('[IMU Stream API] GCS initialized with project:', process.env.GCS_PROJECT_ID);
 } catch (error) {
   console.error('GCS initialization error:', error);
 }
@@ -127,10 +128,33 @@ async function saveWorkoutToFirestore(userId, workoutId, metadata) {
 }
 
 export default async function handler(req, res) {
+  // Enable CORS for Vercel
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  // Handle OPTIONS request for CORS preflight
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+
   // Only allow POST requests
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    return res.status(405).json({ 
+      error: 'Method not allowed',
+      allowedMethods: ['POST'],
+      received: req.method 
+    });
   }
+
+  // Add debug logging for Vercel
+  console.log('[IMU Stream API] Request received:', {
+    method: req.method,
+    headers: req.headers,
+    body: req.body ? 'Body present' : 'No body',
+    environment: process.env.VERCEL_ENV || 'development'
+  });
 
   // Check if GCS is properly configured
   if (!storage) {
@@ -139,7 +163,8 @@ export default async function handler(req, res) {
     return res.status(200).json({
       success: true,
       signedUrl: 'mock://upload-url',
-      message: 'GCS not configured - mock mode'
+      message: 'GCS not configured - mock mode',
+      environment: process.env.VERCEL_ENV || 'development'
     });
   }
 
