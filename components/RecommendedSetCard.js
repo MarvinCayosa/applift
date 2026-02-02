@@ -108,11 +108,17 @@ export default function RecommendedSetCard({
       {/* Mobile Carousel container */}
       <div 
         ref={carouselRef}
-        className="flex gap-3 overflow-x-auto snap-x snap-mandatory scrollbar-hide scroll-smooth -mx-4 px-4 md:hidden content-fade-up-3"
-        style={{ animationDelay: '0.2s' }}
+        className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide scroll-smooth md:hidden content-fade-up-3"
+        style={{ 
+          animationDelay: '0.2s'
+        }}
       >
         {cards.map((card, idx) => (
-          <div key={idx} className="min-w-full shrink-0 snap-center">
+          <div 
+            key={idx} 
+            className="shrink-0 snap-center px-2"
+            style={{ width: '100%' }}
+          >
             {/* Main workout card with animated outer container */}
             <div
               className={`rounded-3xl shadow-lg shadow-black/30 ${card.type === 'custom' ? '' : 'animate-shimmer'}`}
@@ -122,12 +128,12 @@ export default function RecommendedSetCard({
                   : `linear-gradient(90deg, ${darkenColor(equipmentColor, 0.3)}, ${lightenColor(equipmentColor, 0.4)}, ${equipmentColor}, ${darkenColor(equipmentColor, 0.3)})`,
                 backgroundSize: '400% 100%',
                 animationDuration: card.type === 'custom' ? undefined : '7s',
-                padding: '8px',
+                padding: '6px',
               }}
             >
               {/* Inner container with image and stats */}
-              <div className="rounded-[21px] bg-black/90 overflow-hidden">
-              <div className="rounded-2xl overflow-hidden relative w-full max-w-[90vw] sm:max-w-[500px] md:max-w-[600px] mx-auto" style={{ height: 'clamp(200px, 30vh, 340px)' }}>
+              <div className="rounded-[22px] bg-black/90 overflow-hidden">
+              <div className="rounded-2xl overflow-hidden relative w-full mx-auto" style={{ height: 'clamp(200px, 28vh, 300px)' }}>
                 {/* Background image */}
                 <img
                   src={image}
@@ -498,7 +504,7 @@ export default function RecommendedSetCard({
       </p>
 
       {/* Carousel dots - Mobile only */}
-      <div className="flex justify-center gap-2.5 px-4 md:hidden content-fade-up-3" style={{ animationDelay: '0.3s' }}>
+      <div className="flex justify-center gap-2.5 px-4 mb-4 md:hidden content-fade-up-3" style={{ animationDelay: '0.3s' }}>
         {cards.map((_, idx) => (
           <span
             key={idx}

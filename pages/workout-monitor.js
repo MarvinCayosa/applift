@@ -397,6 +397,7 @@ export default function WorkoutMonitor() {
             scanning={scanning}
             devicesFound={devicesFound}
             availability={availability}
+            autoCollapse={true}
           />
         </div>
         

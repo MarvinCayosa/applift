@@ -3,18 +3,21 @@ export default function CustomSetCard({
   image,
 }) {
   return (
-    <div className="min-w-full shrink-0 snap-center">
+    <div 
+      className="shrink-0 snap-center"
+      style={{ width: 'calc(100% - 32px)' }}
+    >
       {/* Main workout card with static gray outer container */}
       <div
         className="rounded-3xl shadow-lg shadow-black/30"
         style={{
           background: 'linear-gradient(90deg, rgba(60,60,60,0.4), rgba(80,80,80,0.6), rgba(60,60,60,0.4))',
-          padding: '3px',
+          padding: '6px',
         }}
       >
         {/* Inner container with image and stats */}
-        <div className="rounded-[21px] bg-black/90 overflow-hidden">
-          <div className="rounded-[20px] overflow-hidden relative w-full max-w-[90vw] sm:max-w-[500px] md:max-w-[600px] mx-auto" style={{ height: 'clamp(200px, 30vh, 350px)' }}>
+        <div className="rounded-[22px] bg-black/90 overflow-hidden">
+          <div className="rounded-[20px] overflow-hidden relative w-full mx-auto" style={{ height: 'clamp(200px, 28vh, 300px)' }}>
             {/* Background image */}
             <img
               src={image}

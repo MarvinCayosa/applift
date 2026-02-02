@@ -92,7 +92,7 @@ function RulerPicker({ value, onValueChange, unit, onUnitChange }) {
       </div>
       
       {/* Large value display with kg unit */}
-      <div className="text-center mb-2 flex items-baseline justify-center gap-2">
+      <div className="text-center mb-2 p-2 flex items-baseline justify-center gap-2">
         <span 
           className="text-7xl font-bold text-white tabular-nums tracking-tight"
           style={{ 
@@ -111,7 +111,7 @@ function RulerPicker({ value, onValueChange, unit, onUnitChange }) {
         style={{
           bottom: '0px',
           width: '4px',
-          height: '50px',
+          height: '32px',
           background: 'linear-gradient(to bottom, #8B5CF6, #7C3AED)',
           borderRadius: '2px',
         }}
@@ -122,7 +122,7 @@ function RulerPicker({ value, onValueChange, unit, onUnitChange }) {
         className="absolute bottom-0 left-0 z-20 pointer-events-none"
         style={{
           width: '80px',
-          height: '85px',
+          height: '50px',
           background: 'linear-gradient(to right, rgb(38,38,38) 0%, transparent 100%)',
         }}
       />
@@ -132,7 +132,7 @@ function RulerPicker({ value, onValueChange, unit, onUnitChange }) {
         className="absolute bottom-0 right-0 z-20 pointer-events-none"
         style={{
           width: '80px',
-          height: '85px',
+          height: '50px',
           background: 'linear-gradient(to left, rgb(38,38,38) 0%, transparent 100%)',
         }}
       />
@@ -140,9 +140,9 @@ function RulerPicker({ value, onValueChange, unit, onUnitChange }) {
       {/* Scrollable ruler */}
       <div
         ref={wheelRef}
-        className="w-full h-24 overflow-x-scroll scrollbar-hide flex items-end"
+        className="w-full overflow-x-scroll scrollbar-hide flex items-end"
         onScroll={handleScroll}
-        style={{ touchAction: 'pan-x' }}
+        style={{ touchAction: 'pan-x', height: '45px' }}
       >
         {/* Left padding: 50% minus half of tick width to center the first tick */}
         <div style={{ minWidth: 'calc(50% - 10px)' }} className="flex-shrink-0" />
