@@ -119,7 +119,7 @@ export default function RecommendedSetCard({
               style={{
                 background: card.type === 'custom' 
                   ? 'rgba(120,120,120,0.8)'
-                  : `linear-gradient(90deg, ${equipmentColor}, ${lightenColor(equipmentColor, 0.25)}, ${darkenColor(equipmentColor, 0.18)}, ${equipmentColor})`,
+                  : `linear-gradient(90deg, ${darkenColor(equipmentColor, 0.3)}, ${lightenColor(equipmentColor, 0.4)}, ${equipmentColor}, ${darkenColor(equipmentColor, 0.3)})`,
                 backgroundSize: '400% 100%',
                 animationDuration: card.type === 'custom' ? undefined : '7s',
                 padding: '8px',
@@ -127,7 +127,7 @@ export default function RecommendedSetCard({
             >
               {/* Inner container with image and stats */}
               <div className="rounded-[21px] bg-black/90 overflow-hidden">
-              <div className="rounded-2xl overflow-hidden relative w-full max-w-[90vw] sm:max-w-[500px] md:max-w-[600px] mx-auto" style={{ height: 'clamp(240px, 35vh, 400px)' }}>
+              <div className="rounded-2xl overflow-hidden relative w-full max-w-[90vw] sm:max-w-[500px] md:max-w-[600px] mx-auto" style={{ height: 'clamp(200px, 30vh, 340px)' }}>
                 {/* Background image */}
                 <img
                   src={image}
@@ -175,14 +175,14 @@ export default function RecommendedSetCard({
                   {/* Bottom content area */}
                   <div className="space-y-3">
                     {/* Stats - Weight, Sets, Reps - Compact dark background */}
-                    <div className="bg-black/70 rounded-3xl px-6 py-4 w-fit mx-auto shadow-lg shadow-black/40 border border-black/60">
-                      <div className="flex justify-center gap-4">
+                    <div className="rounded-3xl px-4 py-4 w-full mx-auto shadow-lg shadow-black/40 border border-black/20 bg-black/50">
+                      <div className="flex justify-between items-center">
                         {card.type === 'custom' ? (
                           <>
                             <button
                               type="button"
                               onClick={() => handleCustomFieldClick('weight')}
-                              className="px-2 py-1 hover:bg-white/10 rounded-xl transition-colors text-center"
+                              className="flex-1 py-1 hover:bg-white/10 rounded-xl transition-colors text-center"
                             >
                               <p className="text-xs text-white/70 mb-0.5">Weight</p>
                               <div className="flex items-baseline justify-center gap-1">
@@ -192,20 +192,22 @@ export default function RecommendedSetCard({
                                 <p className="text-xs text-white/70 leading-none">{card.weightUnit}</p>
                               </div>
                             </button>
+                            <span className="text-white/50 text-3xl font-light">|</span>
                             <button
                               type="button"
                               onClick={() => handleCustomFieldClick('sets')}
-                              className="px-2 py-1 hover:bg-white/10 rounded-xl transition-colors text-center"
+                              className="flex-1 py-1 hover:bg-white/10 rounded-xl transition-colors text-center"
                             >
                               <p className="text-xs text-white/70 mb-0.5">Sets</p>
                               <p className="text-4xl font-bold leading-none" style={{ color: customSets ? equipmentColor : 'rgba(255,255,255,0.4)' }}>
                                 {customSets || '-'}
                               </p>
                             </button>
+                            <span className="text-white/50 text-3xl font-light">|</span>
                             <button
                               type="button"
                               onClick={() => handleCustomFieldClick('reps')}
-                              className="px-2 py-1 hover:bg-white/10 rounded-xl transition-colors text-center"
+                              className="flex-1 py-1 hover:bg-white/10 rounded-xl transition-colors text-center"
                             >
                               <p className="text-xs text-white/70 mb-0.5">Reps</p>
                               <p className="text-4xl font-bold leading-none" style={{ color: customReps ? equipmentColor : 'rgba(255,255,255,0.4)' }}>
@@ -215,7 +217,7 @@ export default function RecommendedSetCard({
                           </>
                         ) : (
                           <>
-                            <div className="px-2 py-1 text-center">
+                            <div className="flex-1 py-1 text-center">
                               <p className="text-xs text-white/70 mb-0.5">Weight</p>
                               <div className="flex items-baseline justify-center gap-1">
                                 <p className="text-4xl font-bold leading-none" style={{ color: equipmentColor }}>
@@ -224,13 +226,15 @@ export default function RecommendedSetCard({
                                 <p className="text-xs text-white/70 leading-none">{card.weightUnit}</p>
                               </div>
                             </div>
-                            <div className="px-2 py-1 text-center">
+                            <span className="text-white/50 text-3xl font-light">|</span>
+                            <div className="flex-1 py-1 text-center">
                               <p className="text-xs text-white/70 mb-0.5">Sets</p>
                               <p className="text-4xl font-bold leading-none" style={{ color: equipmentColor }}>
                                 {card.sets}
                               </p>
                             </div>
-                            <div className="px-2 py-1 text-center">
+                            <span className="text-white/50 text-3xl font-light">|</span>
+                            <div className="flex-1 py-1 text-center">
                               <p className="text-xs text-white/70 mb-0.5">Reps</p>
                               <p className="text-4xl font-bold leading-none" style={{ color: equipmentColor }}>
                                 {card.reps}
@@ -361,16 +365,14 @@ export default function RecommendedSetCard({
                   {/* Bottom content area */}
                   <div className="space-y-3">
                     {/* Stats - Weight, Sets, Reps - Compact dark background */}
-                    <div className="bg-black/70 rounded-3xl px-6 py-4 w-fit mx-auto shadow-lg shadow-black/40 border border-black/60">
-// ...existing code...
-
-                      <div className="flex justify-center gap-4">
+                    <div className="rounded-3xl px-4 py-4 w-full mx-auto shadow-lg shadow-black/40 border border-black/20 bg-black/50">
+                      <div className="flex justify-between items-center">
                         {card.type === 'custom' ? (
                           <>
                             <button
                               type="button"
                               onClick={() => handleCustomFieldClick('weight')}
-                              className="rounded-xl px-3 py-1.5 min-w-[70px] hover:bg-white/10 transition-colors text-center"
+                              className="flex-1 py-1 hover:bg-white/10 rounded-xl transition-colors text-center"
                             >
                               <p className="text-xs text-white/70 mb-0.5">Weight</p>
                               <div className="flex items-baseline justify-center gap-1">
@@ -380,20 +382,22 @@ export default function RecommendedSetCard({
                                 <p className="text-xs text-white/70 leading-none">{card.weightUnit}</p>
                               </div>
                             </button>
+                            <span className="text-white/50 text-3xl font-light">|</span>
                             <button
                               type="button"
                               onClick={() => handleCustomFieldClick('sets')}
-                              className="rounded-xl px-3 py-1.5 min-w-[55px] text-center hover:bg-white/10 transition-colors"
+                              className="flex-1 py-1 hover:bg-white/10 rounded-xl transition-colors text-center"
                             >
                               <p className="text-xs text-white/70 mb-0.5">Sets</p>
                               <p className="text-4xl font-bold leading-none" style={{ color: customSets ? equipmentColor : 'rgba(255,255,255,0.4)' }}>
                                 {customSets || '-'}
                               </p>
                             </button>
+                            <span className="text-white/50 text-3xl font-light">|</span>
                             <button
                               type="button"
                               onClick={() => handleCustomFieldClick('reps')}
-                              className="rounded-xl px-3 py-1.5 min-w-[55px] text-center hover:bg-white/10 transition-colors"
+                              className="flex-1 py-1 hover:bg-white/10 rounded-xl transition-colors text-center"
                             >
                               <p className="text-xs text-white/70 mb-0.5">Reps</p>
                               <p className="text-4xl font-bold leading-none" style={{ color: customReps ? equipmentColor : 'rgba(255,255,255,0.4)' }}>
@@ -403,7 +407,7 @@ export default function RecommendedSetCard({
                           </>
                         ) : (
                           <>
-                            <div className="rounded-xl px-3 py-1.5 min-w-[70px] text-center">
+                            <div className="flex-1 py-1 text-center">
                               <p className="text-xs text-white/70 mb-0.5">Weight</p>
                               <div className="flex items-baseline justify-center gap-1">
                                 <p className="text-4xl font-bold leading-none" style={{ color: equipmentColor }}>
@@ -412,13 +416,15 @@ export default function RecommendedSetCard({
                                 <p className="text-xs text-white/70 leading-none">{card.weightUnit}</p>
                               </div>
                             </div>
-                            <div className="rounded-xl px-3 py-1.5 min-w-[55px] text-center">
+                            <span className="text-white/50 text-3xl font-light">|</span>
+                            <div className="flex-1 py-1 text-center">
                               <p className="text-xs text-white/70 mb-0.5">Sets</p>
                               <p className="text-4xl font-bold leading-none" style={{ color: equipmentColor }}>
                                 {card.sets}
                               </p>
                             </div>
-                            <div className="rounded-xl px-3 py-1.5 min-w-[55px] text-center">
+                            <span className="text-white/50 text-3xl font-light">|</span>
+                            <div className="flex-1 py-1 text-center">
                               <p className="text-xs text-white/70 mb-0.5">Reps</p>
                               <p className="text-4xl font-bold leading-none" style={{ color: equipmentColor }}>
                                 {card.reps}
@@ -483,6 +489,14 @@ export default function RecommendedSetCard({
         ))}
       </div>
 
+      {/* Subtext - fades together with header when on recommended set */}
+      <p 
+        className="text-xs text-center text-white/50 content-fade-up-3 transition-opacity duration-300 mb-2" 
+        style={{ animationDelay: '0.35s', opacity: activeIndex === 0 ? 1 : 0 }}
+      >
+        Swipe right for custom set
+      </p>
+
       {/* Carousel dots - Mobile only */}
       <div className="flex justify-center gap-2.5 px-4 md:hidden content-fade-up-3" style={{ animationDelay: '0.3s' }}>
         {cards.map((_, idx) => (
@@ -492,14 +506,6 @@ export default function RecommendedSetCard({
           />
         ))}
       </div>
-
-      {/* Subtext - fades with header */}
-      <p 
-        className="text-xs text-center text-white/10 content-fade-up-3 transition-opacity duration-300" 
-        style={{ animationDelay: '0.35s', opacity: activeIndex === 0 ? 1 : 0 }}
-      >
-        Swipe right for custom set
-      </p>
     </div>
   );
 }

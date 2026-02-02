@@ -285,7 +285,7 @@ export default function Workouts() {
 
     const handleScroll = () => {
       const scrollLeft = carousel.scrollLeft;
-      const cardWidth = 305 + 16; // Updated card width + gap
+      const cardWidth = 400 + 16; // Updated card width (400px) + gap (16px)
       const peekAmount = 40;
       const effectiveScroll = scrollLeft - peekAmount;
       const activeIndex = Math.max(0, Math.round(effectiveScroll / cardWidth));
@@ -297,13 +297,13 @@ export default function Workouts() {
   }, [workouts.length]);
 
   return (
-    <div className="relative min-h-screen bg-black text-white pb-24">
+    <div className="relative h-screen bg-black text-white overflow-hidden">
       <Head>
         <title>Workouts — AppLift</title>
       </Head>
 
-      <main className="w-full px-4 sm:px-6 md:px-8 pt-10 sm:pt-10 pb-4 md:pb-6">
-        <div className="mx-auto w-full max-w-4xl space-y-4 sm:space-y-5 md:space-y-6">
+      <main className="w-full h-full px-4 sm:px-6 md:px-8 pt-10 sm:pt-10 pb-20 flex flex-col">
+        <div className="mx-auto w-full max-w-4xl space-y-4 sm:space-y-5 md:space-y-6 flex flex-col flex-1 min-h-0">
         {/* Connection status pill */}
         <div className="flex justify-center content-fade-up-1">
           <ConnectPill 
@@ -426,26 +426,25 @@ export default function Workouts() {
 
         {/* Workout carousel */}
         {scannedEquipment && (scannedEquipment.type === 'Barbell' || scannedEquipment.type === 'Dumbell' || scannedEquipment.type === 'Weight Stack') && (
-          <section className="pt-2 sm:pt-4 pb-24 space-y-4 sm:space-y-6">
-            <h2 className="text-center text-xs sm:text-sm font-semibold text-white/80 px-4 content-fade-up-3" style={{ animationDelay: '0.15s' }}>Choose Your Workout</h2>
+          <section className="pt-2 sm:pt-4 flex-1 flex flex-col min-h-0 pb-2">
+            <h2 className="text-center text-xs sm:text-sm font-semibold text-white/80 px-4 content-fade-up-3 mb-3" style={{ animationDelay: '0.15s' }}>Choose Your Workout</h2>
 
-          {/* Mobile Carousel - centered with peek */}
+          {/* Mobile Carousel - centered with peek, matching equipment section width */}
           <div 
             ref={workoutCarouselRef}
-            className="flex gap-5 sm:gap-6 overflow-x-auto pb-2 snap-x snap-center scrollbar-hide scroll-smooth content-fade-up-3 md:hidden"
+            className="flex gap-4 overflow-x-auto snap-x snap-center scrollbar-hide scroll-smooth content-fade-up-3 md:hidden flex-1 min-h-0 items-start mb-3"
             style={{
-              paddingLeft: 'calc(50% - 160px)',
-              paddingRight: 'calc(50% - 160px)',
+              paddingLeft: 'calc(50vw - 200px)',
+              paddingRight: 'calc(50vw - 200px)',
               animationDelay: '0.3s'
             }}
           >
             {workouts.map((workout, idx) => (
               <article
                 key={workout.title + idx}
-                className="min-w-[320px] max-w-[320px] sm:min-w-[345px] sm:max-w-[345px] shrink-0 snap-center rounded-2xl sm:rounded-3xl overflow-hidden group relative transition-all duration-300 cursor-pointer hover:scale-105"
+                className="min-w-[400px] max-w-[400px] h-full shrink-0 snap-center rounded-2xl sm:rounded-3xl overflow-hidden group relative transition-all duration-300 cursor-pointer hover:scale-105"
                 style={{
-                  boxShadow: '0 12px 24px rgba(0, 0, 0, 0.3)',
-                  height: 'clamp(320px, 42vh, 500px)'
+                  boxShadow: '0 12px 24px rgba(0, 0, 0, 0.3)'
                 }}
                 onClick={() => {
                   if (!workout.isComingSoon) {
