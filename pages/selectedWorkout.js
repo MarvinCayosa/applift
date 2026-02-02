@@ -252,11 +252,11 @@ function InfoHistoryCarousel({ equipment, workout, tips, tutorialVideo, equipmen
   };
 
   return (
-    <div className="content-fade-up-2 flex-1 min-h-0 max-w-md mx-auto w-full" style={{ animationDelay: '0.15s' }}>
+    <div className="content-fade-up-2 flex-1 min-h-0 max-w-md mx-auto w-full mt-5" style={{ animationDelay: '0.15s' }}>
       <div className="h-full flex flex-col" style={{ 
         height: 'calc(100vh - 600px)',
-        minHeight: '220px',
-        maxHeight: '320px'
+        minHeight: 'clamp(280px, 30vh, 290px)',
+        maxHeight: 'clamp(300px, 50vh, 390px)'
       }}>
         {/* Info Panels (Calibration + Exercise Info + Tutorial) */}
         <div className="flex-1 px-0.5">
@@ -533,7 +533,7 @@ export default function SelectedWorkout() {
       </Head>
 
       <main ref={mainRef} className="flex-1 w-full px-4 sm:px-6 md:px-8 pt-4 pb-24 flex flex-col overflow-hidden">
-        <div className="mx-auto w-full max-w-4xl flex flex-col flex-1 space-y-3 overflow-hidden">
+        <div className="mx-auto w-full max-w-4xl flex flex-col flex-1 space-y-5 overflow-hidden">
         {/* Header with back button and connection pill */}
         <div className="flex items-center justify-between content-fade-up-1 flex-shrink-0 relative">
           {/* Back button */}
