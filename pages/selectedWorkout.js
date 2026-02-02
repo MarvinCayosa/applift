@@ -148,7 +148,7 @@ function ExerciseInfoCarousel({ equipment, workout, tips, getTargetMuscles }) {
   }, [activeSlide, totalSlides]);
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col">
+    <div className="h-full flex flex-col">
       {/* Carousel Container - no gap, full width slides */}
       <div 
         ref={carouselRef}
@@ -253,46 +253,60 @@ function InfoHistoryCarousel({ equipment, workout, tips, tutorialVideo, equipmen
 
   return (
     <div className="content-fade-up-2 flex-1 min-h-0 max-w-md mx-auto w-full mt-5" style={{ animationDelay: '0.15s' }}>
-      <div className="h-full flex flex-col" style={{ 
+      <div className="h-full flex flex-col gap-2.5 sm:gap-3.5" style={{ 
         height: 'calc(100vh - 600px)',
         minHeight: 'clamp(280px, 30vh, 290px)',
         maxHeight: 'clamp(300px, 50vh, 390px)'
       }}>
-        {/* Info Panels (Calibration + Exercise Info + Tutorial) */}
-        <div className="flex-1 px-0.5">
-          <div className="grid grid-cols-2 gap-1.5 sm:gap-2.5 h-full w-full">
-            {/* Left Column - Calibration */}
-            <CalibrationHistoryPanel
-              equipment={equipment}
-              workout={workout}
-            />
+        {/* Calibrate Now Button - Full Width */}
+        <button
+          className="w-full bg-white/5 backdrop-blur-sm rounded-xl sm:rounded-2xl px-4 py-3.5 sm:px-5 sm:py-4 hover:bg-white/10 transition-colors flex items-center justify-center gap-2 flex-shrink-0"
+        >
+          <span className="text-sm sm:text-base text-white font-semibold">Calibrate Now</span>
+          <svg className="w-4 h-4 sm:w-5 sm:h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+
+        {/* Info Panels Row */}
+        <div className="flex-1 px-0.5 min-h-0">
+          <div className="grid grid-cols-2 gap-2.5 sm:gap-3.5 h-full w-full">
+            {/* Left Column - Watch Tutorial (styled as calibration panel) */}
+            {tutorialVideo && (
+              <a
+                href={tutorialVideo}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="relative rounded-xl sm:rounded-2xl p-4 sm:p-5 hover:brightness-110 transition-all overflow-hidden flex flex-col items-center justify-center gap-3 h-full group"
+              >
+                {/* Background Image */}
+                <div 
+                  className="absolute inset-0 bg-cover bg-center"
+                  style={{ backgroundImage: `url('/images/workout-cards/barbell-flat-bench-press.jpg')` }}
+                />
+                {/* Dark Overlay */}
+                <div className="absolute inset-0 bg-black/70 group-hover:bg-black/60 transition-colors" />
+                
+                {/* Content */}
+                <div className="relative z-10 flex flex-col items-center justify-center gap-3">
+                  <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-violet-500/30 flex items-center justify-center">
+                    <svg className="w-6 h-6 sm:w-7 sm:h-7 text-violet-300" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M8 5v14l11-7z"/>
+                    </svg>
+                  </div>
+                  <span className="text-xs sm:text-sm text-white/70 font-medium text-center">Watch Tutorial</span>
+                </div>
+              </a>
+            )}
             
-            {/* Right Column - Exercise Info & Tutorial Button */}
-            <div className="flex flex-col gap-1.5 sm:gap-2 h-full">
-              {/* Exercise Info Carousel */}
+            {/* Right Column - Exercise Info Carousel */}
+            <div className="h-full">
               <ExerciseInfoCarousel 
                 equipment={equipment}
                 workout={workout}
                 tips={tips}
                 getTargetMuscles={getTargetMuscles}
               />
-              
-              {/* Watch Tutorial Button */}
-              {tutorialVideo && (
-                <a
-                  href={tutorialVideo}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="bg-white/5 backdrop-blur-sm rounded-xl sm:rounded-2xl px-4 py-3.5 sm:px-5 sm:py-4 flex items-center justify-between hover:bg-white/10 transition-colors flex-shrink-0"
-                >
-                  <span className="text-xs sm:text-sm text-white/70 font-medium">Watch Tutorial</span>
-                  <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-violet-500/30 flex items-center justify-center">
-                    <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-violet-300" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M8 5v14l11-7z"/>
-                    </svg>
-                  </div>
-                </a>
-              )}
             </div>
           </div>
         </div>
