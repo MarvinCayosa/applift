@@ -123,19 +123,46 @@ async function generateSignedUploadUrl(filePath, contentType = 'text/csv') {
 }
 
 /**
+ * Sanitize string for use in Firestore document paths
+ * Converts to lowercase, replaces spaces with hyphens, removes special characters
+ */
+function sanitizeForPath(str) {
+  if (!str) return 'unknown';
+  return str
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9-]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+/**
  * Save workout metadata to Firestore
+ * Structure: workoutLogs/{equipment}/{exercise}/{workoutId}
+ * Also maintains a user-indexed collection for queries
  */
 async function saveWorkoutToFirestore(userId, workoutId, metadata) {
   try {
     const db = getFirestore();
-    const workoutRef = db.collection('workoutLogs').doc(workoutId);
     
-    await workoutRef.set({
+    // Sanitize equipment and exercise for path
+    const equipment = sanitizeForPath(metadata.equipment);
+    const exercise = sanitizeForPath(metadata.exercise);
+    
+    // Get the GCS path from metadata or construct it
+    const gcsPath = metadata.gcsPath || `users/${userId}/${equipment}/${exercise}`;
+    
+    // Document data
+    const workoutData = {
       odUSerId: userId,
-      odWOrkoutId: workoutId,
+      odWorkoutId: workoutId,
       exercise: {
         name: metadata.exercise,
         equipment: metadata.equipment,
+        // Sanitized versions for querying
+        namePath: exercise,
+        equipmentPath: equipment,
       },
       planned: {
         sets: metadata.plannedSets,
@@ -151,15 +178,38 @@ async function saveWorkoutToFirestore(userId, workoutId, metadata) {
       },
       status: metadata.status,
       setType: metadata.setType,
-      gcsPath: `gs://${BUCKET_NAME}/users/${userId}/workouts/${workoutId}/`,
+      gcsPath: `gs://${BUCKET_NAME}/${gcsPath}`,
       timestamps: {
         started: metadata.startTime ? new Date(metadata.startTime) : null,
         completed: metadata.endTime ? new Date(metadata.endTime) : null,
       },
       updatedAt: new Date(),
+    };
+
+    // Save to hierarchical structure: workoutLogs/{equipment}/{exercise}/{workoutId}
+    const hierarchicalRef = db
+      .collection('workoutLogs')
+      .doc(equipment)
+      .collection(exercise)
+      .doc(workoutId);
+    
+    await hierarchicalRef.set(workoutData, { merge: true });
+
+    // Also save to user-indexed collection for easy user queries
+    // userWorkouts/{userId}/logs/{workoutId}
+    const userRef = db
+      .collection('userWorkouts')
+      .doc(userId)
+      .collection('logs')
+      .doc(workoutId);
+    
+    await userRef.set({
+      ...workoutData,
+      // Add reference to hierarchical location
+      hierarchicalPath: `workoutLogs/${equipment}/${exercise}/${workoutId}`
     }, { merge: true });
 
-    console.log(`[IMU Stream API] Saved workout ${workoutId} to Firestore`);
+    console.log(`[IMU Stream API] Saved workout to: workoutLogs/${equipment}/${exercise}/${workoutId}`);
     return true;
   } catch (error) {
     console.error('[IMU Stream API] Firestore save error:', error);

@@ -202,7 +202,7 @@ export default function EquipmentDistributionCard({
               {/* Legend */}
               <div className="flex-1 flex flex-col justify-center space-y-0.5 min-h-0 overflow-hidden">
                 {equipmentData.map((item, index) => {
-                  const percentage = ((item.value / totalExercises) * 100).toFixed(0)
+                  const percentage = totalExercises > 0 ? ((item.value / totalExercises) * 100).toFixed(0) : 0
                   const isActive = activeIndex === index
 
                   return (
@@ -242,37 +242,34 @@ export default function EquipmentDistributionCard({
               </div>
             </div>
 
-            {/* Slide 2: Bar Chart */}
+            {/* Slide 2: Bar Chart - Shows actual counts */}
             <div className="w-full flex-shrink-0 snap-center flex flex-col min-h-0 overflow-hidden">
-              <div className="flex-1 flex flex-col justify-center overflow-hidden">
-                <ResponsiveContainer width="100%" height={240}>
-                  <BarChart
-                    data={equipmentData}
-                    margin={{ top: 30, right: 0, left: 0, bottom: 5 }}
-                    barCategoryGap="30%"
+              {/* Legend with counts */}
+              <div className="flex-1 flex flex-col justify-center space-y-1 px-2 overflow-hidden">
+                {equipmentData.map((item, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center justify-between py-1.5 px-2 rounded-lg bg-white/5 hover:bg-white/10 transition-all"
                   >
-                    <XAxis 
-                      dataKey="name"
-                      axisLine={false}
-                      tickLine={false}
-                      tick={{ 
-                        fill: 'rgba(255,255,255,0.7)', 
-                        fontSize: 10, 
-                        fontWeight: 500 
-                      }}
-                    />
-                    <Bar 
-                      dataKey="value" 
-                      shape={CustomBar}
-                      radius={[4, 4, 0, 0]}
-                      maxBarSize={60}
-                      animationBegin={0}
-                      animationDuration={animate ? 800 : 0}
-                      animationEasing="ease-out"
-                      isAnimationActive={animate}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
+                    <div className="flex items-center gap-2">
+                      <div 
+                        className="w-3 h-3 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: item.color }}
+                      />
+                      <span className="text-[12px] text-white/90 font-medium">
+                        {item.name}
+                      </span>
+                    </div>
+                    <span className="text-[14px] text-white font-bold">
+                      {item.value}
+                    </span>
+                  </div>
+                ))}
+                {/* Total */}
+                <div className="flex items-center justify-between py-2 px-2 mt-2 border-t border-white/20">
+                  <span className="text-[11px] text-white/70">Total Workouts</span>
+                  <span className="text-[14px] text-white font-bold">{totalExercises}</span>
+                </div>
               </div>
             </div>
           </div>

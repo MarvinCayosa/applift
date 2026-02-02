@@ -28,10 +28,17 @@
  *   ]
  * }
  * 
- * GCS Structure:
- * bucket/users/{userId}/workouts/{workoutId}/
+ * GCS Structure (Organized by Equipment → Exercise):
+ * bucket/users/{userId}/{equipment}/{exercise}/{YYYYMMDD}_{workoutId}/
  *   workout_data.json     <- Complete workout data (all sets/reps)
  *   metadata.json         <- Workout metadata (exercise, equipment, status)
+ * 
+ * Example:
+ * bucket/users/abc123/barbell/bench-press/20260202_w1a2b3/
+ * bucket/users/abc123/dumbbell/bicep-curl/20260202_w4d5e6/
+ * 
+ * Firestore Structure:
+ * workoutLogs/{equipment}/{exercise}/{workoutId}
  * 
  * ML Integration Flow:
  * 1. User starts recording → Initialize workout
@@ -135,13 +142,54 @@ const repDataToCSV = (repData) => {
 };
 
 /**
- * Generate workout ID
+ * Sanitize string for use in file paths
+ * Converts to lowercase, replaces spaces with hyphens, removes special characters
+ */
+const sanitizeForPath = (str) => {
+  if (!str) return 'unknown';
+  return str
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, '-')           // Replace spaces with hyphens
+    .replace(/[^a-z0-9-]/g, '')     // Remove special characters
+    .replace(/-+/g, '-')            // Replace multiple hyphens with single
+    .replace(/^-|-$/g, '');         // Remove leading/trailing hyphens
+};
+
+/**
+ * Get current date in YYYYMMDD format
+ */
+const getDateString = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}${month}${day}`;
+};
+
+/**
+ * Generate short workout ID (for cleaner paths)
+ * Format: w{timestamp36}{random4}  e.g., "wlx1a2b3"
  */
 const generateWorkoutId = () => {
-  const timestamp = Date.now().toString(36);
-  const random = Math.random().toString(36).substring(2, 8);
-  return `workout_${timestamp}_${random}`;
+  const timestamp = Date.now().toString(36).slice(-6); // Last 6 chars of timestamp
+  const random = Math.random().toString(36).substring(2, 6); // 4 random chars
+  return `w${timestamp}${random}`;
 };
+
+/**
+ * Generate GCS base path for workout
+ * Format: users/{userId}/{equipment}/{exercise}/{YYYYMMDD}_{workoutId}/
+ */
+const getGCSBasePath = (userIdVal, equipmentVal, exerciseVal, workoutIdVal) => {
+  const equipment = sanitizeForPath(equipmentVal);
+  const exercise = sanitizeForPath(exerciseVal);
+  const date = getDateString();
+  return `users/${userIdVal}/${equipment}/${exercise}/${date}_${workoutIdVal}`;
+};
+
+// Store current GCS base path
+let currentGCSBasePath = null;
 
 /**
  * Initialize streaming session
@@ -168,12 +216,16 @@ export const initializeStreaming = async (config) => {
   isStreaming = true;
   repStartTime = null;
 
+  // Generate GCS base path: users/{userId}/{equipment}/{exercise}/{YYYYMMDD}_{workoutId}
+  currentGCSBasePath = getGCSBasePath(odUSerId, equipment, exercise, workoutId);
+
   // Initialize workout data structure for ML
   workoutData = {
     workoutId,
     odUSerId,
     exercise,
     equipment,
+    gcsPath: currentGCSBasePath,
     plannedSets: parseInt(plannedSets) || 0,
     plannedReps: parseInt(plannedReps) || 0,
     weight: parseFloat(weight) || 0,
@@ -195,6 +247,7 @@ export const initializeStreaming = async (config) => {
     workoutId,
     exercise,
     equipment,
+    gcsPath: currentGCSBasePath,
     plannedSets: parseInt(plannedSets) || 0,
     plannedReps: parseInt(plannedReps) || 0,
     weight: parseFloat(weight) || 0,
@@ -524,14 +577,15 @@ export const cancelStreaming = async () => {
 
 /**
  * Upload complete workout data JSON to GCS
+ * Path: users/{userId}/{equipment}/{exercise}/{YYYYMMDD}_{workoutId}/workout_data.json
  */
 const uploadWorkoutData = async () => {
-  const filePath = `users/${userId}/workouts/${workoutId}/workout_data.json`;
+  const filePath = `${currentGCSBasePath}/workout_data.json`;
   const content = JSON.stringify(workoutData, null, 2);
   
   try {
     await uploadToGCS(filePath, content, 'application/json');
-    console.log('[IMUStreaming] Uploaded complete workout data JSON');
+    console.log('[IMUStreaming] Uploaded workout data to:', filePath);
   } catch (error) {
     console.error('[IMUStreaming] Failed to upload workout data:', error);
     storeLocally(filePath, content);
@@ -540,9 +594,10 @@ const uploadWorkoutData = async () => {
 
 /**
  * Upload metadata.json to GCS
+ * Path: users/{userId}/{equipment}/{exercise}/{YYYYMMDD}_{workoutId}/metadata.json
  */
 const uploadMetadata = async () => {
-  const filePath = `users/${userId}/workouts/${workoutId}/metadata.json`;
+  const filePath = `${currentGCSBasePath}/metadata.json`;
   const content = JSON.stringify(workoutMetadata, null, 2);
   
   try {
@@ -620,10 +675,12 @@ const resetState = () => {
   userId = null;
   authToken = null;
   repStartTime = null;
+  currentGCSBasePath = null;
   workoutData = {
     workoutId: null,
     exercise: null,
     equipment: null,
+    gcsPath: null,
     plannedSets: 0,
     plannedReps: 0,
     weight: 0,
@@ -634,6 +691,7 @@ const resetState = () => {
   workoutMetadata = {
     exercise: null,
     equipment: null,
+    gcsPath: null,
     plannedSets: 0,
     plannedReps: 0,
     weight: 0,

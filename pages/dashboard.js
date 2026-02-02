@@ -513,10 +513,14 @@ export default function Dashboard() {
   const calculateLoadData = () => {
     const today = new Date();
     const dayOfWeek = today.getDay();
-    const sunday = new Date(today);
-    sunday.setDate(today.getDate() - dayOfWeek);
     
-    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    // Calculate Monday of current week (week starts on Monday)
+    const monday = new Date(today);
+    const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Sunday = 6 days from Monday
+    monday.setDate(today.getDate() - daysFromMonday);
+    monday.setHours(0, 0, 0, 0);
+    
+    const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     
     // Initialize week data with 0 load for each day
     const weekData = dayNames.map(day => ({ day, load: 0 }));
@@ -542,24 +546,29 @@ export default function Dashboard() {
         return;
       }
       
-      // Check if workout is in current week
+      // Check if workout is in current week (Monday to Sunday)
       const logDate = new Date(createdAt);
       logDate.setHours(0, 0, 0, 0);
-      const sundayDate = new Date(sunday);
-      sundayDate.setHours(0, 0, 0, 0);
-      const saturdayDate = new Date(sunday);
-      saturdayDate.setDate(sunday.getDate() + 6);
-      saturdayDate.setHours(23, 59, 59, 999);
+      
+      const mondayDate = new Date(monday);
+      mondayDate.setHours(0, 0, 0, 0);
+      
+      const sundayDate = new Date(monday);
+      sundayDate.setDate(monday.getDate() + 6);
+      sundayDate.setHours(23, 59, 59, 999);
       
       console.log('[Dashboard] Date check:', {
         logDate: logDate.toISOString(),
+        mondayDate: mondayDate.toISOString(),
         sundayDate: sundayDate.toISOString(),
-        saturdayDate: saturdayDate.toISOString(),
-        isInWeek: logDate >= sundayDate && logDate <= saturdayDate
+        isInWeek: logDate >= mondayDate && logDate <= sundayDate
       });
       
-      if (logDate >= sundayDate && logDate <= saturdayDate) {
-        const dayIndex = logDate.getDay();
+      if (logDate >= mondayDate && logDate <= sundayDate) {
+        // Map day of week to our Monday-first array (0=Monday, 6=Sunday)
+        const jsDay = logDate.getDay(); // 0=Sunday, 1=Monday, ..., 6=Saturday
+        const dayIndex = jsDay === 0 ? 6 : jsDay - 1; // Convert to Monday-first: 0=Mon, 6=Sun
+        
         // Handle both data formats
         const weight = log.planned?.weight || log.weight || 0;
         const reps = log.results?.totalReps || log.totalReps || 0;
@@ -569,20 +578,9 @@ export default function Dashboard() {
       }
     });
     
-    console.log('[Dashboard] Week data before reorder:', weekData);
+    console.log('[Dashboard] Week data:', weekData);
     
-    // Reorder to start from Monday
-    const reorderedWeek = [
-      weekData[1], // Mon
-      weekData[2], // Tue
-      weekData[3], // Wed
-      weekData[4], // Thu
-      weekData[5], // Fri
-      weekData[6], // Sat
-      weekData[0], // Sun
-    ];
-    
-    return reorderedWeek;
+    return weekData; // Already in Monday-first order
   };
 
   // Calculate month data (weekly totals)
@@ -644,8 +642,22 @@ export default function Dashboard() {
   // Calculate trend data from real workout logs
   const calculateTrendData = () => {
     const today = new Date();
-    const oneWeekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const twoWeeksAgo = new Date(today.getTime() - 14 * 24 * 60 * 60 * 1000);
+    const dayOfWeek = today.getDay();
+    
+    // Calculate Monday of this week
+    const thisMonday = new Date(today);
+    const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    thisMonday.setDate(today.getDate() - daysFromMonday);
+    thisMonday.setHours(0, 0, 0, 0);
+    
+    // Calculate Monday of last week (7 days before this Monday)
+    const lastMonday = new Date(thisMonday);
+    lastMonday.setDate(thisMonday.getDate() - 7);
+    
+    // End of this week is Sunday 23:59:59
+    const thisSunday = new Date(thisMonday);
+    thisSunday.setDate(thisMonday.getDate() + 6);
+    thisSunday.setHours(23, 59, 59, 999);
     
     let thisWeekLoad = 0;
     let lastWeekLoad = 0;
@@ -662,9 +674,12 @@ export default function Dashboard() {
       const reps = log.results?.totalReps || log.totalReps || 0;
       const load = weight * reps;
       
-      if (createdAt >= oneWeekAgo) {
+      // This week: from this Monday 00:00 to this Sunday 23:59:59
+      if (createdAt >= thisMonday && createdAt <= thisSunday) {
         thisWeekLoad += load;
-      } else if (createdAt >= twoWeeksAgo) {
+      } 
+      // Last week: from last Monday 00:00 to last Sunday 23:59:59
+      else if (createdAt >= lastMonday && createdAt < thisMonday) {
         lastWeekLoad += load;
       }
     });
@@ -687,30 +702,49 @@ export default function Dashboard() {
 
   // Build equipment distribution from real data
   const buildEquipmentDistribution = () => {
+    // Normalize equipment names to handle variations
+    const normalizeEquipment = (name) => {
+      if (!name) return 'Unknown';
+      const normalized = name.trim();
+      // Handle common variations
+      if (normalized.toLowerCase() === 'dumbell' || normalized.toLowerCase() === 'dumbbell') {
+        return 'Dumbbell';
+      }
+      if (normalized.toLowerCase() === 'weight stack' || normalized.toLowerCase() === 'weightstack') {
+        return 'Stack';
+      }
+      return normalized;
+    };
+
     const colorMap = {
       'Dumbbell': '#3B82F6',     // Blue
-      'Dumbell': '#3B82F6',      // Blue (alternate spelling)
       'Barbell': '#FBBF24',      // Yellow
-      'Weight Stack': '#EF4444', // Red
-      'custom': '#7c3aed',       // Purple for unknown
+      'Stack': '#EF4444',        // Red
+      'Unknown': '#7c3aed',      // Purple for unknown
+    };
+
+    // Display name mapping (for cleaner labels)
+    const displayNames = {
+      'Dumbbell': 'Dumbbell',
+      'Barbell': 'Barbell',
+      'Stack': 'Stack',
+      'Unknown': 'Other',
     };
     
     const distribution = {};
-    let total = 0;
     
     logs.forEach((log) => {
       // Handle both data formats
-      const equipment = log.exercise?.equipment || log.equipment;
+      const rawEquipment = log.exercise?.equipment || log.equipment;
+      const equipment = normalizeEquipment(rawEquipment);
       if (equipment) {
         distribution[equipment] = (distribution[equipment] || 0) + 1;
-        total++;
       }
     });
     
     return Object.entries(distribution).map(([name, count]) => ({
-      name,
-      value: total > 0 ? Math.round((count / total) * 100) : 0,
-      count,
+      name: displayNames[name] || name,
+      value: count, // Use actual count, not percentage
       color: colorMap[name] || '#7c3aed',
     }));
   };
@@ -739,6 +773,7 @@ export default function Dashboard() {
       'Dumbbell': '🏋️',
       'Barbell': '⚖️',
       'Weight Stack': '⛓️',
+      'Stack': '⛓️',
     };
     return iconMap[equipment] || '🏋️';
   };
