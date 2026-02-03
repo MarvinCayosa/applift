@@ -155,19 +155,36 @@ export function useWorkoutLogs(options = {}) {
   const weeklyWorkouts = stats?.weeklyWorkouts || 0;
   const monthlyWorkouts = stats?.monthlyWorkouts || 0;
 
+  // Helper to normalize equipment for display (kebab-case to Title Case)
+  const normalizeEquipment = (eq) => {
+    if (!eq || eq === 'Unknown') return 'Unknown';
+    // Convert kebab-case to Title Case: "weight-stack" -> "Weight Stack"
+    return eq.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+  };
+
+  // Helper to normalize exercise name for display (kebab-case to Title Case)
+  const normalizeExercise = (ex) => {
+    if (!ex || ex === 'Unknown Exercise') return 'Unknown Exercise';
+    // Convert kebab-case to Title Case: "seated-leg-extension" -> "Seated Leg Extension"
+    return ex.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+  };
+
   // Format recent workouts for display - handle both old and new data formats
-  const recentWorkouts = logs.slice(0, 5).map(log => {
-    // Get exercise name - handle both formats
-    const exerciseName = log.exercise?.name || log.exercise || 'Unknown Exercise';
-    // Get equipment - handle both formats
-    const equipment = log.exercise?.equipment || log.equipment || 'Unknown';
+  // Show ALL workouts, not limited to 5
+  const recentWorkouts = logs.map(log => {
+    // Get exercise name - handle both formats, prefer _exercise from path
+    const rawExercise = log._exercise || log.exercise?.name || log.exercise || 'Unknown Exercise';
+    const exerciseName = normalizeExercise(rawExercise);
+    // Get equipment - handle both formats, prefer _equipment from path (most reliable)
+    const rawEquipment = log._equipment || log.exercise?.equipment || log.equipment || 'Unknown';
+    const equipment = normalizeEquipment(rawEquipment);
     // Get weight - handle both formats
     const weight = log.planned?.weight || log.weight || 0;
     const weightUnit = log.planned?.weightUnit || log.weightUnit || 'kg';
     // Get reps - handle both formats
     const reps = log.results?.totalReps || log.totalReps || 0;
-    // Get sets - handle both formats
-    const sets = log.results?.totalSets || (log.sets ? Object.keys(log.sets).length : 0);
+    // Get sets - handle both formats, with fallback to planned sets
+    const sets = log.results?.totalSets || (log.sets ? Object.keys(log.sets).length : 0) || log.planned?.sets || 0;
     // Get duration
     const duration = log.results?.totalTime || 0;
     // Get date - handle both timestamp formats

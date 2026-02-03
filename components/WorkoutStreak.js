@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 
-export default function WorkoutStreak({ streakDays = 0, lastWorkoutDate = null, loading = false }) {
+export default function WorkoutStreak({ streakDays = 0, lastWorkoutDate = null, loading = false, lostStreak = 0 }) {
   const [displayDays, setDisplayDays] = useState(0);
   const [isVisible, setIsVisible] = useState(false);
 
@@ -40,6 +40,12 @@ export default function WorkoutStreak({ streakDays = 0, lastWorkoutDate = null, 
 
   // Get dynamic status message based on streak progress
   const getStatusMessage = () => {
+    // If streak is 0 and there was a lost streak, show the loss message
+    if (streakDays === 0 && lostStreak > 0) {
+      return `${lostStreak} day streak lost`;
+    }
+    
+    // If streak is 0 and no prior streak, encourage to start
     if (streakDays === 0) return "Start your Streak!";
     if (streakDays === 1) return "Good job!";
     if (streakDays === 2) return "Keep it up!";
@@ -60,6 +66,7 @@ export default function WorkoutStreak({ streakDays = 0, lastWorkoutDate = null, 
   };
 
   const hasActiveStreak = streakDays > 0;
+  const isStreakLost = streakDays === 0 && lostStreak > 0;
 
   return (
     <div className={`w-full max-w-4xl mx-auto mb-4 transition-all duration-700 ease-out ${
@@ -184,14 +191,14 @@ export default function WorkoutStreak({ streakDays = 0, lastWorkoutDate = null, 
               <div className="flex flex-col gap-1 min-w-0 flex-1">
                 {/* STREAK label */}
                 <span className={`text-sm font-bold uppercase tracking-widest transition-colors ${
-                  hasActiveStreak ? 'text-orange-300' : 'text-white/40'
+                  hasActiveStreak ? 'text-orange-300' : isStreakLost ? 'text-red-400' : 'text-white/40'
                 }`}>
                   STREAK
                 </span>
                 
                 {/* Status message */}
                 <span className={`text-xs font-medium transition-colors ${
-                  hasActiveStreak ? 'text-orange-200/60' : 'text-white/30'
+                  hasActiveStreak ? 'text-orange-200/60' : isStreakLost ? 'text-red-300/60' : 'text-white/30'
                 }`}>
                   {getStatusMessage()}
                 </span>
@@ -202,12 +209,12 @@ export default function WorkoutStreak({ streakDays = 0, lastWorkoutDate = null, 
             <div className="flex-shrink-0 text-right">
               <div className="flex items-baseline gap-1">
                 <span className={`text-2xl font-bold transition-colors ${
-                  hasActiveStreak ? 'text-white' : 'text-white/50'
+                  hasActiveStreak ? 'text-white' : isStreakLost ? 'text-red-400' : 'text-white/50'
                 }`}>
                   {displayDays}
                 </span>
                 <span className={`text-sm font-medium transition-colors ${
-                  hasActiveStreak ? 'text-orange-200' : 'text-white/40'
+                  hasActiveStreak ? 'text-orange-200' : isStreakLost ? 'text-red-300' : 'text-white/40'
                 }`}>
                   {displayDays === 1 ? 'DAY' : 'DAYS'}
                 </span>

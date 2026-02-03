@@ -27,18 +27,46 @@ function BirthdayPicker({ months, years, selectedMonth, selectedYear, onMonthCha
 
   // Initialize scroll position on mount
   useEffect(() => {
-    if (monthRef.current && selectedMonth !== undefined) {
-      const idx = months.indexOf(selectedMonth)
-      if (idx !== -1) {
-        monthRef.current.scrollTop = idx * itemHeight
-        lastIndexRef.current.month = idx
+    if (monthRef.current) {
+      if (selectedMonth && selectedMonth !== '') {
+        // If there's a selected month, scroll to it
+        const idx = months.indexOf(selectedMonth)
+        if (idx !== -1) {
+          monthRef.current.scrollTop = idx * itemHeight
+          lastIndexRef.current.month = idx
+        }
+      } else {
+        // If no selection, initialize with first visible item in center (index 0)
+        monthRef.current.scrollTop = 0
+        lastIndexRef.current.month = 0
+        // Set the initial value to the first month
+        if (onMonthChange) {
+          onMonthChange(months[0])
+        }
+        if (updateProfile) {
+          updateProfile({ birthMonth: months[0] })
+        }
       }
     }
-    if (yearRef.current && selectedYear !== undefined) {
-      const idx = years.indexOf(selectedYear)
-      if (idx !== -1) {
-        yearRef.current.scrollTop = idx * itemHeight
-        lastIndexRef.current.year = idx
+    if (yearRef.current) {
+      if (selectedYear && selectedYear !== '') {
+        // If there's a selected year, scroll to it
+        const idx = years.indexOf(selectedYear)
+        if (idx !== -1) {
+          yearRef.current.scrollTop = idx * itemHeight
+          lastIndexRef.current.year = idx
+        }
+      } else {
+        // If no selection, initialize with first visible item in center (index 0)
+        yearRef.current.scrollTop = 0
+        lastIndexRef.current.year = 0
+        // Set the initial value to the first year
+        if (onYearChange) {
+          onYearChange(years[0])
+        }
+        if (updateProfile) {
+          updateProfile({ birthYear: years[0] })
+        }
       }
     }
   }, [])

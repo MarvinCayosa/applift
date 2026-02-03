@@ -27,6 +27,38 @@ const WorkoutCard = ({ workout, onWorkoutClick, selectedDay }) => {
     }
   };
 
+  // Format duration as mm:ss or just ss if under 1 minute
+  const formatDuration = (minutes) => {
+    if (!minutes || minutes <= 0) return '0s';
+    const totalSeconds = Math.round(minutes * 60);
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    if (mins === 0) {
+      return `${secs}s`;
+    }
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Normalize exercise name from kebab-case to Title Case
+  const normalizeExercise = (name) => {
+    if (!name) return 'Unknown Exercise';
+    // Convert kebab-case to Title Case: "seated-leg-extension" -> "Seated Leg Extension"
+    return name.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+  };
+
+  // Compute duration from timestamps (in seconds)
+  const computeDuration = (workout) => {
+    if (!workout.timestamps) return 0;
+    
+    const started = workout.timestamps.started?.seconds || workout.timestamps.created?.seconds;
+    const completed = workout.timestamps.completed?.seconds || workout.timestamps.ended?.seconds;
+    
+    if (!started || !completed) return 0;
+    
+    // Return duration in minutes
+    return (completed - started) / 60;
+  };
+
   return (
     <button
       onClick={() => onWorkoutClick(workout, selectedDay)}
@@ -40,13 +72,7 @@ const WorkoutCard = ({ workout, onWorkoutClick, selectedDay }) => {
       
       <div className="flex items-center justify-between mb-2 ml-3">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-white/90">{workout.exercise}</span>
-          <img 
-            src={getEquipmentIcon(workout.equipment)} 
-            alt={workout.equipment}
-            className="w-3 h-3"
-            style={{ filter: 'brightness(0) saturate(100%) invert(1)' }}
-          />
+          <span className="text-xs font-medium text-white/90">{normalizeExercise(workout.exercise)}</span>
         </div>
         <span className="text-xs text-white/50">{workout.startTime}</span>
       </div>
@@ -55,16 +81,16 @@ const WorkoutCard = ({ workout, onWorkoutClick, selectedDay }) => {
           <svg className="w-3 h-3 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <span className="text-xs text-white/70">{workout.duration} min</span>
+          <span className="text-xs text-white/70">{formatDuration(computeDuration(workout))}</span>
         </div>
         <div className="flex items-center gap-1">
           <img 
-            src="/svg/weight-response.svg" 
-            alt="Weight" 
+            src={getEquipmentIcon(workout.equipment)} 
+            alt={workout.equipment} 
             className="w-3 h-3"
             style={{ filter: 'brightness(0) saturate(100%) invert(64%) sepia(36%) saturate(678%) hue-rotate(249deg) brightness(91%) contrast(91%)' }}
           />
-          <span className="text-xs text-white/70">{workout.exerciseCount} exercises</span>
+          <span className="text-xs text-white/70">{workout.equipment || 'Unknown'}</span>
         </div>
       </div>
     </button>
@@ -218,8 +244,24 @@ export default function ActivityOverview({
     if (dayData.day === null) return ''
     if (dayData.isToday) return 'bg-white/80'
     if (dayData.isFuture) return 'bg-white/10'
-    if (dayData.isWorkout) return 'bg-gradient-to-r from-purple-400 to-purple-500 shadow-lg shadow-purple-500/50'
+    if (dayData.isWorkout) {
+      // Heatmap: calculate opacity based on exercise count
+      // 1 exercise = 20% opacity, 6+ exercises = 100% opacity
+      const exerciseCount = dayData.exerciseCount || 1;
+      const opacity = Math.min(100, Math.max(20, (exerciseCount / 6) * 100));
+      return `bg-purple-500 shadow-lg shadow-purple-500/30`
+    }
     return 'bg-white/30'
+  }
+
+  // Get inline style for heatmap opacity
+  const getHeatmapStyle = (dayData) => {
+    if (!dayData.isWorkout || dayData.isFuture || dayData.isToday || dayData.day === null) {
+      return {};
+    }
+    const exerciseCount = dayData.exerciseCount || 1;
+    const opacity = Math.min(1, Math.max(0.2, (exerciseCount / 6)));
+    return { opacity };
   }
 
   const monthGridDotSize = isDesktop ? 'w-3.5 h-3.5' : 'w-2.5 h-2.5'
@@ -329,11 +371,14 @@ export default function ActivityOverview({
                     {monthData.days.map((dayData, idx) => {
                       if (dayData.day === null) return <div key={idx} className={monthGridDotSize} />
                       const dotColor = monthDotClass(dayData)
+                      const heatmapStyle = getHeatmapStyle(dayData)
+                      const exerciseText = dayData.exerciseCount > 0 ? `${dayData.exerciseCount} exercise${dayData.exerciseCount > 1 ? 's' : ''}` : '';
                       return (
                         <div
                           key={idx}
                           className={`${monthGridDotSize} rounded-full ${dotColor} transition-all duration-300 hover:scale-110 mx-auto`}
-                          title={dayData.day ? (dayData.isToday ? 'Today' : dayData.isWorkout ? 'Workout day' : 'Rest day') : ''}
+                          style={heatmapStyle}
+                          title={dayData.day ? (dayData.isToday ? 'Today' : dayData.isWorkout ? `${exerciseText}` : 'Rest day') : ''}
                         />
                       )
                     })}

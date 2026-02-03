@@ -112,7 +112,10 @@ export class WorkoutStreakService {
         lastWorkoutDate: Timestamp.fromDate(today),
         totalWorkoutDays: newTotalWorkoutDays,
         streakStartDate: streakStartDate,
-        lastUpdated: Timestamp.now()
+        lastUpdated: Timestamp.now(),
+        // Clear lostStreak when user starts working out again
+        lostStreak: null,
+        streakLostDate: null
       };
 
       // Save to userStreaks collection (primary - easy to manage in Firebase console)
@@ -179,10 +182,13 @@ export class WorkoutStreakService {
         
         // If more than 1 day has passed, reset current streak
         if (daysDiff > 1) {
+          const lostStreak = streakData.currentStreak; // Save the streak that was lost
           const resetStreakData = {
             ...streakData,
             currentStreak: 0,
-            streakStartDate: null
+            streakStartDate: null,
+            lostStreak: lostStreak, // Track the lost streak for UI message
+            streakLostDate: Timestamp.now()
           };
           
           // Update in both collections

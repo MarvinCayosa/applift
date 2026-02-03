@@ -330,6 +330,7 @@ export default function Dashboard() {
   // Build workout history from real Firebase data
   const buildWorkoutDaysByMonth = () => {
     const workoutDaysByMonth = {};
+    const exerciseCountByDay = {}; // Track exercise count for heatmap
     
     logs.forEach((log) => {
       // Handle both timestamp formats
@@ -338,7 +339,9 @@ export default function Dashboard() {
                         (log.startTime ? new Date(log.startTime) : null);
       if (createdAt) {
         const month = createdAt.getMonth();
+        const year = createdAt.getFullYear();
         const day = createdAt.getDate();
+        const dayKey = `${year}-${month}-${day}`;
         
         if (!workoutDaysByMonth[month]) {
           workoutDaysByMonth[month] = [];
@@ -347,17 +350,22 @@ export default function Dashboard() {
         if (!workoutDaysByMonth[month].includes(day)) {
           workoutDaysByMonth[month].push(day);
         }
+        
+        // Count exercises per day for heatmap
+        if (!exerciseCountByDay[dayKey]) {
+          exerciseCountByDay[dayKey] = 0;
+        }
+        exerciseCountByDay[dayKey]++;
       }
     });
     
-    return workoutDaysByMonth;
+    return { workoutDaysByMonth, exerciseCountByDay };
   };
 
   // Real workout history data from Firestore
-  const workoutHistory = {
-    workoutDaysByMonth: buildWorkoutDaysByMonth(),
-    lastWorkout: lastWorkout,
-  };
+  const workoutHistory = buildWorkoutDaysByMonth();
+  const workoutDaysByMonth = workoutHistory.workoutDaysByMonth;
+  const exerciseCountByDay = workoutHistory.exerciseCountByDay;
 
   // Check if user has any workout history
   const hasWorkoutHistory = hasWorkouts;
@@ -393,16 +401,23 @@ export default function Dashboard() {
       }
       
       // Handle both old format (log.exercise.name) and new format (log.exercise as string)
-      const exerciseName = log.exercise?.name || log.exercise || 'Unknown Exercise';
-      const equipment = log.exercise?.equipment || log.equipment || 'Unknown';
+      // Prefer _exercise and _equipment from path (most reliable source)
+      const rawExercise = log._exercise || log.exercise?.name || log.exercise || 'Unknown Exercise';
+      const rawEquipment = log._equipment || log.exercise?.equipment || log.equipment || 'Unknown';
       const totalReps = log.results?.totalReps || log.totalReps || 0;
       const totalSets = log.results?.totalSets || (log.sets ? Object.keys(log.sets).length : 0);
       const weight = log.planned?.weight || log.weight || 0;
       
+      // Normalize kebab-case to Title Case for display
+      const normalizeForDisplay = (str) => {
+        if (!str || str === 'Unknown' || str === 'Unknown Exercise') return str;
+        return str.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+      };
+      
       workoutLogs[day].push({
         id: log.id,
-        exercise: exerciseName,
-        equipment: equipment,
+        exercise: normalizeForDisplay(rawExercise),
+        equipment: normalizeForDisplay(rawEquipment),
         duration: Math.round((log.results?.totalTime || 0) / 60), // Convert seconds to minutes
         startTime: createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }),
         exerciseCount: 1,
@@ -410,6 +425,7 @@ export default function Dashboard() {
         reps: totalReps,
         sets: totalSets,
         weight: weight,
+        timestamps: log.timestamps, // Pass timestamps for duration calculation
       });
     });
     
@@ -448,13 +464,18 @@ export default function Dashboard() {
         const isCurrentMonth = month === currentMonth;
         const isFuture = isCurrentMonth && day > currentDay;
         const isToday = isCurrentMonth && day === currentDay;
-        const isWorkout = workoutHistory.workoutDaysByMonth[month]?.includes(day) || false;
+        const isWorkout = workoutDaysByMonth[month]?.includes(day) || false;
+        
+        // Get exercise count for this day for heatmap
+        const dayKey = `${year}-${month}-${day}`;
+        const exerciseCount = exerciseCountByDay[dayKey] || 0;
 
         days.push({
           day,
           isWorkout,
           isFuture,
           isToday,
+          exerciseCount, // Add exercise count for heatmap
         });
       }
 
@@ -490,9 +511,10 @@ export default function Dashboard() {
       date.setDate(sunday.getDate() + i);
       const dayNum = date.getDate();
       const month = date.getMonth();
+      const year = date.getFullYear();
       const isToday = dayNum === currentDay && month === currentMonth;
       const isFuture = date > today;
-      const isWorkout = workoutHistory.workoutDaysByMonth[month]?.includes(dayNum) || false;
+      const isWorkout = workoutDaysByMonth[month]?.includes(dayNum) || false;
       
       weekDays.push({
         day: dayNum,
@@ -899,6 +921,7 @@ export default function Dashboard() {
               streakDays={streakData.currentStreak}
               lastWorkoutDate={streakData.lastWorkoutDate ? new Date(streakData.lastWorkoutDate.seconds * 1000).toISOString() : null}
               loading={streakLoading}
+              lostStreak={streakData.lostStreak || 0}
             />
           </div>
 
@@ -925,7 +948,24 @@ export default function Dashboard() {
 
                   {/* Card 2: Recent Workouts */}
                   <article className="min-w-[calc(100vw-24px)] w-[calc(100vw-24px)] max-w-[384px] shrink-0 snap-center rounded-3xl bg-white/10 p-5 shadow-2xl h-[320px] flex flex-col">
-                    <h3 className="text-sm font-semibold text-white/90 mb-4">Recent Workouts</h3>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-sm font-semibold text-white/90">Recent Workouts</h3>
+                      <button
+                        onClick={() => router.push('/history')}
+                        className="text-white/40 hover:text-white/60 transition-colors"
+                        aria-label="See all workouts"
+                      >
+                        <svg 
+                          className="w-4 h-4" 
+                          fill="none" 
+                          stroke="currentColor" 
+                          viewBox="0 0 24 24"
+                          strokeWidth={2}
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                        </svg>
+                      </button>
+                    </div>
                     <div className="flex-1 overflow-y-auto scrollbar-hide">
                       {hasRecentWorkouts ? (
                         <div className="space-y-2.5">
@@ -992,7 +1032,24 @@ export default function Dashboard() {
 
                 {/* Card 2: Recent Workouts */}
                 <div className="backdrop-blur-md bg-white/10 rounded-3xl p-6 shadow-2xl hover:shadow-3xl transition-all duration-300 h-[320px] flex flex-col">
-                  <h3 className="text-sm font-semibold text-white/90 mb-5 uppercase tracking-wide">Recent Workouts</h3>
+                  <div className="flex items-center justify-between mb-5">
+                    <h3 className="text-sm font-semibold text-white/90 uppercase tracking-wide">Recent Workouts</h3>
+                    <button
+                      onClick={() => router.push('/history')}
+                      className="text-white/40 hover:text-white/60 transition-colors"
+                      aria-label="See all workouts"
+                    >
+                      <svg 
+                        className="w-4 h-4" 
+                        fill="none" 
+                        stroke="currentColor" 
+                        viewBox="0 0 24 24"
+                        strokeWidth={2}
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  </div>
                   <div className="flex-1 overflow-y-auto scrollbar-hide">
                     {hasRecentWorkouts ? (
                       <div className="space-y-3">

@@ -82,15 +82,6 @@ export default function ConnectPill({
 
   return (
     <>
-      {/* Backdrop */}
-      {isExpanded && (
-        <div 
-          className="fixed inset-0 bg-black/60 z-[9999] transition-opacity duration-300"
-          style={{ animation: 'fadeIn 0.3s ease-out' }}
-          onClick={() => setIsExpanded(false)}
-        />
-      )}
-
       {/* Pill - stays in place, expands like accordion */}
       <div 
         ref={pillRef}

@@ -12,18 +12,40 @@ function BirthdayPicker({ months, years, selectedMonth, selectedYear, onMonthCha
 
   // Initialize scroll position on mount
   useEffect(() => {
-    if (monthRef.current && selectedMonth !== undefined) {
-      const idx = months.indexOf(selectedMonth);
-      if (idx !== -1) {
-        monthRef.current.scrollTop = idx * itemHeight;
-        lastIndexRef.current.month = idx;
+    if (monthRef.current) {
+      if (selectedMonth && selectedMonth !== '') {
+        // If there's a selected month, scroll to it
+        const idx = months.indexOf(selectedMonth);
+        if (idx !== -1) {
+          monthRef.current.scrollTop = idx * itemHeight;
+          lastIndexRef.current.month = idx;
+        }
+      } else {
+        // If no selection, initialize with first visible item in center (index 0)
+        monthRef.current.scrollTop = 0;
+        lastIndexRef.current.month = 0;
+        // Set the initial value to the first month
+        if (onMonthChange) {
+          onMonthChange(months[0]);
+        }
       }
     }
-    if (yearRef.current && selectedYear !== undefined) {
-      const idx = years.indexOf(selectedYear);
-      if (idx !== -1) {
-        yearRef.current.scrollTop = idx * itemHeight;
-        lastIndexRef.current.year = idx;
+    if (yearRef.current) {
+      if (selectedYear && selectedYear !== '') {
+        // If there's a selected year, scroll to it
+        const idx = years.indexOf(selectedYear);
+        if (idx !== -1) {
+          yearRef.current.scrollTop = idx * itemHeight;
+          lastIndexRef.current.year = idx;
+        }
+      } else {
+        // If no selection, initialize with first visible item in center (index 0)
+        yearRef.current.scrollTop = 0;
+        lastIndexRef.current.year = 0;
+        // Set the initial value to the first year
+        if (onYearChange) {
+          onYearChange(years[0]);
+        }
       }
     }
   }, [selectedMonth, selectedYear, months, years]);
@@ -972,6 +994,19 @@ export default function Settings() {
                     </svg>
                   </button>
                 )}
+                {isEditingProfile && (
+                  <button
+                    onClick={() => {
+                      handleCancelProfile();
+                    }}
+                    className="p-2 rounded-full bg-violet-500/30 rotate-45 transition-all duration-300"
+                    aria-label="Close edit profile"
+                  >
+                    <svg className="w-5 h-5 text-violet-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                    </svg>
+                  </button>
+                )}
               </div>
 
               {/* Edit Profile Form */}
@@ -1088,7 +1123,13 @@ export default function Settings() {
             <div className="flex items-center justify-between mb-3 px-1">
               <h3 className="text-xs font-semibold text-white/50 uppercase tracking-wide">Personal Information</h3>
               <button
-                onClick={() => setIsEditingBody(!isEditingBody)}
+                onClick={() => {
+                  if (isEditingBody) {
+                    handleCancelBody();
+                  } else {
+                    setIsEditingBody(true);
+                  }
+                }}
                 className={`p-1.5 rounded-full transition-all duration-300 ${isEditingBody ? 'bg-violet-500/30 rotate-45' : 'hover:bg-violet-500/20'}`}
                 aria-label="Edit personal information"
               >
@@ -1415,8 +1456,12 @@ export default function Settings() {
               <h3 className="text-xs font-semibold text-white/50 uppercase tracking-wide">Goals & Preferences</h3>
               <button
                 onClick={() => {
-                  setIsEditingGoals(!isEditingGoals);
-                  setOpenDropdown(null);
+                  if (isEditingGoals) {
+                    handleCancelGoals();
+                  } else {
+                    setIsEditingGoals(true);
+                    setOpenDropdown(null);
+                  }
                 }}
                 className={`p-1.5 rounded-full transition-all duration-300 ${isEditingGoals ? 'bg-violet-500/30 rotate-45' : 'hover:bg-violet-500/20'}`}
                 aria-label="Edit goals"

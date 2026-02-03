@@ -13,7 +13,9 @@ export function useWorkoutStreak() {
     longestStreak: 0,
     lastWorkoutDate: null,
     totalWorkoutDays: 0,
-    streakStartDate: null
+    streakStartDate: null,
+    lostStreak: null,
+    streakLostDate: null
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -128,8 +130,16 @@ export function useWorkoutStreak() {
   // Get streak status message
   const getStreakMessage = () => {
     const streak = streakData.currentStreak;
+    const lostStreak = streakData.lostStreak;
     
-    if (streak === 0) return "Start your streak today!";
+    // If streak is 0 and there was a lost streak, show the loss message
+    if (streak === 0 && lostStreak && lostStreak > 0) {
+      return `${lostStreak} day streak lost`;
+    }
+    
+    // If streak is 0 and no prior streak, encourage to start
+    if (streak === 0) return "Start your streak!";
+    
     if (streak === 1) return "Great start! Keep it up!";
     if (streak < 7) return "Building momentum!";
     if (streak < 30) return "On fire! Keep going!";
@@ -139,12 +149,19 @@ export function useWorkoutStreak() {
   // Get streak icon
   const getStreakIcon = () => {
     const streak = streakData.currentStreak;
+    const lostStreak = streakData.lostStreak;
+    
+    // Show broken heart if streak was lost
+    if (streak === 0 && lostStreak && lostStreak > 0) return "💔";
     
     if (streak === 0) return "🎯";
     if (streak < 7) return "🔥";
     if (streak < 30) return "💪";
     return "🏆";
   };
+
+  // Check if streak was recently lost
+  const isStreakLost = streakData.currentStreak === 0 && streakData.lostStreak > 0;
 
   return {
     // Data
@@ -161,7 +178,9 @@ export function useWorkoutStreak() {
     // Computed values
     lastWorkoutText: getLastWorkoutText(),
     streakMessage: getStreakMessage(),
-    streakIcon: getStreakIcon()
+    streakIcon: getStreakIcon(),
+    isStreakLost, // New: indicates if streak was recently lost
+    lostStreakCount: streakData.lostStreak || 0 // New: the number of days lost
   };
 }
 

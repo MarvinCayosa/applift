@@ -308,10 +308,9 @@ html, body, #__next {
 
 /* Map Tailwind text-white utility (and variants) to the requested warm off-white.
    We intentionally do NOT override background or border 'white' so glass containers
-   and dark elements remain intact. */
-.text-white,
-[class*="text-white"] {
-  color: var(--app-white) !important;
+   and dark elements remain intact. Only target exact text-white class, not opacity variants. */
+.text-white:not([class*="/"]) {
+  color: var(--app-white);
 }
 
 /* Placeholder and SVG behavior: keep placeholders slightly faded, make SVGs inherit text color. */
