@@ -704,38 +704,36 @@ export default function Dashboard() {
   const buildEquipmentDistribution = () => {
     // Normalize equipment names to handle variations
     const normalizeEquipment = (name) => {
-      if (!name) return 'Unknown';
-      const normalized = name.trim();
+      if (!name) return null;
+      const normalized = name.trim().toLowerCase();
       // Handle common variations
-      if (normalized.toLowerCase() === 'dumbell' || normalized.toLowerCase() === 'dumbbell') {
+      if (normalized === 'dumbell' || normalized === 'dumbbell') {
         return 'Dumbbell';
       }
-      if (normalized.toLowerCase() === 'weight stack' || normalized.toLowerCase() === 'weightstack') {
-        return 'Stack';
+      if (normalized === 'barbell') {
+        return 'Barbell';
       }
-      return normalized;
+      if (normalized === 'weight-stack' || normalized === 'weight stack' || normalized === 'weightstack' || normalized === 'stack') {
+        return 'Weight Stack';
+      }
+      // Capitalize first letter for display
+      return name.charAt(0).toUpperCase() + name.slice(1);
     };
 
     const colorMap = {
-      'Dumbbell': '#3B82F6',     // Blue
-      'Barbell': '#FBBF24',      // Yellow
-      'Stack': '#EF4444',        // Red
-      'Unknown': '#7c3aed',      // Purple for unknown
-    };
-
-    // Display name mapping (for cleaner labels)
-    const displayNames = {
-      'Dumbbell': 'Dumbbell',
-      'Barbell': 'Barbell',
-      'Stack': 'Stack',
-      'Unknown': 'Other',
+      'Dumbbell': '#3B82F6',      // Blue
+      'Barbell': '#FBBF24',       // Yellow
+      'Weight Stack': '#EF4444', // Red
     };
     
     const distribution = {};
     
     logs.forEach((log) => {
-      // Handle both data formats
-      const rawEquipment = log.exercise?.equipment || log.equipment;
+      // Priority: _equipment (from path) > exercise.equipmentPath > exercise.equipment > equipment
+      const rawEquipment = log._equipment || 
+                          log['exercise.equipmentPath'] ||
+                          (typeof log.exercise === 'object' ? log.exercise?.equipment : null) ||
+                          log.equipment;
       const equipment = normalizeEquipment(rawEquipment);
       if (equipment) {
         distribution[equipment] = (distribution[equipment] || 0) + 1;
@@ -743,8 +741,8 @@ export default function Dashboard() {
     });
     
     return Object.entries(distribution).map(([name, count]) => ({
-      name: displayNames[name] || name,
-      value: count, // Use actual count, not percentage
+      name: name,
+      value: count,
       color: colorMap[name] || '#7c3aed',
     }));
   };

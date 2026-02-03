@@ -31,21 +31,61 @@ import {
   orderBy, 
   limit,
   serverTimestamp,
-  Timestamp
+  Timestamp,
+  collectionGroup
 } from 'firebase/firestore';
 
-// Collection references
-const WORKOUT_LOGS_COLLECTION = 'workoutLogs';
+// Collection references - userWorkouts is now the PRIMARY collection
 const USER_WORKOUTS_COLLECTION = 'userWorkouts';
+const WORKOUT_LOGS_COLLECTION = 'workoutLogs'; // Legacy - for backward compatibility only
+
+// Simple in-memory cache for workout logs
+const cache = {
+  logs: new Map(),
+  stats: new Map(),
+  TTL: 30000, // 30 seconds cache
+};
+
+/**
+ * Get cached data or null if expired/missing
+ */
+const getCached = (key) => {
+  const cached = cache.logs.get(key);
+  if (cached && Date.now() - cached.timestamp < cache.TTL) {
+    console.log('[WorkoutLogService] Cache hit for:', key);
+    return cached.data;
+  }
+  return null;
+};
+
+/**
+ * Set cache data
+ */
+const setCache = (key, data) => {
+  cache.logs.set(key, { data, timestamp: Date.now() });
+};
+
+/**
+ * Clear cache for a user (call after new workout)
+ */
+export const clearUserCache = (userId) => {
+  cache.logs.delete(`logs_${userId}`);
+  cache.stats.delete(`stats_${userId}`);
+  console.log('[WorkoutLogService] Cleared cache for user:', userId);
+};
 
 /**
  * Sanitize string for use in Firestore document paths
+ * Converts to kebab-case for consistency
  */
 const sanitizeForPath = (str) => {
   if (!str) return 'unknown';
   return str
-    .toLowerCase()
     .trim()
+    // Insert dash before uppercase letters (handles camelCase/PascalCase)
+    .replace(/([a-z])([A-Z])/g, '$1-$2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
+    .toLowerCase()
     .replace(/\s+/g, '-')
     .replace(/[^a-z0-9-]/g, '')
     .replace(/-+/g, '-')
@@ -243,40 +283,109 @@ export const getWorkoutLog = async (logId) => {
 
 /**
  * Get all completed workout logs for a user
- * Uses the userWorkouts/{userId}/logs subcollection for efficient queries
- * Falls back to old collection formats for backward compatibility
+ * PRIMARY: Uses userWorkouts/{userId}/{equipment}/{exercise}/logs/{workoutId}
+ * Falls back to old structures for backward compatibility
+ * 
+ * STRUCTURE IN FIRESTORE:
+ * userWorkouts (collection)
+ *   └── {userId} (document)
+ *       └── {equipment} (collection)
+ *           └── {exercise} (document)
+ *               └── logs (collection)
+ *                   └── {workoutId} (document)
  */
 export const getUserWorkoutLogs = async (userId, options = {}) => {
   const { 
-    status = 'completed', 
+    status = null, // null = get all, 'completed'/'incomplete' to filter
     limitCount = 50,
     startDate = null,
     endDate = null 
   } = options;
 
+  // Check cache first (cache key includes status for proper filtering)
+  const cacheKey = `logs_${userId}_${status || 'all'}`;
+  const cached = getCached(cacheKey);
+  if (cached) {
+    console.log('[WorkoutLogService] Using cached logs');
+    return cached.slice(0, limitCount);
+  }
+
   try {
     let logs = [];
     
-    // Try new userWorkouts structure first
+    // PRIMARY: Query new hierarchical structure using PARALLEL queries
+    // Structure: userWorkouts/{userId}/{equipment}/{exercise}/logs/{workoutId}
     try {
-      const userLogsRef = collection(db, USER_WORKOUTS_COLLECTION, userId, 'logs');
-      const q = query(
-        userLogsRef,
-        where('status', '==', status),
-        limit(limitCount * 2)
-      );
+      const equipmentTypes = ['dumbbell', 'barbell', 'weight-stack'];
       
-      const snapshot = await getDocs(q);
-      snapshot.forEach((doc) => {
-        logs.push({ id: doc.id, ...doc.data() });
-      });
+      // Helper to fetch all logs for one equipment type
+      const fetchEquipmentLogs = async (equipment) => {
+        const equipmentLogs = [];
+        try {
+          const exercisesRef = collection(db, USER_WORKOUTS_COLLECTION, userId, equipment);
+          const exercisesSnapshot = await getDocs(exercisesRef);
+          
+          // Fetch all exercise logs in parallel too
+          const exercisePromises = exercisesSnapshot.docs.map(async (exerciseDoc) => {
+            const exerciseName = exerciseDoc.id;
+            const workoutsRef = collection(db, USER_WORKOUTS_COLLECTION, userId, equipment, exerciseName, 'logs');
+            const workoutsSnapshot = await getDocs(workoutsRef);
+            
+            const exerciseLogs = [];
+            workoutsSnapshot.forEach((workoutDoc) => {
+              const data = workoutDoc.data();
+              if (status && data.status && data.status !== status) return;
+              exerciseLogs.push({ 
+                id: workoutDoc.id, 
+                path: `${userId}/${equipment}/${exerciseName}/logs/${workoutDoc.id}`,
+                _equipment: equipment,
+                _exercise: exerciseName,
+                ...data 
+              });
+            });
+            return exerciseLogs;
+          });
+          
+          const results = await Promise.all(exercisePromises);
+          results.forEach(exerciseLogs => equipmentLogs.push(...exerciseLogs));
+        } catch (err) {
+          // Equipment doesn't exist, skip silently
+        }
+        return equipmentLogs;
+      };
       
-      console.log('[WorkoutLogService] Found', logs.length, 'logs in userWorkouts');
+      // Fetch all equipment types in PARALLEL
+      const equipmentPromises = equipmentTypes.map(fetchEquipmentLogs);
+      const allResults = await Promise.all(equipmentPromises);
+      allResults.forEach(equipmentLogs => logs.push(...equipmentLogs));
+      
+      console.log('[WorkoutLogService] Total logs found in userWorkouts:', logs.length);
     } catch (err) {
-      console.log('[WorkoutLogService] userWorkouts query failed:', err.message);
+      console.log('[WorkoutLogService] Hierarchical query error:', err.message);
     }
 
-    // Fall back to old format (odUSerId in workoutLogs)
+    // FALLBACK 1: Try old userWorkouts/{userId}/logs structure
+    if (logs.length === 0) {
+      try {
+        const userLogsRef = collection(db, USER_WORKOUTS_COLLECTION, userId, 'logs');
+        const q = query(
+          userLogsRef,
+          where('status', '==', status),
+          limit(limitCount * 2)
+        );
+        
+        const snapshot = await getDocs(q);
+        snapshot.forEach((doc) => {
+          logs.push({ id: doc.id, ...doc.data() });
+        });
+        
+        console.log('[WorkoutLogService] Found', logs.length, 'logs in old userWorkouts/logs');
+      } catch (err) {
+        console.log('[WorkoutLogService] Old userWorkouts query failed:', err.message);
+      }
+    }
+
+    // FALLBACK 2: Try old format (odUSerId in workoutLogs)
     if (logs.length === 0) {
       try {
         const q1 = query(
@@ -297,7 +406,7 @@ export const getUserWorkoutLogs = async (userId, options = {}) => {
       }
     }
 
-    // Also try oldest format (userId) if no results
+    // FALLBACK 3: Try oldest format (userId in workoutLogs)
     if (logs.length === 0) {
       try {
         const q2 = query(
@@ -340,6 +449,9 @@ export const getUserWorkoutLogs = async (userId, options = {}) => {
         return true;
       });
     }
+    
+    // Cache the full results (before limit) for future calls
+    setCache(cacheKey, logs);
     
     // Apply limit after sorting
     return logs.slice(0, limitCount);
@@ -385,8 +497,17 @@ export const getWorkoutLogsByDateRange = async (userId, startDate, endDate) => {
  * Handles both old and new data formats
  */
 export const getUserWorkoutStats = async (userId) => {
+  // Check cache first
+  const cacheKey = `stats_${userId}`;
+  const cached = getCached(cacheKey);
+  if (cached) {
+    console.log('[WorkoutLogService] Using cached stats');
+    return cached;
+  }
+
   try {
-    const logs = await getUserWorkoutLogs(userId, { status: 'completed', limitCount: 1000 });
+    // Get all logs (don't filter by status - we want all workout data)
+    const logs = await getUserWorkoutLogs(userId, { status: null, limitCount: 1000 });
     
     const stats = {
       totalWorkouts: logs.length,
@@ -407,8 +528,8 @@ export const getUserWorkoutStats = async (userId) => {
     logs.forEach((log) => {
       // Aggregate results - handle both old format (log.results) and new format (root level)
       if (log.results) {
-        stats.totalReps += log.results.totalReps || 0;
-        stats.totalSets += log.results.totalSets || 0;
+        stats.totalReps += log.results.totalReps || log.results.completedReps || 0;
+        stats.totalSets += log.results.totalSets || log.results.completedSets || 0;
         stats.totalTime += log.results.totalTime || 0;
         stats.totalCalories += log.results.calories || 0;
       } else {
@@ -420,20 +541,37 @@ export const getUserWorkoutStats = async (userId) => {
         stats.totalSets += setCount;
       }
 
-      // Equipment distribution - handle both formats
-      const equipment = log.exercise?.equipment || log.equipment;
+      // Equipment distribution - use _equipment from path (most reliable)
+      // Falls back to other fields for backward compatibility
+      let equipment = log._equipment || 
+                      log['exercise.equipmentPath'] ||
+                      (typeof log.exercise === 'object' ? log.exercise?.equipment : null) ||
+                      log.equipment;
+      
+      // Normalize equipment names
       if (equipment) {
+        equipment = equipment.toLowerCase();
+        // Fix common typos/variations
+        if (equipment === 'dumbell') equipment = 'dumbbell';
+        if (equipment === 'stack') equipment = 'weight-stack';
+        if (equipment === 'weight stack') equipment = 'weight-stack';
+        
         stats.equipmentDistribution[equipment] = (stats.equipmentDistribution[equipment] || 0) + 1;
       }
 
-      // Exercise count - handle both formats
-      const exercise = log.exercise?.name || log.exercise;
+      // Exercise count - use _exercise from path (most reliable)
+      let exercise = log._exercise || 
+                     log['exercise.namePath'] ||
+                     (typeof log.exercise === 'object' ? log.exercise?.name : null) ||
+                     (typeof log.exercise === 'string' ? log.exercise : null) ||
+                     log.exerciseName;
       if (exercise) {
         stats.exerciseCount[exercise] = (stats.exerciseCount[exercise] || 0) + 1;
       }
 
       // Weekly/Monthly counts - handle both timestamp formats
       const createdAt = log.timestamps?.started?.toDate?.() || 
+                        log.timestamps?.completed?.toDate?.() ||
                         log.timestamps?.created?.toDate?.() ||
                         (log.startTime ? new Date(log.startTime) : null);
       if (createdAt) {
@@ -441,6 +579,9 @@ export const getUserWorkoutStats = async (userId) => {
         if (createdAt >= oneMonthAgo) stats.monthlyWorkouts++;
       }
     });
+
+    // Cache the stats
+    setCache(cacheKey, stats);
 
     return stats;
   } catch (error) {
@@ -454,7 +595,9 @@ export const getUserWorkoutStats = async (userId) => {
  */
 export const getLastWorkout = async (userId) => {
   try {
-    const logs = await getUserWorkoutLogs(userId, { status: 'completed', limitCount: 1 });
+    // Get all logs (status null = get all)
+    const logs = await getUserWorkoutLogs(userId, { status: null, limitCount: 10 });
+    // logs are already sorted by date descending
     return logs.length > 0 ? logs[0] : null;
   } catch (error) {
     console.error('[WorkoutLogService] Error getting last workout:', error);
@@ -502,24 +645,58 @@ export const getWorkoutCalendarData = async (userId, year, month) => {
 
 /**
  * Get all workouts for a specific equipment type
- * Queries the hierarchical structure: workoutLogs/{equipment}/...
+ * PRIMARY: userWorkouts/{userId}/{equipment}/{exercise}/logs/{workoutId}
+ * Requires userId to query the new structure
  */
-export const getWorkoutsByEquipment = async (equipment, options = {}) => {
-  const { limitCount = 50 } = options;
+export const getWorkoutsByEquipment = async (userId, equipment, options = {}) => {
+  const { limitCount = 50, status = null } = options;
   const equipmentPath = sanitizeForPath(equipment);
 
   try {
-    // Get all exercise subcollections under this equipment
-    const equipmentRef = collection(db, WORKOUT_LOGS_COLLECTION, equipmentPath);
-    
-    // Note: This requires listing subcollections which isn't directly supported
-    // Instead, we query userWorkouts and filter by equipment
     const logs = [];
     
-    // For now, return empty - would need collection group query
-    console.log('[WorkoutLogService] getWorkoutsByEquipment - use collection group queries');
+    // Get all exercises under this equipment for this user
+    const exercisesRef = collection(db, USER_WORKOUTS_COLLECTION, userId, equipmentPath);
+    const exercisesSnapshot = await getDocs(exercisesRef);
     
-    return logs;
+    for (const exerciseDoc of exercisesSnapshot.docs) {
+      const exerciseName = exerciseDoc.id;
+      
+      // Get workouts from 'logs' subcollection
+      const workoutsRef = collection(
+        db, 
+        USER_WORKOUTS_COLLECTION, 
+        userId, 
+        equipmentPath, 
+        exerciseName, 
+        'logs'
+      );
+      
+      // Get all docs without query filter
+      const workoutsSnapshot = await getDocs(workoutsRef);
+      workoutsSnapshot.forEach((workoutDoc) => {
+        const data = workoutDoc.data();
+        // Filter by status client-side if specified
+        if (status && data.status && data.status !== status) {
+          return;
+        }
+        logs.push({ 
+          id: workoutDoc.id, 
+          path: `${userId}/${equipmentPath}/${exerciseName}/logs/${workoutDoc.id}`,
+          ...data 
+        });
+      });
+    }
+    
+    // Sort by date descending
+    logs.sort((a, b) => {
+      const dateA = a.timestamps?.started?.toDate?.() || new Date(0);
+      const dateB = b.timestamps?.started?.toDate?.() || new Date(0);
+      return dateB - dateA;
+    });
+    
+    console.log(`[WorkoutLogService] Found ${logs.length} workouts for equipment: ${equipment}`);
+    return logs.slice(0, limitCount);
   } catch (error) {
     console.error('[WorkoutLogService] Error getting workouts by equipment:', error);
     throw error;
@@ -528,35 +705,40 @@ export const getWorkoutsByEquipment = async (equipment, options = {}) => {
 
 /**
  * Get all workouts for a specific exercise
- * Queries: workoutLogs/{equipment}/{exercise}/...
+ * PRIMARY: userWorkouts/{userId}/{equipment}/{exercise}/logs/{workoutId}
+ * Note: Requires userId to query the new structure
  */
-export const getWorkoutsByExercise = async (equipment, exercise, options = {}) => {
-  const { limitCount = 50, status = 'completed' } = options;
+export const getWorkoutsByExercise = async (userId, equipment, exercise, options = {}) => {
+  const { limitCount = 50, status = null } = options;
   const equipmentPath = sanitizeForPath(equipment);
   const exercisePath = sanitizeForPath(exercise);
 
   try {
-    const exerciseRef = collection(
+    // PRIMARY: Query new hierarchical structure
+    // Workouts are in 'logs' subcollection under the exercise
+    const workoutsRef = collection(
       db, 
-      WORKOUT_LOGS_COLLECTION, 
+      USER_WORKOUTS_COLLECTION,
+      userId,
       equipmentPath, 
-      exercisePath
+      exercisePath,
+      'logs'
     );
     
-    const q = query(
-      exerciseRef,
-      where('status', '==', status),
-      limit(limitCount)
-    );
-    
-    const snapshot = await getDocs(q);
+    // Get all docs without query filter
+    const snapshot = await getDocs(workoutsRef);
     const logs = [];
     
     snapshot.forEach((doc) => {
+      const data = doc.data();
+      // Filter by status client-side if specified
+      if (status && data.status && data.status !== status) {
+        return;
+      }
       logs.push({ 
         id: doc.id, 
-        path: `${equipmentPath}/${exercisePath}/${doc.id}`,
-        ...doc.data() 
+        path: `${userId}/${equipmentPath}/${exercisePath}/logs/${doc.id}`,
+        ...data 
       });
     });
     
@@ -568,7 +750,7 @@ export const getWorkoutsByExercise = async (equipment, exercise, options = {}) =
     });
     
     console.log(`[WorkoutLogService] Found ${logs.length} workouts for ${equipment}/${exercise}`);
-    return logs;
+    return logs.slice(0, limitCount);
   } catch (error) {
     console.error('[WorkoutLogService] Error getting workouts by exercise:', error);
     throw error;
@@ -577,28 +759,51 @@ export const getWorkoutsByExercise = async (equipment, exercise, options = {}) =
 
 /**
  * Get exercise history for progress tracking
+ * PRIMARY: userWorkouts/{userId}/{equipment}/{exercise}/logs/{workoutId}
  * Returns all workouts for a specific exercise sorted by date
  */
 export const getExerciseHistory = async (userId, equipment, exercise, options = {}) => {
   const { limitCount = 100 } = options;
+  const equipmentPath = sanitizeForPath(equipment);
+  const exercisePath = sanitizeForPath(exercise);
 
   try {
-    // Query from user's workout collection, filter by exercise
-    const userLogsRef = collection(db, USER_WORKOUTS_COLLECTION, userId, 'logs');
-    const q = query(
-      userLogsRef,
-      where('exercise.equipmentPath', '==', sanitizeForPath(equipment)),
-      where('exercise.namePath', '==', sanitizeForPath(exercise)),
-      where('status', '==', 'completed'),
-      limit(limitCount)
+    // PRIMARY: Query new hierarchical structure
+    // Workouts are in 'logs' subcollection under the exercise
+    const workoutsRef = collection(
+      db, 
+      USER_WORKOUTS_COLLECTION, 
+      userId, 
+      equipmentPath,
+      exercisePath,
+      'logs'
     );
     
-    const snapshot = await getDocs(q);
+    // Get all docs without status filter
+    const snapshot = await getDocs(workoutsRef);
     const logs = [];
     
     snapshot.forEach((doc) => {
       logs.push({ id: doc.id, ...doc.data() });
     });
+    
+    // FALLBACK: If no results, try old userWorkouts/{userId}/logs structure
+    if (logs.length === 0) {
+      try {
+        const userLogsRef = collection(db, USER_WORKOUTS_COLLECTION, userId, 'logs');
+        const fallbackSnapshot = await getDocs(userLogsRef);
+        fallbackSnapshot.forEach((doc) => {
+          const data = doc.data();
+          // Filter by equipment and exercise client-side
+          if (data.exercise?.equipmentPath === equipmentPath && 
+              data.exercise?.namePath === exercisePath) {
+            logs.push({ id: doc.id, ...data });
+          }
+        });
+      } catch (err) {
+        // Fallback failed, continue with empty logs
+      }
+    }
     
     // Sort by date ascending for progress tracking
     logs.sort((a, b) => {
@@ -607,7 +812,8 @@ export const getExerciseHistory = async (userId, equipment, exercise, options = 
       return dateA - dateB;
     });
     
-    return logs;
+    console.log(`[WorkoutLogService] Found ${logs.length} workouts for ${equipment}/${exercise}`);
+    return logs.slice(0, limitCount);
   } catch (error) {
     console.error('[WorkoutLogService] Error getting exercise history:', error);
     throw error;
