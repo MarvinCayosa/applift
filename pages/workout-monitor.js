@@ -79,6 +79,9 @@ export default function WorkoutMonitor() {
   // Notification state
   const [lastRepNotification, setLastRepNotification] = useState(null);
   
+  // Track ConnectPill expansion for title visibility
+  const [isPillExpanded, setIsPillExpanded] = useState(false);
+  
   // Workout tracking - Use values from query params (passed from selectedWorkout)
   // Use useEffect to update when router.query changes (needed for client-side hydration)
   const [recommendedSets, setRecommendedSets] = useState(4);
@@ -375,7 +378,7 @@ export default function WorkoutMonitor() {
         background: 'linear-gradient(to bottom, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.6) 70%, rgba(0,0,0,0) 100%)'
       }}>
         {/* Top row - Back button and Connection Pill */}
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-2">
           <button
             onClick={() => router.back()}
             className="flex items-center justify-center h-10 w-10 rounded-full hover:bg-white/20 transition-all"
@@ -388,6 +391,15 @@ export default function WorkoutMonitor() {
             />
           </button>
 
+          {/* Workout Title - between back button and pill */}
+          <div 
+            className={`absolute left-1/2 transform -translate-x-1/2 text-center transition-opacity duration-300 px-16 max-w-full ${
+              isPillExpanded ? 'opacity-0' : 'opacity-0 animate-fade-in'
+            }`}
+          >
+            <h1 className="text-sm sm:text-base md:text-lg font-bold text-white truncate">{workout}</h1>
+          </div>
+
           <ConnectPill
             connected={connected}
             device={device}
@@ -397,50 +409,42 @@ export default function WorkoutMonitor() {
             scanning={scanning}
             devicesFound={devicesFound}
             availability={availability}
+            autoCollapse={true}
+            onExpandChange={setIsPillExpanded}
           />
         </div>
         
-        {/* Workout Title */}
-        <div className="text-center">
-          <h1 className="text-2xl sm:text-3xl font-bold text-white mb-1">{workout}</h1>
-          <p className="text-sm text-white/70">{equipment}</p>
+        {/* Workout Config Badges */}
+        <div className="flex items-center justify-center gap-2 opacity-0 animate-fade-in-up" style={{ animationDelay: '1.8s' }}>
+          {/* Set Type Badge */}
+          <span className={`text-xs px-3 py-1 rounded-full font-medium ${
+            workoutSetType === 'custom' 
+              ? 'bg-gray-400 text-gray-900' 
+              : 'bg-purple-400 text-purple-900'
+          }`}>
+            {workoutSetType === 'custom' ? 'Custom Set' : 'Recommended Set'}
+          </span>
           
-          {/* Workout Config Indicator */}
-          <div className="flex items-center justify-center gap-2 mt-2">
-            {/* Set Type Badge */}
-            <span className={`text-xs px-2 py-0.5 rounded-full ${
-              workoutSetType === 'custom' 
-                ? 'bg-purple-500/30 text-purple-300 border border-purple-500/50' 
-                : 'bg-green-500/30 text-green-300 border border-green-500/50'
-            }`}>
-              {workoutSetType === 'custom' ? '✏️ Custom' : '🤖 AI Recommended'}
+          {/* Equipment Badge */}
+          <span className={`text-xs px-3 py-1 rounded-full font-medium ${
+            equipment?.toLowerCase().includes('barbell') ? 'bg-orange-400 text-orange-900' :
+            equipment?.toLowerCase().includes('dumbbell') || equipment?.toLowerCase().includes('dumbell') ? 'bg-blue-400 text-blue-900' :
+            equipment?.toLowerCase().includes('weight stack') || equipment?.toLowerCase().includes('weightstack') || equipment?.toLowerCase().includes('cable') ? 'bg-green-400 text-green-900' :
+            'bg-teal-400 text-teal-900'
+          }`}>
+            {equipment}
+          </span>
+          
+          {/* Weight Badge (only show if weight > 0) */}
+          {workoutWeight > 0 && (
+            <span className="text-xs px-3 py-1 rounded-full font-medium bg-amber-400 text-amber-900">
+              {workoutWeight} {workoutWeightUnit}
             </span>
-            
-            {/* Weight Badge (only show if weight > 0) */}
-            {workoutWeight > 0 && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-500/30 text-yellow-300 border border-yellow-500/50">
-                {workoutWeight} {workoutWeightUnit}
-              </span>
-            )}
-          </div>
+          )}
         </div>
       </div>
 
       <main className="relative h-full w-full">
-
-        {/* Disconnection Warning during session */}
-        {!connected && isRecording && (
-          <div className="absolute top-32 left-4 right-4 z-30 rounded-xl bg-red-500/20 backdrop-blur-md border border-red-500/50 p-4 text-center animate-pulse">
-            <p className="text-sm text-red-300 font-semibold">⚠️ Device disconnected. Please reconnect to continue session.</p>
-          </div>
-        )}
-
-        {/* Connection Status - Before Starting */}
-        {!connected && !isRecording && (
-          <div className="absolute top-32 left-4 right-4 z-30 rounded-xl bg-red-500/20 backdrop-blur-md border border-red-500/50 p-4 text-center">
-            <p className="text-sm text-red-300">⚠️ Device not connected. Please connect your IMU device.</p>
-          </div>
-        )}
 
         {/* Chart - Full Screen Background */}
         <div className="absolute inset-0 z-10">
@@ -463,7 +467,7 @@ export default function WorkoutMonitor() {
           {/* Bottom Container - Buttons and Info Cards */}
           <div>
             {/* Timer/Start Button Bar */}
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-3 opacity-0 animate-fade-in-up" style={{ animationDelay: '2.1s' }}>
                 {!isRecording ? (
                   <button
                     onClick={startRecording}
@@ -532,7 +536,7 @@ export default function WorkoutMonitor() {
               </div>
 
               {/* Info Cards Row */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3 opacity-0 animate-fade-in-up" style={{ animationDelay: '2.4s' }}>
                 {/* Rep Count Card */}
                 <div className="rounded-2xl p-4 backdrop-blur-md flex flex-col" style={{
                   background: 'rgba(255, 255, 255, 0.08)',
@@ -540,20 +544,15 @@ export default function WorkoutMonitor() {
                   boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
                   aspectRatio: '1.4'
                 }}>
-                  {/* Top Section - Icon and Label */}
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-5 h-5 rounded-full bg-yellow-600/30 flex items-center justify-center">
-                      <svg className="w-3 h-3 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                      </svg>
-                    </div>
+                  {/* Top Section - Label */}
+                  <div className="mb-2">
                     <span className="text-base font-semibold text-white/90">Reps</span>
                   </div>
                   {/* Middle Section - Main Values */}
                   <div className="flex items-baseline gap-2 mb-auto">
                     <span className="text-5xl font-extrabold text-white leading-none">{repStats.repCount}</span>
                     <span className="text-2xl font-semibold text-white/40">/</span>
-                    <span className="text-3xl font-semibold text-white/40">{recommendedReps}</span>
+                    <span className="text-3xl font-semibold text-white/60">{recommendedReps}</span>
                   </div>
                   {/* Bottom Section - Progress Bar (aligned with set card) */}
                   <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden mt-2">
@@ -575,20 +574,15 @@ export default function WorkoutMonitor() {
                   boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
                   aspectRatio: '1.4'
                 }}>
-                  {/* Top Section - Icon and Label */}
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-5 h-5 rounded-full bg-blue-500/30 flex items-center justify-center">
-                      <svg className="w-3 h-3 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                      </svg>
-                    </div>
+                  {/* Top Section - Label */}
+                  <div className="mb-2">
                     <span className="text-base font-semibold text-white/90">Sets</span>
                   </div>
                   {/* Middle Section - Main Values */}
                   <div className="flex items-baseline gap-2 mb-auto">
                     <span className="text-5xl font-extrabold text-white leading-none">{currentSet}</span>
                     <span className="text-2xl font-semibold text-white/40">/</span>
-                    <span className="text-3xl font-semibold text-white/40">{recommendedSets}</span>
+                    <span className="text-3xl font-semibold text-white/60">{recommendedSets}</span>
                   </div>
                   {/* Bottom Section - Progress Bar */}
                   <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden mt-2">

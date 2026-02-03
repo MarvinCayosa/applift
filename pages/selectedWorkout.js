@@ -11,12 +11,100 @@ import WorkoutActionButton from '../components/WorkoutActionButton';
 import { useBluetooth } from '../context/BluetoothProvider';
 import { useWorkoutLogging } from '../context/WorkoutLoggingContext';
 
+// Pastel colors for cards (including target muscles)
+const cardColors = [
+  { bg: '#6B5B95', text: '#ffffff', numberBg: 'rgba(255,255,255,0.25)' }, // Purple for target muscles
+  { bg: '#E8A598', text: '#3d2020', numberBg: 'rgba(61,32,32,0.2)' }, // Coral/peach
+  { bg: '#7CB8A8', text: '#1a2520', numberBg: 'rgba(26,37,32,0.2)' }, // Sage green  
+  { bg: '#D4A574', text: '#2a1f15', numberBg: 'rgba(42,31,21,0.2)' }, // Warm tan
+  { bg: '#9ABED4', text: '#152025', numberBg: 'rgba(21,32,37,0.2)' }, // Soft blue
+];
+
+// Muscle Icon component for target muscles slide
+const MuscleIcon = ({ equipment, workout, size = 'default' }) => {
+  const sizeClasses = size === 'large' 
+    ? 'w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 lg:w-36 lg:h-36'
+    : 'w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 lg:w-18 lg:h-18';
+  const svgClasses = size === 'large'
+    ? 'w-18 h-18 sm:w-20 sm:h-20 md:w-24 md:h-24 lg:w-28 lg:h-28'
+    : 'w-9 h-9 sm:w-10 sm:h-10 md:w-12 md:h-12 lg:w-14 lg:h-14';
+  
+  return (
+  <div className={`${sizeClasses} rounded-full bg-white/10 border border-red-500/40 flex items-center justify-center flex-shrink-0`}>
+    <svg viewBox="0 0 64 64" className={svgClasses}>
+      <ellipse cx="32" cy="14" rx="8" ry="9" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="1.5"/>
+      <path d="M24 23 L20 45 L24 62 M40 23 L44 45 L40 62" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="1.5"/>
+      <path d="M24 23 Q32 26 40 23 L40 45 Q32 48 24 45 Z" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="1.5"/>
+      <path d="M24 26 L12 32 L10 45 M40 26 L52 32 L54 45" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="1.5"/>
+      
+      {equipment === 'Barbell' && workout === 'Flat Bench Barbell Press' && (
+        <>
+          <path d="M26 28 Q32 32 38 28 L38 36 Q32 40 26 36 Z" fill="rgba(239,68,68,0.7)"/>
+          <circle cx="22" cy="26" r="4" fill="rgba(239,68,68,0.5)"/>
+          <circle cx="42" cy="26" r="4" fill="rgba(239,68,68,0.5)"/>
+        </>
+      )}
+      {equipment === 'Barbell' && workout === 'Front Squats' && (
+        <>
+          <path d="M22 46 L20 58 L26 58 L28 46 Z" fill="rgba(239,68,68,0.7)"/>
+          <path d="M42 46 L44 58 L38 58 L36 46 Z" fill="rgba(239,68,68,0.7)"/>
+          <ellipse cx="32" cy="40" rx="6" ry="4" fill="rgba(239,68,68,0.5)"/>
+        </>
+      )}
+      {equipment === 'Dumbell' && workout === 'Concentration Curls' && (
+        <>
+          <ellipse cx="16" cy="36" rx="3" ry="5" fill="rgba(239,68,68,0.7)"/>
+          <ellipse cx="48" cy="36" rx="3" ry="5" fill="rgba(239,68,68,0.7)"/>
+        </>
+      )}
+      {equipment === 'Dumbell' && workout === 'Single-arm Overhead Extension' && (
+        <>
+          <ellipse cx="18" cy="38" rx="2.5" ry="5" fill="rgba(239,68,68,0.7)"/>
+          <ellipse cx="46" cy="38" rx="2.5" ry="5" fill="rgba(239,68,68,0.7)"/>
+          <circle cx="22" cy="26" r="4" fill="rgba(239,68,68,0.5)"/>
+          <circle cx="42" cy="26" r="4" fill="rgba(239,68,68,0.5)"/>
+        </>
+      )}
+      {equipment === 'Weight Stack' && workout === 'Lateral Pulldown' && (
+        <path d="M26 28 L24 42 Q32 46 40 42 L38 28 Q32 32 26 28 Z" fill="rgba(239,68,68,0.7)"/>
+      )}
+      {equipment === 'Weight Stack' && workout === 'Seated Leg Extension' && (
+        <>
+          <path d="M22 46 L20 58 L26 58 L28 46 Z" fill="rgba(239,68,68,0.7)"/>
+          <path d="M42 46 L44 58 L38 58 L36 46 Z" fill="rgba(239,68,68,0.7)"/>
+        </>
+      )}
+    </svg>
+  </div>
+);
+};
+
 // Exercise Info Carousel Component
 function ExerciseInfoCarousel({ equipment, workout, tips, getTargetMuscles }) {
   const [activeSlide, setActiveSlide] = useState(0);
   const carouselRef = useRef(null);
+  const autoScrollTimer = useRef(null);
+  const isUserScrolling = useRef(false);
+  const userScrollTimeout = useRef(null);
 
-  // Handle scroll to detect active slide
+  // All slides: Target Muscles + individual tips
+  const totalSlides = 1 + Math.min(tips.length, 4);
+
+  // Auto-scroll function
+  const scrollToNextSlide = () => {
+    if (!carouselRef.current || isUserScrolling.current) return;
+    
+    const nextSlide = (activeSlide + 1) % totalSlides;
+    const container = carouselRef.current;
+    const slideWidth = container.offsetWidth;
+    
+    container.scrollTo({
+      left: slideWidth * nextSlide,
+      behavior: 'smooth'
+    });
+  };
+
+  // Handle scroll to detect active slide and user interaction
   useEffect(() => {
     const container = carouselRef.current;
     if (!container) return;
@@ -26,103 +114,126 @@ function ExerciseInfoCarousel({ equipment, workout, tips, getTargetMuscles }) {
       const slideWidth = container.offsetWidth;
       const newIndex = Math.round(scrollLeft / slideWidth);
       setActiveSlide(newIndex);
+      
+      // Mark as user scrolling
+      isUserScrolling.current = true;
+      
+      // Clear existing timeout
+      if (userScrollTimeout.current) {
+        clearTimeout(userScrollTimeout.current);
+      }
+      
+      // Resume auto-scroll after 3 seconds of no interaction
+      userScrollTimeout.current = setTimeout(() => {
+        isUserScrolling.current = false;
+      }, 3000);
     };
 
     container.addEventListener('scroll', handleScroll, { passive: true });
-    return () => container.removeEventListener('scroll', handleScroll);
+    return () => {
+      container.removeEventListener('scroll', handleScroll);
+      if (userScrollTimeout.current) clearTimeout(userScrollTimeout.current);
+    };
   }, []);
 
-  // Muscle icon SVG based on exercise
-  const MuscleIcon = () => (
-    <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-white/5 border-2 border-red-500/40 flex items-center justify-center">
-      <svg viewBox="0 0 64 64" className="w-16 h-16 sm:w-20 sm:h-20">
-        {/* Body outline */}
-        <ellipse cx="32" cy="14" rx="8" ry="9" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="1.5"/>
-        <path d="M24 23 L20 45 L24 62 M40 23 L44 45 L40 62" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="1.5"/>
-        <path d="M24 23 Q32 26 40 23 L40 45 Q32 48 24 45 Z" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="1.5"/>
-        <path d="M24 26 L12 32 L10 45 M40 26 L52 32 L54 45" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="1.5"/>
-        
-        {/* Highlighted muscles based on exercise */}
-        {equipment === 'Barbell' && workout === 'Flat Bench Barbell Press' && (
-          <>
-            <path d="M26 28 Q32 32 38 28 L38 36 Q32 40 26 36 Z" fill="rgba(239,68,68,0.7)"/>
-            <circle cx="22" cy="26" r="4" fill="rgba(239,68,68,0.5)"/>
-            <circle cx="42" cy="26" r="4" fill="rgba(239,68,68,0.5)"/>
-          </>
-        )}
-        {equipment === 'Barbell' && workout === 'Front Squats' && (
-          <>
-            <path d="M22 46 L20 58 L26 58 L28 46 Z" fill="rgba(239,68,68,0.7)"/>
-            <path d="M42 46 L44 58 L38 58 L36 46 Z" fill="rgba(239,68,68,0.7)"/>
-            <ellipse cx="32" cy="40" rx="6" ry="4" fill="rgba(239,68,68,0.5)"/>
-          </>
-        )}
-        {equipment === 'Dumbell' && workout === 'Concentration Curls' && (
-          <>
-            <ellipse cx="16" cy="36" rx="3" ry="5" fill="rgba(239,68,68,0.7)"/>
-            <ellipse cx="48" cy="36" rx="3" ry="5" fill="rgba(239,68,68,0.7)"/>
-          </>
-        )}
-        {equipment === 'Dumbell' && workout === 'Single-arm Overhead Extension' && (
-          <>
-            <ellipse cx="18" cy="38" rx="2.5" ry="5" fill="rgba(239,68,68,0.7)"/>
-            <ellipse cx="46" cy="38" rx="2.5" ry="5" fill="rgba(239,68,68,0.7)"/>
-            <circle cx="22" cy="26" r="4" fill="rgba(239,68,68,0.5)"/>
-            <circle cx="42" cy="26" r="4" fill="rgba(239,68,68,0.5)"/>
-          </>
-        )}
-        {equipment === 'Weight Stack' && workout === 'Lateral Pulldown' && (
-          <path d="M26 28 L24 42 Q32 46 40 42 L38 28 Q32 32 26 28 Z" fill="rgba(239,68,68,0.7)"/>
-        )}
-        {equipment === 'Weight Stack' && workout === 'Seated Leg Extension' && (
-          <>
-            <path d="M22 46 L20 58 L26 58 L28 46 Z" fill="rgba(239,68,68,0.7)"/>
-            <path d="M42 46 L44 58 L38 58 L36 46 Z" fill="rgba(239,68,68,0.7)"/>
-          </>
-        )}
-      </svg>
-    </div>
-  );
+  // Auto-scroll timer
+  useEffect(() => {
+    autoScrollTimer.current = setInterval(() => {
+      scrollToNextSlide();
+    }, 4000); // Auto-scroll every 4 seconds
+
+    return () => {
+      if (autoScrollTimer.current) clearInterval(autoScrollTimer.current);
+    };
+  }, [activeSlide, totalSlides]);
 
   return (
-    <div className="bg-white/5 backdrop-blur-sm rounded-xl sm:rounded-2xl p-2.5 sm:p-4 flex-1 min-h-0 flex flex-col">
-      {/* Carousel Container */}
+    <div className="h-full flex flex-col">
+      {/* Carousel Container - no gap, full width slides */}
       <div 
         ref={carouselRef}
         className="flex-1 flex overflow-x-auto snap-x snap-mandatory scrollbar-hide scroll-smooth"
         style={{ scrollSnapType: 'x mandatory' }}
       >
-        {/* Slide 1: Target Muscles with Icon */}
-        <div className="min-w-full w-full shrink-0 snap-center snap-always flex flex-col items-center justify-center px-2" style={{ scrollSnapAlign: 'center' }}>
-          <h3 className="text-xs sm:text-sm font-semibold text-white text-center mb-2 sm:mb-3">Target Muscles</h3>
-          <p className="text-xs sm:text-sm text-violet-400/70 text-center mb-3 sm:mb-4 font-medium">{getTargetMuscles()}</p>
-          <MuscleIcon />
-        </div>
-
-        {/* Form Tips Slides - One tip per slide */}
-        {tips.slice(0, 4).map((tip, idx) => (
-          <div key={idx} className="min-w-full w-full shrink-0 snap-center snap-always flex flex-col items-center justify-center px-4 sm:px-6" style={{ scrollSnapAlign: 'center' }}>
-            <div className="w-full max-w-xs">
-              <div className="flex items-center justify-center gap-2 mb-3 sm:mb-4">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-violet-500/20 flex items-center justify-center flex-shrink-0">
-                  <span className="text-sm sm:text-base font-bold text-violet-400">{idx + 1}</span>
-                </div>
-                <h4 className="text-xs sm:text-sm font-semibold text-white/80">Form Tip</h4>
+        {/* Slide 1: Target Muscles - Colored card with centered icon */}
+        <div className="w-full shrink-0 snap-center snap-always" style={{ minWidth: '100%', scrollSnapAlign: 'center' }}>
+          <div 
+            className="w-full h-full rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 lg:p-7 flex flex-col items-center justify-center relative overflow-hidden"
+            style={{ backgroundColor: cardColors[0].bg }}
+          >
+            {/* Centered content with icon and text overlay */}
+            <div className="flex flex-col items-center justify-center gap-3 sm:gap-4 relative z-10">
+              {/* Target Muscles label and text - above icon */}
+              <div className="text-center">
+                <p 
+                  className="text-xs sm:text-sm md:text-base lg:text-lg font-medium mb-1 opacity-70"
+                  style={{ color: cardColors[0].text }}
+                >
+                  Target Muscles:
+                </p>
+                <p 
+                  className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold leading-snug"
+                  style={{ color: cardColors[0].text }}
+                >
+                  {getTargetMuscles()}
+                </p>
               </div>
-              <p className="text-xs sm:text-sm text-white/80 text-center leading-relaxed">{tip}</p>
+              
+              {/* Large centered muscle icon */}
+              <MuscleIcon equipment={equipment} workout={workout} size="large" />
             </div>
           </div>
-        ))}
-      </div>
+        </div>
 
-      {/* Carousel Indicators */}
-      <div className="flex justify-center gap-1 mt-2">
-        {[0, ...tips.slice(0, 4).map((_, i) => i + 1)].map((idx) => (
-          <span
-            key={idx}
-            className={`${idx === activeSlide ? 'bg-white w-4' : 'bg-white/30 w-1'} h-1 rounded-full transition-all duration-300`}
-          />
-        ))}
+        {/* Form Tips Slides - Pastel colored cards */}
+        {tips.slice(0, 4).map((tip, idx) => {
+          const colorScheme = cardColors[(idx % 4) + 1];
+          const isLastTip = idx === Math.min(tips.length, 4) - 1;
+          return (
+            <div key={idx} className="w-full shrink-0 snap-center snap-always" style={{ minWidth: '100%', scrollSnapAlign: 'center' }}>
+              <div 
+                className="w-full h-full rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 lg:p-7 flex flex-col relative overflow-hidden"
+                style={{ backgroundColor: colorScheme.bg }}
+              >
+                {/* Number badge - top right */}
+                <div 
+                  className="absolute top-3 sm:top-3 md:top-4 lg:top-5 right-3 sm:right-3 md:right-4 lg:right-5 w-9 h-9 sm:w-10 sm:h-10 md:w-11 md:h-11 lg:w-12 lg:h-12 rounded-full flex items-center justify-center"
+                  style={{ backgroundColor: colorScheme.numberBg }}
+                >
+                  <span className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold" style={{ color: colorScheme.text }}>{idx + 1}</span>
+                </div>
+
+                {/* Left-aligned content */}
+                <div className="flex-1 flex flex-col justify-center pr-14 sm:pr-14 md:pr-16 lg:pr-18">
+                  <p 
+                    className="text-xs sm:text-sm md:text-base lg:text-lg font-medium mb-1 opacity-70"
+                    style={{ color: colorScheme.text }}
+                  >
+                    Form Tips:
+                  </p>
+                  <p 
+                    className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold leading-snug"
+                    style={{ color: colorScheme.text }}
+                  >
+                    {tip}
+                  </p>
+                </div>
+
+                {/* Arrow icon - bottom left (only if not last tip) */}
+                {!isLastTip && (
+                  <div className="flex justify-start mt-auto pt-1 opacity-50">
+                    <img 
+                      src="/images/icons/arrow-point-to-right.png" 
+                      alt="" 
+                      className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6"
+                      style={{ filter: colorScheme.text === '#ffffff' ? 'brightness(0) invert(1)' : 'brightness(0)' }}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -141,47 +252,61 @@ function InfoHistoryCarousel({ equipment, workout, tips, tutorialVideo, equipmen
   };
 
   return (
-    <div className="content-fade-up-2 flex-1 min-h-0 max-w-md mx-auto w-full" style={{ animationDelay: '0.15s' }}>
-      <div className="h-full flex flex-col" style={{ 
-        height: 'calc(100vh - 750px)',
-        minHeight: '160px',
-        maxHeight: '220px'
+    <div className="content-fade-up-2 flex-1 min-h-0 max-w-md mx-auto w-full mt-5" style={{ animationDelay: '0.15s' }}>
+      <div className="h-full flex flex-col gap-2.5 sm:gap-3.5" style={{ 
+        height: 'calc(100vh - 600px)',
+        minHeight: 'clamp(280px, 30vh, 290px)',
+        maxHeight: 'clamp(300px, 50vh, 390px)'
       }}>
-        {/* Info Panels (Calibration + Exercise Info + Tutorial) */}
-        <div className="flex-1 px-0.5">
-          <div className="grid grid-cols-2 gap-1.5 sm:gap-2.5 h-full w-full">
-            {/* Left Column - Calibration */}
-            <CalibrationHistoryPanel
-              equipment={equipment}
-              workout={workout}
-            />
+        {/* Calibrate Now Button - Full Width */}
+        <button
+          className="w-full bg-white/5 backdrop-blur-sm rounded-xl sm:rounded-2xl px-4 py-3.5 sm:px-5 sm:py-4 hover:bg-white/10 transition-colors flex items-center justify-center gap-2 flex-shrink-0"
+        >
+          <span className="text-sm sm:text-base text-white font-semibold">Calibrate Now</span>
+          <svg className="w-4 h-4 sm:w-5 sm:h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+
+        {/* Info Panels Row */}
+        <div className="flex-1 px-0.5 min-h-0">
+          <div className="grid grid-cols-2 gap-2.5 sm:gap-3.5 h-full w-full">
+            {/* Left Column - Watch Tutorial (styled as calibration panel) */}
+            {tutorialVideo && (
+              <a
+                href={tutorialVideo}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="relative rounded-xl sm:rounded-2xl p-4 sm:p-5 hover:brightness-110 transition-all overflow-hidden flex flex-col items-center justify-center gap-3 h-full group"
+              >
+                {/* Background Image */}
+                <div 
+                  className="absolute inset-0 bg-cover bg-center"
+                  style={{ backgroundImage: `url('/images/workout-cards/barbell-flat-bench-press.jpg')` }}
+                />
+                {/* Dark Overlay */}
+                <div className="absolute inset-0 bg-black/70 group-hover:bg-black/60 transition-colors" />
+                
+                {/* Content */}
+                <div className="relative z-10 flex flex-col items-center justify-center gap-3">
+                  <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-violet-500/30 flex items-center justify-center">
+                    <svg className="w-6 h-6 sm:w-7 sm:h-7 text-violet-300" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M8 5v14l11-7z"/>
+                    </svg>
+                  </div>
+                  <span className="text-xs sm:text-sm text-white/70 font-medium text-center">Watch Tutorial</span>
+                </div>
+              </a>
+            )}
             
-            {/* Right Column - Exercise Info & Tutorial Button */}
-            <div className="flex flex-col gap-1.5 sm:gap-2 h-full">
-              {/* Exercise Info Carousel */}
+            {/* Right Column - Exercise Info Carousel */}
+            <div className="h-full">
               <ExerciseInfoCarousel 
                 equipment={equipment}
                 workout={workout}
                 tips={tips}
                 getTargetMuscles={getTargetMuscles}
               />
-              
-              {/* Watch Tutorial Button */}
-              {tutorialVideo && (
-                <a
-                  href={tutorialVideo}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="bg-white/5 backdrop-blur-sm rounded-xl sm:rounded-2xl px-4 py-3.5 sm:px-5 sm:py-4 flex items-center justify-between hover:bg-white/10 transition-colors flex-shrink-0"
-                >
-                  <span className="text-xs sm:text-sm text-white/70 font-medium">Watch Tutorial</span>
-                  <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-violet-500/30 flex items-center justify-center">
-                    <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-violet-300" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M8 5v14l11-7z"/>
-                    </svg>
-                  </div>
-                </a>
-              )}
             </div>
           </div>
         </div>
@@ -322,6 +447,7 @@ export default function SelectedWorkout() {
   const [customWeightUnit, setCustomWeightUnit] = useState('kg');
   const [customSetError, setCustomSetError] = useState('');
   const [errorVisible, setErrorVisible] = useState(false);
+  const [isPillExpanded, setIsPillExpanded] = useState(false);
 
   // Auto-fade error message after 3 seconds
   useEffect(() => {
@@ -421,9 +547,9 @@ export default function SelectedWorkout() {
       </Head>
 
       <main ref={mainRef} className="flex-1 w-full px-4 sm:px-6 md:px-8 pt-4 pb-24 flex flex-col overflow-hidden">
-        <div className="mx-auto w-full max-w-4xl flex flex-col flex-1 space-y-3 overflow-hidden">
+        <div className="mx-auto w-full max-w-4xl flex flex-col flex-1 space-y-5 overflow-hidden">
         {/* Header with back button and connection pill */}
-        <div className="flex items-center justify-between content-fade-up-1 flex-shrink-0">
+        <div className="flex items-center justify-between content-fade-up-1 flex-shrink-0 relative">
           {/* Back button */}
           <button
             onClick={() => router.back()}
@@ -437,6 +563,15 @@ export default function SelectedWorkout() {
             />
           </button>
 
+          {/* Page Title - appears when ConnectPill collapses */}
+          <div className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 transition-opacity duration-300 pointer-events-none ${
+            isPillExpanded ? 'opacity-0' : 'opacity-0 animate-fade-in'
+          }`}>
+            <h1 className="text-base sm:text-lg font-semibold text-white text-center whitespace-nowrap">
+              Workout Setup
+            </h1>
+          </div>
+
           {/* Connection pill */}
           <ConnectPill
             connected={connected}
@@ -447,6 +582,8 @@ export default function SelectedWorkout() {
             scanning={scanning}
             devicesFound={devicesFound}
             availability={availability}
+            autoCollapse={true}
+            onExpandChange={setIsPillExpanded}
           />
         </div>
 
@@ -476,6 +613,11 @@ export default function SelectedWorkout() {
           tutorialVideo={details.tutorialVideo}
           equipmentColor={equipmentColor}
         />
+
+        {/* Warm Up Banner - directly after panels with no gap */}
+        <div className="content-fade-up-2 max-w-md mx-auto w-full mt-1" style={{ animationDelay: '0.2s' }}>
+          <WarmUpBanner />
+        </div>
         </div>
       </main>
 
@@ -484,11 +626,6 @@ export default function SelectedWorkout() {
         background: 'linear-gradient(to top, rgba(0,0,0,1) 0%, rgba(0,0,0,0.98) 60%, rgba(0,0,0,0) 100%)',
       }}>
         <div className="mx-auto w-full max-w-4xl">
-          {/* Warm Up Banner */}
-          <div className="mb-3">
-            <WarmUpBanner />
-          </div>
-          
           {/* Error message with fade animation */}
           {customSetError && (
             <div 
