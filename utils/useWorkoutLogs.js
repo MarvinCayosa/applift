@@ -38,7 +38,7 @@ export function useWorkoutLogs(options = {}) {
 
     try {
       const fetchedLogs = await getUserWorkoutLogs(user.uid, {
-        status: 'completed',
+        status: null, // Get all workouts
         limitCount,
       });
       setLogs(fetchedLogs);
