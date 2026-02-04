@@ -220,7 +220,7 @@ function InfoHistoryCarousel({ equipment, workout, tips, tutorialVideo, equipmen
   };
 
   return (
-    <div className="content-fade-up-2 flex-1 min-h-0 w-full" style={{ animationDelay: '0.15s' }}>
+    <div className="content-fade-up-2 flex-1 min-h-0 w-full" style={{ animationDelay: '0.6s' }}>
       <div className="h-full flex flex-col gap-3 sm:gap-4" style={{ 
         minHeight: 'clamp(220px, 32vh, 280px)',
         maxHeight: 'clamp(280px, 40vh, 340px)'
@@ -228,10 +228,10 @@ function InfoHistoryCarousel({ equipment, workout, tips, tutorialVideo, equipmen
         {/* Calibrate Now Button - Full Width */}
         <button
           onClick={onCalibrateClick}
-          className="w-full bg-white/5 backdrop-blur-sm rounded-xl sm:rounded-2xl px-4 py-3.5 sm:px-5 sm:py-4 hover:bg-white/10 transition-colors flex items-center justify-center gap-2 flex-shrink-0"
+          className="w-full bg-white/8 backdrop-blur-sm rounded-3xl px-4 py-2.5 sm:px-5 sm:py-3 hover:bg-white/12 transition-colors flex items-center justify-center gap-2 flex-shrink-0 border border-white/10"
         >
           <span className="text-sm sm:text-base text-white font-semibold">Calibrate Now</span>
-          <svg className="w-4 h-4 sm:w-5 sm:h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4 h-4 sm:w-5 sm:h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
           </svg>
         </button>
@@ -285,8 +285,8 @@ const workoutDetails = {
   Barbell: {
     'Flat Bench Barbell Press': {
       description: 'A fundamental compound movement that builds upper body strength. Lie on a flat bench, grip the bar slightly wider than shoulder-width, lower to your chest, and press up explosively.',
-      recommendedSets: 4,
-      recommendedReps: '6-8',
+      recommendedSets: 2,
+      recommendedReps: '3',
       difficulty: 'Intermediate',
       tutorialVideo: 'https://www.youtube.com/watch?v=rT7DgCr-3pg',
       tips: [
@@ -298,8 +298,8 @@ const workoutDetails = {
     },
     'Front Squats': {
       description: 'Hold the barbell across the front of your shoulders with elbows high. Squat down by pushing your hips back and bending your knees, keeping your torso upright throughout.',
-      recommendedSets: 4,
-      recommendedReps: '6-8',
+      recommendedSets: 2,
+      recommendedReps: '3',
       difficulty: 'Intermediate',
       tutorialVideo: 'https://www.youtube.com/watch?v=uYumuL_G_V0',
       tips: [
@@ -313,8 +313,8 @@ const workoutDetails = {
   Dumbbell: {
     'Concentration Curls': {
       description: 'Sit on a bench with your elbow braced against your inner thigh. Curl the dumbbell up with control, squeeze at the top, then lower slowly to full extension.',
-      recommendedSets: 3,
-      recommendedReps: '8-12',
+      recommendedSets: 2,
+      recommendedReps: '3',
       difficulty: 'Beginner',
       tutorialVideo: 'https://www.youtube.com/watch?v=Jvj2wV0vOYU',
       tips: [
@@ -326,8 +326,8 @@ const workoutDetails = {
     },
     'Single-arm Overhead Extension': {
       description: 'Hold a dumbbell overhead with one arm fully extended. Lower the weight behind your head by bending at the elbow, then extend back up to the starting position.',
-      recommendedSets: 3,
-      recommendedReps: '8-12',
+      recommendedSets: 2,
+      recommendedReps: '3',
       difficulty: 'Beginner',
       tutorialVideo: 'https://www.youtube.com/watch?v=YbX7Wd8jQ-Q',
       tips: [
@@ -341,8 +341,8 @@ const workoutDetails = {
   'Weight Stack': {
     'Lateral Pulldown': {
       description: 'Grip the bar wider than shoulder-width, lean back slightly, and pull the bar down to your upper chest. Squeeze your lats at the bottom, then control the weight back up.',
-      recommendedSets: 4,
-      recommendedReps: '8-10',
+      recommendedSets: 2,
+      recommendedReps: '3',
       difficulty: 'Beginner',
       tutorialVideo: 'https://www.youtube.com/watch?v=CAwf7n6Luuc',
       tips: [
@@ -354,8 +354,8 @@ const workoutDetails = {
     },
     'Seated Leg Extension': {
       description: 'Sit with your back against the pad and legs under the roller. Extend your legs until straight, pause at the top with a squeeze, then lower with control.',
-      recommendedSets: 3,
-      recommendedReps: '10-12',
+      recommendedSets: 2,
+      recommendedReps: '3',
       difficulty: 'Beginner',
       tutorialVideo: 'https://www.youtube.com/watch?v=YyvSfVjQeL0',
       tips: [
@@ -607,7 +607,7 @@ export default function SelectedWorkout() {
         </div>
 
         {/* Recommended Set Card */}
-        <div className="content-fade-up-2 flex-shrink-0" style={{ animationDelay: '0.05s' }}>
+        <div className="content-fade-up-2 flex-shrink-0" style={{ animationDelay: '0.4s' }}>
           <RecommendedSetCard
             equipment={equipment}
             workout={workout}
@@ -635,11 +635,6 @@ export default function SelectedWorkout() {
           videoThumbnail={videoThumbnail}
           onWatchTutorial={() => setIsVideoModalOpen(true)}
         />
-
-        {/* Warm Up Banner - directly after panels with no gap */}
-        <div className="content-fade-up-2 w-full -mt-4" style={{ animationDelay: '0.2s' }}>
-          <WarmUpBanner />
-        </div>
         </div>
       </main>
 
@@ -656,6 +651,10 @@ export default function SelectedWorkout() {
               <p className="text-sm text-red-400">{customSetError}</p>
             </div>
           )}
+          {/* Warm Up Banner - just above workout button */}
+          <div className="mb-3">
+            <WarmUpBanner />
+          </div>
           <WorkoutActionButton
             disabled={isStartingWorkout}
             onClick={async () => {

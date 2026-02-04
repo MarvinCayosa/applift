@@ -80,6 +80,8 @@ export default function VideoPlayerModal({ isOpen, onClose, videoSrc, title }) {
             controls
             controlsList="nodownload"
             playsInline
+            autoPlay
+            loop
             preload="metadata"
             style={{ maxHeight: '80vh' }}
           >
