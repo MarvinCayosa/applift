@@ -7,6 +7,7 @@ import ConnectPill from '../components/ConnectPill';
 import { useBluetooth } from '../context/BluetoothProvider';
 import { useWorkoutSession } from '../utils/useWorkoutSession';
 import { useWorkoutLogging } from '../context/WorkoutLoggingContext';
+import LoadingScreen from '../components/LoadingScreen';
 
 export default function WorkoutMonitor() {
   const router = useRouter();
@@ -29,6 +30,9 @@ export default function WorkoutMonitor() {
   // Track last rep count for detecting new reps
   const lastRepCountRef = useRef(0);
   const lastSetRef = useRef(1);
+  
+  // Analyzing loading screen state
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   
   // Helper function to get the correct background image based on equipment and workout
   const getWorkoutImage = () => {
@@ -163,6 +167,9 @@ export default function WorkoutMonitor() {
       }
     },
     onWorkoutComplete: async ({ workoutStats: finalStats, repData, chartData }) => {
+      // Show analyzing screen
+      setIsAnalyzing(true);
+      
       // Finish streaming and determine completion status
       const result = await finishWorkout();
       
@@ -186,6 +193,9 @@ export default function WorkoutMonitor() {
           workoutId: result?.workoutId || workoutId,
         }));
       }
+      
+      // Wait a bit for the analyzing animation to show
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
       // Navigate to workout finished page with set-grouped data
       router.push({
@@ -260,6 +270,13 @@ export default function WorkoutMonitor() {
       <Head>
         <title>Workout Monitor — {workout} — AppLift</title>
       </Head>
+
+      {/* Full-screen analyzing loading screen */}
+      {isAnalyzing && (
+        <div className="fixed inset-0 z-[200]">
+          <LoadingScreen message="Analyzing your session..." showLogo={true} />
+        </div>
+      )}
 
       {/* Countdown Overlay */}
       {showCountdown && (
@@ -374,7 +391,7 @@ export default function WorkoutMonitor() {
       />
 
       {/* Header with semi-transparent background */}
-      <div className="absolute top-0 left-0 right-0 z-30 px-4 pt-6 pb-4" style={{
+      <div className="absolute top-0 left-0 right-0 z-30 px-4 pt-10 sm:pt-10 pb-4" style={{
         background: 'linear-gradient(to bottom, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.6) 70%, rgba(0,0,0,0) 100%)'
       }}>
         {/* Top row - Back button and Connection Pill */}
@@ -409,7 +426,7 @@ export default function WorkoutMonitor() {
             scanning={scanning}
             devicesFound={devicesFound}
             availability={availability}
-            autoCollapse={true}
+            collapse={1}
             onExpandChange={setIsPillExpanded}
           />
         </div>

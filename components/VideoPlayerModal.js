@@ -69,7 +69,7 @@ export default function VideoPlayerModal({ isOpen, onClose, videoSrc, title }) {
               className="w-5 h-5 filter brightness-0 invert"
             />
           </button>
-          <h2 className="text-lg sm:text-xl font-bold text-white">{title || 'Tutorial Video'}</h2>
+          <h2 className="flex-1 text-center text-lg sm:text-xl font-bold text-white pr-10">{title || 'Tutorial Video'}</h2>
         </div>
 
         {/* Video Player */}
