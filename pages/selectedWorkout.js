@@ -25,7 +25,7 @@ const cardColors = [
 // Muscle Icon component for target muscles slide
 const MuscleIcon = ({ equipment, workout, size = 'default' }) => {
   const sizeClasses = size === 'large' 
-    ? 'w-32 h-32 sm:w-36 sm:h-36 md:w-40 md:h-40 lg:w-44 lg:h-44'
+    ? 'w-28 h-28 sm:w-32 sm:h-32 md:w-40 md:h-40 lg:w-48 lg:h-48'
     : 'w-16 h-16 sm:w-18 sm:h-18 md:w-20 md:h-20 lg:w-22 lg:h-22';
   
   // Get the muscle image for this exercise
@@ -124,17 +124,17 @@ function ExerciseInfoCarousel({ equipment, workout, tips, getTargetMuscles }) {
         style={{ scrollSnapType: 'x mandatory' }}
       >
         {/* Slide 1: Target Muscles - Colored card with centered icon */}
-        <div className="w-full shrink-0 snap-center snap-always" style={{ minWidth: '100%', scrollSnapAlign: 'center' }}>
+        <div className="w-full shrink-0 snap-center snap-always px-1" style={{ minWidth: '100%', scrollSnapAlign: 'center' }}>
           <div 
             className="w-full h-full rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 lg:p-7 flex flex-col items-center justify-center relative overflow-hidden"
             style={{ backgroundColor: cardColors[0].bg }}
           >
             {/* Centered content with icon and text overlay */}
-            <div className="flex flex-col items-center justify-center gap-3 sm:gap-4 relative z-10">
+            <div className="flex flex-col items-center justify-center gap-2 sm:gap-2.5 relative z-10">
               {/* Target Muscles label and text - above icon */}
               <div className="text-center">
                 <p 
-                  className="text-xs sm:text-sm md:text-base lg:text-lg font-medium mb-1 opacity-70"
+                  className="text-sm sm:text-sm md:text-base lg:text-base font-medium mb-1 opacity-70"
                   style={{ color: cardColors[0].text }}
                 >
                   Target Muscles:
@@ -158,7 +158,7 @@ function ExerciseInfoCarousel({ equipment, workout, tips, getTargetMuscles }) {
           const colorScheme = cardColors[(idx % 4) + 1];
           const isLastTip = idx === Math.min(tips.length, 4) - 1;
           return (
-            <div key={idx} className="w-full shrink-0 snap-center snap-always" style={{ minWidth: '100%', scrollSnapAlign: 'center' }}>
+            <div key={idx} className="w-full shrink-0 snap-center snap-always px-1" style={{ minWidth: '100%', scrollSnapAlign: 'center' }}>
               <div 
                 className="w-full h-full rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 lg:p-7 flex flex-col relative overflow-hidden"
                 style={{ backgroundColor: colorScheme.bg }}
@@ -220,11 +220,10 @@ function InfoHistoryCarousel({ equipment, workout, tips, tutorialVideo, equipmen
   };
 
   return (
-    <div className="content-fade-up-2 flex-1 min-h-0 max-w-md mx-auto w-full mt-5" style={{ animationDelay: '0.15s' }}>
-      <div className="h-full flex flex-col gap-2.5 sm:gap-3.5" style={{ 
-        height: 'calc(100vh - 600px)',
-        minHeight: 'clamp(280px, 30vh, 290px)',
-        maxHeight: 'clamp(300px, 50vh, 390px)'
+    <div className="content-fade-up-2 flex-1 min-h-0 w-full" style={{ animationDelay: '0.15s' }}>
+      <div className="h-full flex flex-col gap-3 sm:gap-4" style={{ 
+        minHeight: 'clamp(220px, 32vh, 280px)',
+        maxHeight: 'clamp(280px, 40vh, 340px)'
       }}>
         {/* Calibrate Now Button - Full Width */}
         <button
@@ -398,41 +397,41 @@ const tutorialVideos = {
   },
   Dumbbell: {
     'Concentration Curls': '/tutorial-videos/dumbbell_concentration_curls_tutorial.mp4',
-    'Single-arm Overhead Extension': '/tutorial-videos/dumbbell_overhead_extension_tutorial.mp4',
+    'Single-arm Overhead Extension': '/tutorial-videos/dumbbell_single-arm_overhead_extension_tutorial.mp4',
   },
   'Weight Stack': {
-    'Lateral Pulldown': '/tutorial-videos/weightstack_lateral_pulldown_tutorial.mp4',
-    'Seated Leg Extension': '/tutorial-videos/weightstack_seated_leg_extension_tutorial.mp4',
+    'Lateral Pulldown': '/tutorial-videos/weight_stack_lateral_pulldown_tutorial.mp4',
+    'Seated Leg Extension': '/tutorial-videos/weight_stack_seated_leg_extension_tutorial.mp4',
   },
 };
 
 const targetMuscleImages = {
   Barbell: {
-    'Flat Bench Barbell Press': '/images/target-muscles/flat-bench-barbell-press-muscles.png',
-    'Front Squats': '/images/target-muscles/front-squats-muscles.png',
+    'Flat Bench Barbell Press': '/images/target-muscles/barbell-flat-bench-barbell-press-muscles.png',
+    'Front Squats': '/images/target-muscles/barbell-front-squats-muscles.png',
   },
   Dumbbell: {
-    'Concentration Curls': '/images/target-muscles/concentration-curls-muscles.png',
-    'Single-arm Overhead Extension': '/images/target-muscles/overhead-extension-muscles.png',
+    'Concentration Curls': '/images/target-muscles/dumbbell-concentration-curls-muscles.png',
+    'Single-arm Overhead Extension': '/images/target-muscles/dumbbell-single-arm-overhead-extension-muscles.png',
   },
   'Weight Stack': {
-    'Lateral Pulldown': '/images/target-muscles/lateral-pulldown-muscles.png',
-    'Seated Leg Extension': '/images/target-muscles/leg-extension-muscles.png',
+    'Lateral Pulldown': '/images/target-muscles/weight-stack-lateral-pulldown-muscles.png',
+    'Seated Leg Extension': '/images/target-muscles/weight-stack-seated-leg-extension-muscles.png',
   },
 };
 
 const videoThumbnails = {
   Barbell: {
     'Flat Bench Barbell Press': '/images/video-thumbnails/barbell-flat-bench-press-thumbnail.png',
-    'Front Squats': '/images/video-thumbnails/barbell-front-squats-thumbnail.png',
+    'Front Squats': '/images/video-thumbnails/barbell_front_squats_thumbnail.jpg',
   },
   Dumbbell: {
-    'Concentration Curls': '/images/video-thumbnails/dumbbell-concentration-curls-thumbnail.png',
-    'Single-arm Overhead Extension': '/images/video-thumbnails/dumbbell-overhead-extension-thumbnail.png',
+    'Concentration Curls': '/images/video-thumbnails/dumbbell_concentration_curls_thumbnails.jpg',
+    'Single-arm Overhead Extension': '/images/video-thumbnails/dumbbell_single-arm_overhead_extension_thumbnail.jpg',
   },
   'Weight Stack': {
-    'Lateral Pulldown': '/images/video-thumbnails/weightstack-lateral-pulldown-thumbnail.png',
-    'Seated Leg Extension': '/images/video-thumbnails/weightstack-seated-leg-extension-thumbnail.png',
+    'Lateral Pulldown': '/images/video-thumbnails/weight_stack_lateral_pulldown_thumbnail.jpg',
+    'Seated Leg Extension': '/images/video-thumbnails/weight_stack_seated_leg_extension_thumbnail.jpg',
   },
 };
 
@@ -566,8 +565,8 @@ export default function SelectedWorkout() {
         <title>{workout} — AppLift</title>
       </Head>
 
-      <main ref={mainRef} className="flex-1 w-full px-4 sm:px-6 md:px-8 pt-4 pb-24 flex flex-col overflow-hidden">
-        <div className="mx-auto w-full max-w-4xl flex flex-col flex-1 space-y-5 overflow-hidden">
+      <main ref={mainRef} className="flex-1 w-full px-4 sm:px-6 md:px-8 pt-10 sm:pt-10 pb-24 flex flex-col overflow-hidden">
+        <div className="mx-auto w-full max-w-4xl flex flex-col flex-1 space-y-2 overflow-hidden">
         {/* Header with back button and connection pill */}
         <div className="flex items-center justify-between content-fade-up-1 flex-shrink-0 relative">
           {/* Back button - stays visible */}
@@ -638,7 +637,7 @@ export default function SelectedWorkout() {
         />
 
         {/* Warm Up Banner - directly after panels with no gap */}
-        <div className="content-fade-up-2 max-w-md mx-auto w-full mt-1" style={{ animationDelay: '0.2s' }}>
+        <div className="content-fade-up-2 w-full -mt-4" style={{ animationDelay: '0.2s' }}>
           <WarmUpBanner />
         </div>
         </div>

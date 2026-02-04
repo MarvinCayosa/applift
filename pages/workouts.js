@@ -171,7 +171,6 @@ export default function Workouts() {
           buttonHover: 'hover:bg-[#f0b233]',
         };
       case 'Dumbbell':
-      case 'Dumbbell':
         return {
           outerBg: 'bg-[#0C4A6E]', // dark blue
           outerBorder: 'border-[#0369A1]',
@@ -259,7 +258,7 @@ export default function Workouts() {
       // Map equipment name to our format
       const equipmentMap = {
         'Barbell': 'Barbell',
-        'Dumbbell': 'Dumbbell',
+        'Dumbell': 'Dumbbell',
         'Dumbbell': 'Dumbbell',
         'Weight Stack': 'Weight Stack',
         'WeightStack': 'Weight Stack'
@@ -285,10 +284,8 @@ export default function Workouts() {
 
     const handleScroll = () => {
       const scrollLeft = carousel.scrollLeft;
-      const cardWidth = 400 + 16; // Updated card width (400px) + gap (16px)
-      const peekAmount = 40;
-      const effectiveScroll = scrollLeft - peekAmount;
-      const activeIndex = Math.max(0, Math.round(effectiveScroll / cardWidth));
+      const cardWidth = carousel.offsetWidth;
+      const activeIndex = Math.round(scrollLeft / cardWidth);
       setWorkoutCarouselIndex(Math.min(activeIndex, workouts.length - 1));
     };
 
@@ -352,7 +349,7 @@ export default function Workouts() {
                 {scannedEquipment.type === 'Barbell' || scannedEquipment.type === 'Dumbbell' || scannedEquipment.type === 'Weight Stack' ? (
                   <div className="flex items-center gap-5">
                     <div className={`flex h-24 w-36 items-center justify-center rounded-2xl p-4 ${getEquipmentColors(scannedEquipment.type).outerBg} border ${getEquipmentColors(scannedEquipment.type).outerBorder} shadow-lg ${getEquipmentColors(scannedEquipment.type).innerShadow}`}>
-                      <EquipmentIcon type={scannedEquipment.type} />
+                      <EquipmentIcon type={scannedEquipment.type} className="w-[68px] h-[68px]" />
                     </div>
                     <div className="flex-1 flex flex-col gap-2 justify-center">
                       <span className="text-xs text-white/80">Equipment Type</span>
@@ -429,33 +426,35 @@ export default function Workouts() {
           <section className="pt-2 sm:pt-4 flex-1 flex flex-col min-h-0 pb-2">
             <h2 className="text-center text-xs sm:text-sm font-semibold text-white/80 px-4 content-fade-up-3 mb-3" style={{ animationDelay: '0.15s' }}>Choose Your Workout</h2>
 
-          {/* Mobile Carousel - centered with peek, matching equipment section width */}
+          {/* Mobile Carousel - compact slides matching Equipment Tag width */}
           <div 
             ref={workoutCarouselRef}
-            className="flex gap-4 overflow-x-auto snap-x snap-center scrollbar-hide scroll-smooth content-fade-up-3 md:hidden flex-1 min-h-0 items-start mb-3"
+            className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide scroll-smooth content-fade-up-3 md:hidden mb-3 px-2"
             style={{
-              paddingLeft: 'calc(50vw - 200px)',
-              paddingRight: 'calc(50vw - 200px)',
               animationDelay: '0.3s'
             }}
           >
             {workouts.map((workout, idx) => (
-              <article
+              <div
                 key={workout.title + idx}
-                className="min-w-[400px] max-w-[400px] h-full shrink-0 snap-center rounded-2xl sm:rounded-3xl overflow-hidden group relative transition-all duration-300 cursor-pointer hover:scale-105"
-                style={{
-                  boxShadow: '0 12px 24px rgba(0, 0, 0, 0.3)'
-                }}
-                onClick={() => {
-                  if (!workout.isComingSoon) {
-                    router.push(
-                      `/selectedWorkout?equipment=${encodeURIComponent(
-                        scannedEquipment.type
-                      )}&workout=${encodeURIComponent(workout.title)}`
-                    );
-                  }
-                }}
+                className="shrink-0 snap-center px-2"
+                style={{ width: '100%' }}
               >
+                <article
+                  className="h-96 mx-auto rounded-2xl overflow-hidden group relative transition-all duration-300 cursor-pointer hover:scale-105"
+                  style={{
+                    boxShadow: '0 12px 24px rgba(0, 0, 0, 0.3)'
+                  }}
+                  onClick={() => {
+                    if (!workout.isComingSoon) {
+                      router.push(
+                        `/selectedWorkout?equipment=${encodeURIComponent(
+                          scannedEquipment.type
+                        )}&workout=${encodeURIComponent(workout.title)}`
+                      );
+                    }
+                  }}
+                >
                 {workout.isComingSoon ? (
                   <>
                     {/* Coming Soon Card - Blurred background image */}
@@ -517,6 +516,7 @@ export default function Workouts() {
                   </>
                 )}
               </article>
+              </div>
             ))}
           </div>
 
@@ -525,7 +525,7 @@ export default function Workouts() {
             {workouts.map((workout, idx) => (
               <article
                 key={workout.title + idx}
-                className="rounded-2xl sm:rounded-3xl overflow-hidden group relative h-72 sm:h-80 transition-all duration-300 cursor-pointer hover:scale-105"
+                className="rounded-2xl overflow-hidden group relative h-56 transition-all duration-300 cursor-pointer hover:scale-105"
                 style={{
                   boxShadow: '0 12px 24px rgba(0, 0, 0, 0.3)',
                 }}

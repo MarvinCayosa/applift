@@ -17,7 +17,7 @@ export default function EquipmentTag({ equipment }) {
       className="w-10 h-10 flex items-center justify-center flex-shrink-0 rounded-xl text-white"
       style={{ backgroundColor: getEquipmentColor(equipment) }}
     >
-      <EquipmentIcon type={equipment} className="w-6 h-6" />
+      <EquipmentIcon type={equipment} className="w-8 h-8" />
     </div>
   )
 }
