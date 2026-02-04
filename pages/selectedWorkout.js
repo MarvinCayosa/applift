@@ -213,8 +213,8 @@ function InfoHistoryCarousel({ equipment, workout, tips, tutorialVideo, equipmen
   const getTargetMuscles = () => {
     if (equipment === 'Barbell' && workout === 'Flat Bench Barbell Press') return 'Chest, Shoulders, Triceps';
     if (equipment === 'Barbell' && workout === 'Front Squats') return 'Quadriceps, Core, Lower Back';
-    if (equipment === 'Dumbell' && workout === 'Concentration Curls') return 'Biceps';
-    if (equipment === 'Dumbell' && workout === 'Single-arm Overhead Extension') return 'Triceps, Shoulders';
+    if (equipment === 'Dumbbell' && workout === 'Concentration Curls') return 'Biceps';
+    if (equipment === 'Dumbbell' && workout === 'Single-arm Overhead Extension') return 'Triceps, Shoulders';
     if (equipment === 'Weight Stack' && workout === 'Lateral Pulldown') return 'Back, Lats';
     return 'Quadriceps';
   };
@@ -311,7 +311,7 @@ const workoutDetails = {
       ]
     },
   },
-  Dumbell: {
+  Dumbbell: {
     'Concentration Curls': {
       description: 'Sit on a bench with your elbow braced against your inner thigh. Curl the dumbbell up with control, squeeze at the top, then lower slowly to full extension.',
       recommendedSets: 3,
@@ -371,7 +371,7 @@ const workoutDetails = {
 
 const equipmentColors = {
   Barbell: '#FBBF24', // Yellow
-  Dumbell: '#3B82F6', // Blue
+  Dumbbell: '#3B82F6', // Blue
   Dumbbell: '#3B82F6', // Blue (alternate spelling)
   'Weight Stack': '#EF4444', // Red
 };
@@ -381,9 +381,9 @@ const workoutImages = {
     'Flat Bench Barbell Press': '/images/workout-cards/barbell-flat-bench-press.jpg',
     'Front Squats': '/images/workout-cards/barbell-front-squats.jpg',
   },
-  Dumbell: {
-    'Concentration Curls': '/images/workout-cards/dumbell-concentration-curls.jpg',
-    'Single-arm Overhead Extension': '/images/workout-cards/dumbell-overhead-extension.jpg',
+  Dumbbell: {
+    'Concentration Curls': '/images/workout-cards/dumbbell-concentration-curls.jpg',
+    'Single-arm Overhead Extension': '/images/workout-cards/dumbbell-overhead-extension.jpg',
   },
   'Weight Stack': {
     'Lateral Pulldown': '/images/workout-cards/weightstack-lateral-pulldown.jpg',
@@ -396,9 +396,9 @@ const tutorialVideos = {
     'Flat Bench Barbell Press': '/tutorial-videos/barbell_flat_bench_press_tutorial.mp4',
     'Front Squats': '/tutorial-videos/barbell_front_squats_tutorial.mp4',
   },
-  Dumbell: {
-    'Concentration Curls': '/tutorial-videos/dumbell_concentration_curls_tutorial.mp4',
-    'Single-arm Overhead Extension': '/tutorial-videos/dumbell_overhead_extension_tutorial.mp4',
+  Dumbbell: {
+    'Concentration Curls': '/tutorial-videos/dumbbell_concentration_curls_tutorial.mp4',
+    'Single-arm Overhead Extension': '/tutorial-videos/dumbbell_overhead_extension_tutorial.mp4',
   },
   'Weight Stack': {
     'Lateral Pulldown': '/tutorial-videos/weightstack_lateral_pulldown_tutorial.mp4',
@@ -411,7 +411,7 @@ const targetMuscleImages = {
     'Flat Bench Barbell Press': '/images/target-muscles/flat-bench-barbell-press-muscles.png',
     'Front Squats': '/images/target-muscles/front-squats-muscles.png',
   },
-  Dumbell: {
+  Dumbbell: {
     'Concentration Curls': '/images/target-muscles/concentration-curls-muscles.png',
     'Single-arm Overhead Extension': '/images/target-muscles/overhead-extension-muscles.png',
   },
@@ -426,9 +426,9 @@ const videoThumbnails = {
     'Flat Bench Barbell Press': '/images/video-thumbnails/barbell-flat-bench-press-thumbnail.png',
     'Front Squats': '/images/video-thumbnails/barbell-front-squats-thumbnail.png',
   },
-  Dumbell: {
-    'Concentration Curls': '/images/video-thumbnails/dumbell-concentration-curls-thumbnail.png',
-    'Single-arm Overhead Extension': '/images/video-thumbnails/dumbell-overhead-extension-thumbnail.png',
+  Dumbbell: {
+    'Concentration Curls': '/images/video-thumbnails/dumbbell-concentration-curls-thumbnail.png',
+    'Single-arm Overhead Extension': '/images/video-thumbnails/dumbbell-overhead-extension-thumbnail.png',
   },
   'Weight Stack': {
     'Lateral Pulldown': '/images/video-thumbnails/weightstack-lateral-pulldown-thumbnail.png',
@@ -686,9 +686,9 @@ export default function SelectedWorkout() {
                     ? ['Chest', 'Shoulders', 'Triceps']
                     : equipment === 'Barbell' && workout === 'Front Squats'
                     ? ['Quadriceps', 'Core', 'Lower Back']
-                    : equipment === 'Dumbell' && workout === 'Concentration Curls'
+                    : equipment === 'Dumbbell' && workout === 'Concentration Curls'
                     ? ['Biceps']
-                    : equipment === 'Dumbell' && workout === 'Single-arm Overhead Extension'
+                    : equipment === 'Dumbbell' && workout === 'Single-arm Overhead Extension'
                     ? ['Triceps', 'Shoulders']
                     : equipment === 'Weight Stack' && workout === 'Lateral Pulldown'
                     ? ['Back', 'Lats']

@@ -58,7 +58,7 @@ export default function InstructionModal({ isOpen, onClose }) {
             </div>
             <p className="text-white/70 text-sm ml-11">
               Once connected, use your AppLift device to scan the NFC tag on your gym equipment 
-              (Barbell, Dumbell, or Weight Stack). The equipment will be detected automatically.
+              (Barbell, Dumbbell, or Weight Stack). The equipment will be detected automatically.
             </p>
           </div>
 

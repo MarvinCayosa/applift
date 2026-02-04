@@ -19,14 +19,14 @@ const exercisesByEquipment = {
       image: '/images/workout-cards/barbell-front-squats.jpg',
     },
   ],
-  Dumbell: [
+  Dumbbell: [
     {
       title: 'Concentration Curls',
-      image: '/images/workout-cards/dumbell-concentration-curls.jpg',
+      image: '/images/workout-cards/dumbbell-concentration-curls.jpg',
     },
     {
       title: 'Single-arm Overhead Extension',
-      image: '/images/workout-cards/dumbell-overhead-extension.jpg',
+      image: '/images/workout-cards/dumbbell-overhead-extension.jpg',
     },
   ],
   'Weight Stack': [
@@ -43,7 +43,7 @@ const exercisesByEquipment = {
 
 const comingSoonImages = {
   Barbell: '/images/workout-cards/barbell-comingsoon.jpg',
-  Dumbell: '/images/workout-cards/dumbell-comingsoon.jpg',
+  Dumbbell: '/images/workout-cards/dumbbell-comingsoon.jpg',
   'Weight Stack': '/images/workout-cards/weightstack-comingsoon.jpg',
 };
 
@@ -73,7 +73,7 @@ export default function Workouts() {
 
   // Get workouts based on scanned equipment
   const workouts = scannedEquipment
-    ? scannedEquipment.type === 'Barbell' || scannedEquipment.type === 'Dumbell' || scannedEquipment.type === 'Weight Stack'
+    ? scannedEquipment.type === 'Barbell' || scannedEquipment.type === 'Dumbbell' || scannedEquipment.type === 'Weight Stack'
       ? [
           ...(exercisesByEquipment[scannedEquipment.type] || []),
           { 
@@ -171,7 +171,7 @@ export default function Workouts() {
           buttonHover: 'hover:bg-[#f0b233]',
         };
       case 'Dumbbell':
-      case 'Dumbell':
+      case 'Dumbbell':
         return {
           outerBg: 'bg-[#0C4A6E]', // dark blue
           outerBorder: 'border-[#0369A1]',
@@ -259,8 +259,8 @@ export default function Workouts() {
       // Map equipment name to our format
       const equipmentMap = {
         'Barbell': 'Barbell',
-        'Dumbell': 'Dumbell',
-        'Dumbbell': 'Dumbell',
+        'Dumbbell': 'Dumbbell',
+        'Dumbbell': 'Dumbbell',
         'Weight Stack': 'Weight Stack',
         'WeightStack': 'Weight Stack'
       };
@@ -323,7 +323,7 @@ export default function Workouts() {
           <section
             className={`relative w-full max-w-md rounded-3xl p-3 sm:p-4 space-y-3 transition-colors duration-300 ease-out ${
               scannedEquipment && connected
-                ? scannedEquipment.type === 'Barbell' || scannedEquipment.type === 'Dumbell' || scannedEquipment.type === 'Weight Stack'
+                ? scannedEquipment.type === 'Barbell' || scannedEquipment.type === 'Dumbbell' || scannedEquipment.type === 'Weight Stack'
                   ? `${getEquipmentColors(scannedEquipment.type).outerBg} border ${getEquipmentColors(scannedEquipment.type).outerBorder} shadow-lg ${getEquipmentColors(scannedEquipment.type).outerShadow}`
                   : 'bg-[#3A3A3A] border border-gray-600 shadow-lg shadow-black/40'
                 : connected
@@ -333,7 +333,7 @@ export default function Workouts() {
           >
             {scannedEquipment ? (
               <div className={`relative rounded-2xl px-4 py-5 flex flex-col gap-4 ${
-                scannedEquipment.type === 'Barbell' || scannedEquipment.type === 'Dumbell' || scannedEquipment.type === 'Weight Stack'
+                scannedEquipment.type === 'Barbell' || scannedEquipment.type === 'Dumbbell' || scannedEquipment.type === 'Weight Stack'
                   ? `${getEquipmentColors(scannedEquipment.type).innerBg} border ${getEquipmentColors(scannedEquipment.type).innerBorder}`
                   : 'bg-[#505050] border border-gray-500'
               } min-h-[190px] transition-colors duration-300 ease-out`}>
@@ -349,7 +349,7 @@ export default function Workouts() {
                 <div className="flex items-start justify-between text-sm text-white/85 font-medium pr-8">
                   <span>Scan Equipment</span>
                 </div>
-                {scannedEquipment.type === 'Barbell' || scannedEquipment.type === 'Dumbell' || scannedEquipment.type === 'Weight Stack' ? (
+                {scannedEquipment.type === 'Barbell' || scannedEquipment.type === 'Dumbbell' || scannedEquipment.type === 'Weight Stack' ? (
                   <div className="flex items-center gap-5">
                     <div className={`flex h-24 w-36 items-center justify-center rounded-2xl p-4 ${getEquipmentColors(scannedEquipment.type).outerBg} border ${getEquipmentColors(scannedEquipment.type).outerBorder} shadow-lg ${getEquipmentColors(scannedEquipment.type).innerShadow}`}>
                       <EquipmentIcon type={scannedEquipment.type} />
@@ -416,7 +416,7 @@ export default function Workouts() {
               </div>
             )}
 
-            {scannedEquipment && (scannedEquipment.type === 'Barbell' || scannedEquipment.type === 'Dumbell' || scannedEquipment.type === 'Weight Stack') && (
+            {scannedEquipment && (scannedEquipment.type === 'Barbell' || scannedEquipment.type === 'Dumbbell' || scannedEquipment.type === 'Weight Stack') && (
               <div className="text-center text-xs text-purple-100 font-medium tracking-wide">
                 Equipment Scanned Successfully
               </div>
@@ -425,7 +425,7 @@ export default function Workouts() {
         </div>
 
         {/* Workout carousel */}
-        {scannedEquipment && (scannedEquipment.type === 'Barbell' || scannedEquipment.type === 'Dumbell' || scannedEquipment.type === 'Weight Stack') && (
+        {scannedEquipment && (scannedEquipment.type === 'Barbell' || scannedEquipment.type === 'Dumbbell' || scannedEquipment.type === 'Weight Stack') && (
           <section className="pt-2 sm:pt-4 flex-1 flex flex-col min-h-0 pb-2">
             <h2 className="text-center text-xs sm:text-sm font-semibold text-white/80 px-4 content-fade-up-3 mb-3" style={{ animationDelay: '0.15s' }}>Choose Your Workout</h2>
 

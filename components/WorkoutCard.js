@@ -9,7 +9,7 @@ export default function WorkoutCard({ workout }) {
     const colorMap = {
       'Barbell': '#FBBF24', // Yellow
       'Dumbbell': '#3B82F6', // Blue
-      'Dumbell': '#3B82F6', // Blue (alternate spelling)
+      'Dumbbell': '#3B82F6', // Blue (alternate spelling)
       'Weight Stack': '#EF4444', // Red
     };
     return colorMap[equipment] || '#7c3aed'; // default to purple

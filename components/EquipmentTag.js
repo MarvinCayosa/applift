@@ -6,7 +6,7 @@ export default function EquipmentTag({ equipment }) {
     const map = {
       Barbell: '#FBBF24', // Yellow
       Dumbbell: '#3B82F6', // Blue
-      Dumbell: '#3B82F6', // Blue (alternate spelling)
+      Dumbbell: '#3B82F6', // Blue (alternate spelling)
       'Weight Stack': '#EF4444', // Red
     }
     return map[type] || '#7c3aed'

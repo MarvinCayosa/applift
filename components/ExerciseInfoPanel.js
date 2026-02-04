@@ -4,8 +4,8 @@ import { useState, useRef, useEffect } from 'react';
 const getTargetMuscles = (equipment, workout) => {
   if (equipment === 'Barbell' && workout === 'Flat Bench Barbell Press') return 'Chest, Shoulders, Triceps';
   if (equipment === 'Barbell' && workout === 'Front Squats') return 'Quadriceps, Core, Lower Back';
-  if (equipment === 'Dumbell' && workout === 'Concentration Curls') return 'Biceps';
-  if (equipment === 'Dumbell' && workout === 'Single-arm Overhead Extension') return 'Triceps, Shoulders';
+  if (equipment === 'Dumbbell' && workout === 'Concentration Curls') return 'Biceps';
+  if (equipment === 'Dumbbell' && workout === 'Single-arm Overhead Extension') return 'Triceps, Shoulders';
   if (equipment === 'Weight Stack' && workout === 'Lateral Pulldown') return 'Back, Lats';
   return 'Quadriceps';
 };
@@ -50,13 +50,13 @@ const MuscleIcon = ({ equipment, workout, size = 'default' }) => {
           <ellipse cx="32" cy="40" rx="6" ry="4" fill="rgba(239,68,68,0.5)"/>
         </>
       )}
-      {equipment === 'Dumbell' && workout === 'Concentration Curls' && (
+      {equipment === 'Dumbbell' && workout === 'Concentration Curls' && (
         <>
           <ellipse cx="16" cy="36" rx="3" ry="5" fill="rgba(239,68,68,0.7)"/>
           <ellipse cx="48" cy="36" rx="3" ry="5" fill="rgba(239,68,68,0.7)"/>
         </>
       )}
-      {equipment === 'Dumbell' && workout === 'Single-arm Overhead Extension' && (
+      {equipment === 'Dumbbell' && workout === 'Single-arm Overhead Extension' && (
         <>
           <ellipse cx="18" cy="38" rx="2.5" ry="5" fill="rgba(239,68,68,0.7)"/>
           <ellipse cx="46" cy="38" rx="2.5" ry="5" fill="rgba(239,68,68,0.7)"/>

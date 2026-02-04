@@ -6,7 +6,7 @@ const WorkoutCard = ({ workout, onWorkoutClick, selectedDay }) => {
   const getEquipmentColor = (equipment) => {
     const colorMap = {
       'Dumbbell': '#3B82F6',     // Blue
-      'Dumbell': '#3B82F6',      // Blue (alternate spelling)
+      'Dumbbell': '#3B82F6',      // Blue (alternate spelling)
       'Barbell': '#FBBF24',      // Yellow  
       'Weight Stack': '#EF4444', // Red
     };

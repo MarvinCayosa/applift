@@ -13,7 +13,7 @@ export default function EquipmentSelectionModal({ isOpen, onClose, onSelect, con
           innerBg: 'bg-[#f0b233]',
           innerBorder: 'border-[#f5c042]',
         };
-      case 'Dumbell':
+      case 'Dumbbell':
         return {
           outerBg: 'bg-[#0C4A6E]',
           outerBorder: 'border-[#0369A1]',
@@ -76,7 +76,7 @@ export default function EquipmentSelectionModal({ isOpen, onClose, onSelect, con
 
   const equipmentOptions = [
     { type: 'Barbell' },
-    { type: 'Dumbell' },
+    { type: 'Dumbbell' },
     { type: 'Weight Stack' },
   ];
 

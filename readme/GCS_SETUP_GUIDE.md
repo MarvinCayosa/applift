@@ -194,7 +194,7 @@ applift-imu-data/
 ```json
 {
   "exercise": "Concentration Curls",
-  "equipment": "Dumbell",
+  "equipment": "Dumbbell",
   "plannedSets": 2,
   "plannedReps": 10,
   "weight": 5,

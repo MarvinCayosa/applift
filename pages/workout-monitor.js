@@ -45,13 +45,13 @@ export default function WorkoutMonitor() {
         return '/images/workout-cards/barbell-front-squats.jpg';
       }
       return '/images/workout-cards/barbell-comingsoon.jpg';
-    } else if (equipmentLower.includes('dumbbell') || equipmentLower.includes('dumbell')) {
+    } else if (equipmentLower.includes('dumbbell') || equipmentLower.includes('dumbbell')) {
       if (workoutLower.includes('curl')) {
-        return '/images/workout-cards/dumbell-concentration-curls.jpg';
+        return '/images/workout-cards/dumbbell-concentration-curls.jpg';
       } else if (workoutLower.includes('extension') || workoutLower.includes('tricep')) {
-        return '/images/workout-cards/dumbell-overhead-extension.jpg';
+        return '/images/workout-cards/dumbbell-overhead-extension.jpg';
       }
-      return '/images/workout-cards/dumbell-comingsoon.jpg';
+      return '/images/workout-cards/dumbbell-comingsoon.jpg';
     } else if (equipmentLower.includes('weight stack') || equipmentLower.includes('weightstack') || equipmentLower.includes('cable')) {
       if (workoutLower.includes('pulldown') || workoutLower.includes('lat')) {
         return '/images/workout-cards/weightstack-lateral-pulldown.jpg';
@@ -428,7 +428,7 @@ export default function WorkoutMonitor() {
           {/* Equipment Badge */}
           <span className={`text-xs px-3 py-1 rounded-full font-medium ${
             equipment?.toLowerCase().includes('barbell') ? 'bg-orange-400 text-orange-900' :
-            equipment?.toLowerCase().includes('dumbbell') || equipment?.toLowerCase().includes('dumbell') ? 'bg-blue-400 text-blue-900' :
+            equipment?.toLowerCase().includes('dumbbell') || equipment?.toLowerCase().includes('dumbbell') ? 'bg-blue-400 text-blue-900' :
             equipment?.toLowerCase().includes('weight stack') || equipment?.toLowerCase().includes('weightstack') || equipment?.toLowerCase().includes('cable') ? 'bg-green-400 text-green-900' :
             'bg-teal-400 text-teal-900'
           }`}>
