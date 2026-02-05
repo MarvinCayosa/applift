@@ -441,7 +441,7 @@ export default function Workouts() {
                 style={{ width: '100%' }}
               >
                 <article
-                  className="h-96 mx-auto rounded-2xl overflow-hidden group relative transition-all duration-300 cursor-pointer hover:scale-105"
+                  className="h-72 mx-auto rounded-2xl overflow-hidden group relative transition-all duration-300 cursor-pointer hover:scale-105"
                   style={{
                     boxShadow: '0 12px 24px rgba(0, 0, 0, 0.3)'
                   }}
