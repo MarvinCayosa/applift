@@ -173,7 +173,7 @@ export default function RecommendedSetCard({
                 <div className="absolute inset-0 flex flex-col justify-between p-3">
                   {/* Title */}
                   <div className="flex items-center">
-                    <h2 className="text-3xl font-bold text-white">
+                    <h2 className="text-xl font-bold text-white">
                       {workout}
                     </h2>
                   </div>
@@ -192,7 +192,7 @@ export default function RecommendedSetCard({
                             >
                               <p className="text-xs text-white/70 mb-0.5">Weight</p>
                               <div className="flex items-baseline justify-center gap-1">
-                                <p className="text-2xl font-bold leading-none" style={{ color: customWeight ? equipmentColor : 'rgba(255,255,255,0.4)' }}>
+                                <p className="text-4xl font-bold leading-none" style={{ color: customWeight ? equipmentColor : 'rgba(255,255,255,0.4)' }}>
                                   {customWeight || '-'}
                                 </p>
                                 <p className="text-xs text-white/70 leading-none">{card.weightUnit}</p>
@@ -205,7 +205,7 @@ export default function RecommendedSetCard({
                               className="flex-1 py-0.5 hover:bg-white/10 rounded-xl transition-colors text-center"
                             >
                               <p className="text-xs text-white/70 mb-0.5">Sets</p>
-                              <p className="text-2xl font-bold leading-none" style={{ color: customSets ? equipmentColor : 'rgba(255,255,255,0.4)' }}>
+                              <p className="text-4xl font-bold leading-none" style={{ color: customSets ? equipmentColor : 'rgba(255,255,255,0.4)' }}>
                                 {customSets || '-'}
                               </p>
                             </button>
@@ -216,7 +216,7 @@ export default function RecommendedSetCard({
                               className="flex-1 py-0.5 hover:bg-white/10 rounded-xl transition-colors text-center"
                             >
                               <p className="text-xs text-white/70 mb-0.5">Reps</p>
-                              <p className="text-2xl font-bold leading-none" style={{ color: customReps ? equipmentColor : 'rgba(255,255,255,0.4)' }}>
+                              <p className="text-4xl font-bold leading-none" style={{ color: customReps ? equipmentColor : 'rgba(255,255,255,0.4)' }}>
                                 {customReps || '-'}
                               </p>
                             </button>
@@ -226,7 +226,7 @@ export default function RecommendedSetCard({
                             <div className="flex-1 py-0.5 text-center">
                               <p className="text-xs text-white/70 mb-0.5">Weight</p>
                               <div className="flex items-baseline justify-center gap-1">
-                                <p className="text-2xl font-bold leading-none" style={{ color: equipmentColor }}>
+                                <p className="text-4xl font-bold leading-none" style={{ color: equipmentColor }}>
                                   {card.weight}
                                 </p>
                                 <p className="text-xs text-white/70 leading-none">{card.weightUnit}</p>
@@ -235,14 +235,14 @@ export default function RecommendedSetCard({
                             <span className="text-white/50 text-xl font-light">|</span>
                             <div className="flex-1 py-0.5 text-center">
                               <p className="text-xs text-white/70 mb-0.5">Sets</p>
-                              <p className="text-2xl font-bold leading-none" style={{ color: equipmentColor }}>
+                              <p className="text-4xl font-bold leading-none" style={{ color: equipmentColor }}>
                                 {card.sets}
                               </p>
                             </div>
                             <span className="text-white/50 text-xl font-light">|</span>
                             <div className="flex-1 py-0.5 text-center">
                               <p className="text-xs text-white/70 mb-0.5">Reps</p>
-                              <p className="text-2xl font-bold leading-none" style={{ color: equipmentColor }}>
+                              <p className="text-4xl font-bold leading-none" style={{ color: equipmentColor }}>
                                 {card.reps}
                               </p>
                             </div>
@@ -363,7 +363,7 @@ export default function RecommendedSetCard({
                 <div className="absolute inset-0 flex flex-col justify-between p-5">
                   {/* Title */}
                   <div className="flex items-center">
-                    <h2 className="text-2xl font-bold text-white">
+                    <h2 className="text-xl font-bold text-white">
                       {workout}
                     </h2>
                   </div>
@@ -382,7 +382,7 @@ export default function RecommendedSetCard({
                             >
                               <p className="text-xs text-white/70 mb-0.5">Weight</p>
                               <div className="flex items-baseline justify-center gap-1">
-                                <p className="text-4xl font-bold leading-none" style={{ color: customWeight ? equipmentColor : 'rgba(255,255,255,0.4)' }}>
+                                <p className="text-5xl font-bold leading-none" style={{ color: customWeight ? equipmentColor : 'rgba(255,255,255,0.4)' }}>
                                   {customWeight || '-'}
                                 </p>
                                 <p className="text-xs text-white/70 leading-none">{card.weightUnit}</p>
@@ -395,7 +395,7 @@ export default function RecommendedSetCard({
                               className="flex-1 py-1 hover:bg-white/10 rounded-xl transition-colors text-center"
                             >
                               <p className="text-xs text-white/70 mb-0.5">Sets</p>
-                              <p className="text-4xl font-bold leading-none" style={{ color: customSets ? equipmentColor : 'rgba(255,255,255,0.4)' }}>
+                              <p className="text-5xl font-bold leading-none" style={{ color: customSets ? equipmentColor : 'rgba(255,255,255,0.4)' }}>
                                 {customSets || '-'}
                               </p>
                             </button>
@@ -406,7 +406,7 @@ export default function RecommendedSetCard({
                               className="flex-1 py-1 hover:bg-white/10 rounded-xl transition-colors text-center"
                             >
                               <p className="text-xs text-white/70 mb-0.5">Reps</p>
-                              <p className="text-4xl font-bold leading-none" style={{ color: customReps ? equipmentColor : 'rgba(255,255,255,0.4)' }}>
+                              <p className="text-5xl font-bold leading-none" style={{ color: customReps ? equipmentColor : 'rgba(255,255,255,0.4)' }}>
                                 {customReps || '-'}
                               </p>
                             </button>
@@ -416,7 +416,7 @@ export default function RecommendedSetCard({
                             <div className="flex-1 py-1 text-center">
                               <p className="text-xs text-white/70 mb-0.5">Weight</p>
                               <div className="flex items-baseline justify-center gap-1">
-                                <p className="text-4xl font-bold leading-none" style={{ color: equipmentColor }}>
+                                <p className="text-5xl font-bold leading-none" style={{ color: equipmentColor }}>
                                   {card.weight}
                                 </p>
                                 <p className="text-xs text-white/70 leading-none">{card.weightUnit}</p>
@@ -425,14 +425,14 @@ export default function RecommendedSetCard({
                             <span className="text-white/50 text-3xl font-light">|</span>
                             <div className="flex-1 py-1 text-center">
                               <p className="text-xs text-white/70 mb-0.5">Sets</p>
-                              <p className="text-4xl font-bold leading-none" style={{ color: equipmentColor }}>
+                              <p className="text-5xl font-bold leading-none" style={{ color: equipmentColor }}>
                                 {card.sets}
                               </p>
                             </div>
                             <span className="text-white/50 text-3xl font-light">|</span>
                             <div className="flex-1 py-1 text-center">
                               <p className="text-xs text-white/70 mb-0.5">Reps</p>
-                              <p className="text-4xl font-bold leading-none" style={{ color: equipmentColor }}>
+                              <p className="text-5xl font-bold leading-none" style={{ color: equipmentColor }}>
                                 {card.reps}
                               </p>
                             </div>

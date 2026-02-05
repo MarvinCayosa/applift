@@ -1,5 +1,5 @@
 import Head from 'next/head';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import BottomNav from '../components/BottomNav';
 import ConnectPill from '../components/ConnectPill';
@@ -47,6 +47,56 @@ const comingSoonImages = {
   'Weight Stack': '/images/workout-cards/weightstack-comingsoon.jpg',
 };
 
+// Get colors based on equipment type - moved outside component for performance
+const getEquipmentColors = (equipmentType) => {
+  switch (equipmentType) {
+    case 'Barbell':
+      return {
+        outerBg: 'bg-[#b87700]',
+        outerBorder: 'border-[#e69b00]',
+        outerShadow: 'shadow-amber-700/30',
+        innerBg: 'bg-[#f0b233]',
+        innerBorder: 'border-[#f5c042]',
+        innerShadow: 'shadow-amber-500',
+        buttonBg: 'bg-[#e69b00]',
+        buttonHover: 'hover:bg-[#f0b233]',
+      };
+    case 'Dumbbell':
+      return {
+        outerBg: 'bg-[#0C4A6E]',
+        outerBorder: 'border-[#0369A1]',
+        outerShadow: 'shadow-blue-900/20',
+        innerBg: 'bg-[#3B82F6]',
+        innerBorder: 'border-[#60A5FA]',
+        innerShadow: 'shadow-blue-600',
+        buttonBg: 'bg-[#2563EB]',
+        buttonHover: 'hover:bg-[#3B82F6]',
+      };
+    case 'Weight Stack':
+      return {
+        outerBg: 'bg-[#7F1D1D]',
+        outerBorder: 'border-[#DC2626]',
+        outerShadow: 'shadow-red-900/20',
+        innerBg: 'bg-[#EF4444]',
+        innerBorder: 'border-[#F87171]',
+        innerShadow: 'shadow-red-600',
+        buttonBg: 'bg-[#DC2626]',
+        buttonHover: 'hover:bg-[#EF4444]',
+      };
+    default:
+      return {
+        outerBg: 'bg-[#5B21B6]',
+        outerBorder: 'border-[#7C3AED]',
+        outerShadow: 'shadow-purple-900/20',
+        innerBg: 'bg-[#7C3AED]',
+        innerBorder: 'border-[#8B5CF6]',
+        innerShadow: 'shadow-purple-900',
+        buttonBg: 'bg-[#6D28D9]',
+        buttonHover: 'hover:bg-[#8B5CF6]',
+      };
+  }
+};
+
 export default function Workouts() {
   const router = useRouter();
   const {
@@ -71,19 +121,22 @@ export default function Workouts() {
   const [showInstructionModal, setShowInstructionModal] = useState(false);
   const [wasConnected, setWasConnected] = useState(false);
 
-  // Get workouts based on scanned equipment
-  const workouts = scannedEquipment
-    ? scannedEquipment.type === 'Barbell' || scannedEquipment.type === 'Dumbbell' || scannedEquipment.type === 'Weight Stack'
-      ? [
-          ...(exercisesByEquipment[scannedEquipment.type] || []),
-          { 
-            title: 'Coming Soon', 
-            image: comingSoonImages[scannedEquipment.type], 
-            isComingSoon: true 
-          },
-        ]
-      : (exercisesByEquipment[scannedEquipment.type] || [])
-    : [];
+  // Get workouts based on scanned equipment - memoized to prevent recreation
+  const workouts = useMemo(() => {
+    if (!scannedEquipment) return [];
+    
+    if (scannedEquipment.type === 'Barbell' || scannedEquipment.type === 'Dumbbell' || scannedEquipment.type === 'Weight Stack') {
+      return [
+        ...(exercisesByEquipment[scannedEquipment.type] || []),
+        { 
+          title: 'Coming Soon', 
+          image: comingSoonImages[scannedEquipment.type], 
+          isComingSoon: true 
+        },
+      ];
+    }
+    return exercisesByEquipment[scannedEquipment.type] || [];
+  }, [scannedEquipment]);
 
   useEffect(() => {
     function onDocClick(e) {
@@ -156,56 +209,6 @@ export default function Workouts() {
     setWasConnected(connected);
   }, [connected, wasConnected]);
 
-  // Get colors based on equipment type
-  const getEquipmentColors = (equipmentType) => {
-    switch (equipmentType) {
-      case 'Barbell':
-        return {
-          outerBg: 'bg-[#b87700]', // dark orange-gold
-          outerBorder: 'border-[#e69b00]',
-          outerShadow: 'shadow-amber-700/30',
-          innerBg: 'bg-[#f0b233]',
-          innerBorder: 'border-[#f5c042]',
-          innerShadow: 'shadow-amber-500',
-          buttonBg: 'bg-[#e69b00]',
-          buttonHover: 'hover:bg-[#f0b233]',
-        };
-      case 'Dumbbell':
-        return {
-          outerBg: 'bg-[#0C4A6E]', // dark blue
-          outerBorder: 'border-[#0369A1]',
-          outerShadow: 'shadow-blue-900/20',
-          innerBg: 'bg-[#3B82F6]',
-          innerBorder: 'border-[#60A5FA]',
-          innerShadow: 'shadow-blue-600',
-          buttonBg: 'bg-[#2563EB]',
-          buttonHover: 'hover:bg-[#3B82F6]',
-        };
-      case 'Weight Stack':
-        return {
-          outerBg: 'bg-[#7F1D1D]', // dark red
-          outerBorder: 'border-[#DC2626]',
-          outerShadow: 'shadow-red-900/20',
-          innerBg: 'bg-[#EF4444]',
-          innerBorder: 'border-[#F87171]',
-          innerShadow: 'shadow-red-600',
-          buttonBg: 'bg-[#DC2626]',
-          buttonHover: 'hover:bg-[#EF4444]',
-        };
-      default:
-        return {
-          outerBg: 'bg-[#5B21B6]',
-          outerBorder: 'border-[#7C3AED]',
-          outerShadow: 'shadow-purple-900/20',
-          innerBg: 'bg-[#7C3AED]',
-          innerBorder: 'border-[#8B5CF6]',
-          innerShadow: 'shadow-purple-900',
-          buttonBg: 'bg-[#6D28D9]',
-          buttonHover: 'hover:bg-[#8B5CF6]',
-        };
-    }
-  };
-
   // Subscribe to NFC equipment detection when BLE device is connected
   useEffect(() => {
     if (!connected || !device) {
@@ -214,6 +217,7 @@ export default function Workouts() {
 
     const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
     const NFC_CHARACTERISTIC_UUID = 'ceb5483e-36e1-4688-b7f5-ea07361b26a8';
+    let nfcCharacteristic = null;
 
     async function subscribeToNFC() {
       try {
@@ -227,7 +231,7 @@ export default function Workouts() {
 
         // Subscribe to NFC equipment characteristic
         console.log('Getting NFC Characteristic...');
-        const nfcCharacteristic = await service.getCharacteristic(NFC_CHARACTERISTIC_UUID);
+        nfcCharacteristic = await service.getCharacteristic(NFC_CHARACTERISTIC_UUID);
         await nfcCharacteristic.startNotifications();
         
         nfcCharacteristic.addEventListener('characteristicvaluechanged', handleNFCData);
@@ -276,21 +280,39 @@ export default function Workouts() {
 
     subscribeToNFC();
 
+    // Cleanup function
+    return () => {
+      if (nfcCharacteristic) {
+        try {
+          nfcCharacteristic.removeEventListener('characteristicvaluechanged', handleNFCData);
+          nfcCharacteristic.stopNotifications().catch(err => console.log('Error stopping notifications:', err));
+        } catch (err) {
+          console.log('Error cleaning up NFC subscription:', err);
+        }
+      }
+    };
   }, [connected, device]);
 
   useEffect(() => {
     const carousel = workoutCarouselRef.current;
     if (!carousel) return;
 
+    let timeoutId;
     const handleScroll = () => {
-      const scrollLeft = carousel.scrollLeft;
-      const cardWidth = carousel.offsetWidth;
-      const activeIndex = Math.round(scrollLeft / cardWidth);
-      setWorkoutCarouselIndex(Math.min(activeIndex, workouts.length - 1));
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        const scrollLeft = carousel.scrollLeft;
+        const cardWidth = carousel.offsetWidth;
+        const activeIndex = Math.round(scrollLeft / cardWidth);
+        setWorkoutCarouselIndex(Math.min(activeIndex, workouts.length - 1));
+      }, 50);
     };
 
-    carousel.addEventListener('scroll', handleScroll);
-    return () => carousel.removeEventListener('scroll', handleScroll);
+    carousel.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      carousel.removeEventListener('scroll', handleScroll);
+    };
   }, [workouts.length]);
 
   return (

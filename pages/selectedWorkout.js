@@ -1,6 +1,6 @@
 import Head from 'next/head';
 import { useRouter } from 'next/router';
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useMemo, useCallback } from 'react';
 import CalibrationHistoryPanel from '../components/CalibrationHistoryPanel';
 import CalibrationModal from '../components/CalibrationModal';
 import ConnectPill from '../components/ConnectPill';
@@ -479,7 +479,7 @@ export default function SelectedWorkout() {
   }, [customSetError]);
 
   // Handle carousel index change and log it
-  const handleCarouselIndexChange = (index) => {
+  const handleCarouselIndexChange = useCallback((index) => {
     setCarouselActiveIndex(index);
     // Clear error when switching cards
     setCustomSetError('');
@@ -488,13 +488,13 @@ export default function SelectedWorkout() {
     console.log('📊 Carousel changed to:', carouselType);
     console.log('   - Index:', index);
     console.log('   - Type:', carouselType);
-  };
+  }, []);
 
   // Handle opening modal for specific field
-  const handleCustomFieldClick = (field) => {
+  const handleCustomFieldClick = useCallback((field) => {
     setModalField(field);
     setIsModalOpen(true);
-  };
+  }, []);
 
   // Handle save from modal
   const handleModalSave = ({ value, weightUnit: wu, fieldType }) => {
@@ -540,11 +540,11 @@ export default function SelectedWorkout() {
     disconnect,
   } = useBluetooth();
 
-  const details = workoutDetails[equipment]?.[workout];
-  const equipmentColor = equipmentColors[equipment] || '#7c3aed';
-  const workoutImage = workoutImages[equipment]?.[workout] || '/images/workout-cards/barbell-flat-bench-press.jpg';
-  const tutorialVideoPath = tutorialVideos[equipment]?.[workout];
-  const videoThumbnail = videoThumbnails[equipment]?.[workout] || workoutImage;
+  const details = useMemo(() => workoutDetails[equipment]?.[workout], [equipment, workout]);
+  const equipmentColor = useMemo(() => equipmentColors[equipment] || '#7c3aed', [equipment]);
+  const workoutImage = useMemo(() => workoutImages[equipment]?.[workout] || '/images/workout-cards/barbell-flat-bench-press.jpg', [equipment, workout]);
+  const tutorialVideoPath = useMemo(() => tutorialVideos[equipment]?.[workout], [equipment, workout]);
+  const videoThumbnail = useMemo(() => videoThumbnails[equipment]?.[workout] || workoutImage, [equipment, workout, workoutImage]);
 
   if (!details) {
     return (
