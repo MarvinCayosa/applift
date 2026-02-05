@@ -1,5 +1,5 @@
 export default function RepInsightCard({ repData, repNumber }) {
-  const { time, rom, peakVelocity, isClean, chartData, liftingTime, loweringTime } = repData;
+  const { time, rom, peakVelocity, chartData, liftingTime, loweringTime } = repData;
 
   // Calculate lifting/lowering percentages from actual data or use placeholders
   const totalPhaseTime = (liftingTime || 0) + (loweringTime || 0);
@@ -10,12 +10,12 @@ export default function RepInsightCard({ repData, repNumber }) {
     ? ((loweringTime || 0) / totalPhaseTime * 100).toFixed(1)
     : (100 - parseFloat(liftingPercent)).toFixed(1);
 
-  // Placeholder ML confidence (will be replaced by ML model output)
-  // Structure: { confidence: number, formQuality: 'clean' | 'uncontrolled', rawScore: number }
+  // Mock data for UI preview: Rep 1 is "Clean", all others are "Uncontrolled"
+  // Confidence is a sample value (e.g., 82%)
+  const isFirstRep = repNumber === 1;
   const mlPrediction = {
-    confidence: Math.floor(Math.random() * 20) + 75, // Placeholder: 75-95%
-    formQuality: isClean ? 'clean' : 'uncontrolled',
-    rawScore: isClean ? 0.85 : 0.35 // Placeholder normalized score
+    confidence: isFirstRep ? 92 : 82, // Sample confidence percentages
+    formQuality: isFirstRep ? 'clean' : 'uncontrolled'
   };
   
   // Determine form quality display
