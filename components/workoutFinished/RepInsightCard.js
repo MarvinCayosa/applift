@@ -11,153 +11,274 @@ export default function RepInsightCard({ repData, repNumber }) {
     : (100 - parseFloat(liftingPercent)).toFixed(1);
 
   // Mock data for UI preview: Rep 1 is "Clean", all others are "Uncontrolled"
-  // Confidence is a sample value (e.g., 82%)
   const isFirstRep = repNumber === 1;
   const mlPrediction = {
-    confidence: isFirstRep ? 92 : 82, // Sample confidence percentages
+    confidence: isFirstRep ? 92 : 82,
     formQuality: isFirstRep ? 'clean' : 'uncontrolled'
   };
   
   // Determine form quality display
   const formQuality = mlPrediction.formQuality === 'clean' ? 'Clean' : 'Uncontrolled';
   const formColor = mlPrediction.formQuality === 'clean'
-    ? { bg: 'bg-emerald-500/20', text: 'text-emerald-400', border: 'border-emerald-500/30', tint: 'bg-emerald-950/40' }
-    : { bg: 'bg-amber-500/20', text: 'text-amber-400', border: 'border-amber-500/30', tint: 'bg-amber-950/40' };
+    ? { primary: '#10b981', secondary: '#34d399' }
+    : { primary: '#f59e0b', secondary: '#fbbf24' };
 
-  // Placeholder metrics (will be populated from actual rep data or ML)
+  // Placeholder metrics
   const metrics = {
-    time: time || (1.5 + Math.random() * 2).toFixed(1), // Placeholder: 1.5-3.5s
-    rom: rom || Math.floor(80 + Math.random() * 40), // Placeholder: 80-120°
-    peakVelocity: peakVelocity || (3 + Math.random() * 4).toFixed(1) // Placeholder: 3-7 m/s
+    time: time || (1.5 + Math.random() * 2).toFixed(1),
+    rom: rom || Math.floor(80 + Math.random() * 40), // Actual ROM achieved
+    expectedRom: 120, // Expected/target ROM
+    peakVelocity: peakVelocity || (3 + Math.random() * 4).toFixed(1)
   };
 
+  // Calculate ROM progress percentage
+  const romProgress = Math.min(100, (metrics.rom / metrics.expectedRom) * 100);
+
+  // Peak velocity normalized (0-10 m/s scale)
+  const velocityProgress = Math.min(100, (parseFloat(metrics.peakVelocity) / 10) * 100);
+
   return (
-    <div className="bg-[#252525] rounded-2xl min-w-full shadow-lg overflow-hidden">
-      {/* Top Section - Dark */}
-      <div className="p-4">
-        {/* Rep number header */}
-        <div className="flex justify-between items-center mb-4">
-          <h4 className="text-sm font-semibold text-white">Rep {repNumber}</h4>
-        </div>
-
-        {/* Main content: Chart on left, Progress bar + Metrics on right */}
-        <div className="flex gap-4">
-          {/* Square chart on the left - shows only this rep's data */}
-          <div className="w-20 h-20 flex-shrink-0 bg-[#1a1a1a] rounded-xl overflow-hidden">
-            {chartData && chartData.length > 0 ? (
-              <svg className="w-full h-full" viewBox="0 0 112 112" preserveAspectRatio="none">
-                <defs>
-                  <linearGradient id={`repGradient${repNumber}`} x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%" style={{ stopColor: mlPrediction.formQuality === 'clean' ? '#10b981' : '#f59e0b', stopOpacity: 0.6 }} />
-                    <stop offset="100%" style={{ stopColor: mlPrediction.formQuality === 'clean' ? '#10b981' : '#f59e0b', stopOpacity: 0.05 }} />
-                  </linearGradient>
-                </defs>
-                
-                <polygon
-                  points={`
-                    ${chartData.map((value, index) => {
-                      const x = (index / (chartData.length - 1)) * 112;
-                      const normalizedValue = Math.max(0, Math.min(1, value / 20));
-                      const y = 112 - (normalizedValue * 92 + 10);
-                      return `${x},${y}`;
-                    }).join(' ')}
-                    112,112 0,112
-                  `}
-                  fill={`url(#repGradient${repNumber})`}
-                />
-                
-                <polyline
-                  points={chartData.map((value, index) => {
-                    const x = (index / (chartData.length - 1)) * 112;
-                    const normalizedValue = Math.max(0, Math.min(1, value / 20));
-                    const y = 112 - (normalizedValue * 92 + 10);
-                    return `${x},${y}`;
-                  }).join(' ')}
-                  fill="none"
-                  stroke={mlPrediction.formQuality === 'clean' ? '#10b981' : '#f59e0b'}
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                
-                {(() => {
-                  const maxIndex = chartData.reduce((maxI, val, i, arr) => val > arr[maxI] ? i : maxI, 0);
-                  const maxValue = chartData[maxIndex];
-                  const x = (maxIndex / (chartData.length - 1)) * 112;
-                  const normalizedValue = Math.max(0, Math.min(1, maxValue / 20));
-                  const y = 112 - (normalizedValue * 92 + 10);
-                  return (
-                    <circle
-                      cx={x}
-                      cy={y}
-                      r="4"
-                      fill="white"
-                      stroke={mlPrediction.formQuality === 'clean' ? '#10b981' : '#f59e0b'}
-                      strokeWidth="2"
-                    />
-                  );
-                })()}
-              </svg>
-            ) : (
-              <div className="flex items-center justify-center h-full text-gray-500 text-xs">
-                No data
-              </div>
-            )}
-          </div>
-
-          {/* Right side: Progress bar pill + Metrics */}
-          <div className="flex-1 flex flex-col justify-between">
-            {/* Lift/Lower distribution pill - no label */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-cyan-400 min-w-[40px]">{liftingPercent}%</span>
-              <div className="flex-1 h-3 rounded-full overflow-hidden flex">
-                {/* Lifting (cyan/teal) portion */}
-                <div 
-                  className="h-full bg-gradient-to-r from-cyan-400 to-teal-400"
-                  style={{ width: `${liftingPercent}%` }}
-                />
-                {/* Lowering (orange) portion */}
-                <div 
-                  className="h-full bg-gradient-to-r from-yellow-500 to-orange-400"
-                  style={{ width: `${loweringPercent}%` }}
-                />
-              </div>
-              <span className="text-xs font-semibold text-orange-400 min-w-[40px] text-right">{loweringPercent}%</span>
-            </div>
-
-            {/* Metrics row - Time, ROM, Peak Velocity */}
-            <div className="flex justify-between mt-4">
-              <div className="text-center">
-                <span className="text-xs text-gray-400 block mb-0.5">Time</span>
-                <span className="text-base font-bold text-white">{typeof metrics.time === 'number' ? `${metrics.time.toFixed(1)}s` : `${metrics.time}s`}</span>
-              </div>
-              <div className="text-center">
-                <span className="text-xs text-gray-400 block mb-0.5">ROM</span>
-                <span className="text-base font-bold text-white">{typeof metrics.rom === 'number' ? `${metrics.rom.toFixed(0)}°` : `${metrics.rom}°`}</span>
-              </div>
-              <div className="text-center">
-                <span className="text-xs text-gray-400 block mb-0.5">Peak Vel.</span>
-                <span className="text-base font-bold text-white">{typeof metrics.peakVelocity === 'number' ? `${metrics.peakVelocity.toFixed(1)}m/s` : `${metrics.peakVelocity}m/s`}</span>
-              </div>
-            </div>
-          </div>
+    <div className="h-full bg-[#1a1a1a] rounded-2xl shadow-xl overflow-y-auto border border-white/10 flex flex-col">
+      {/* Header with Rep number (left) and Classification badge (right) */}
+      <div className="px-5 pt-4 pb-3 flex items-center justify-between flex-shrink-0">
+        <h4 className="text-base font-semibold text-white">Rep {repNumber}</h4>
+        
+        {/* Classification Badge - Top Right */}
+        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/60 backdrop-blur-sm border border-white/20">
+          <div 
+            className="w-2.5 h-2.5 rounded-full" 
+            style={{ backgroundColor: formColor.primary }}
+          />
+          <span className="text-sm font-semibold text-white">
+            {formQuality}
+          </span>
         </div>
       </div>
 
-      {/* Bottom Section - Different color background based on form quality */}
-      <div className={`px-4 py-3 ${formColor.tint}`}>
-        {/* Form Quality Badge with ML Confidence */}
-        <div className="flex items-center justify-between">
-          <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border ${formColor.bg} ${formColor.border}`}>
-            <div className={`w-2 h-2 rounded-full ${mlPrediction.formQuality === 'clean' ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-            <span className={`text-sm font-medium ${formColor.text}`}>
-              {formQuality}
-            </span>
+      {/* Graph Section with Confidence Label */}
+      <div className="relative px-5 pb-4 flex-shrink-0">
+        {/* Confidence Level - Top-left overlay on chart, no background */}
+        <div className="absolute top-2 left-7 z-10">
+          <span className="text-sm font-medium text-white/40 drop-shadow-lg">
+            Confidence: {mlPrediction.confidence}%
+          </span>
+        </div>
+
+        {/* Graph Container - wider aspect ratio, zoomed into single rep */}
+        <div className="w-full bg-black/40 rounded-xl overflow-hidden border border-white/10" style={{ height: '180px' }}>
+          {chartData && chartData.length > 0 ? (
+            <svg className="w-full h-full" viewBox="0 0 400 140" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id={`repGradient${repNumber}`} x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" style={{ stopColor: formColor.primary, stopOpacity: 0.5 }} />
+                  <stop offset="100%" style={{ stopColor: formColor.primary, stopOpacity: 0.05 }} />
+                </linearGradient>
+              </defs>
+              
+              {/* Grid lines */}
+              <line x1="0" y1="35" x2="400" y2="35" stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
+              <line x1="0" y1="70" x2="400" y2="70" stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
+              <line x1="0" y1="105" x2="400" y2="105" stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
+              
+              <polygon
+                points={`
+                  ${chartData.map((value, index) => {
+                    const x = (index / (chartData.length - 1)) * 400;
+                    const normalizedValue = Math.max(0, Math.min(1, Math.abs(value) / 15));
+                    const y = 140 - (normalizedValue * 120 + 10);
+                    return `${x},${y}`;
+                  }).join(' ')}
+                  400,140 0,140
+                `}
+                fill={`url(#repGradient${repNumber})`}
+              />
+              
+              <polyline
+                points={chartData.map((value, index) => {
+                  const x = (index / (chartData.length - 1)) * 400;
+                  const normalizedValue = Math.max(0, Math.min(1, Math.abs(value) / 15));
+                  const y = 140 - (normalizedValue * 120 + 10);
+                  return `${x},${y}`;
+                }).join(' ')}
+                fill="none"
+                stroke={formColor.primary}
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                style={{ filter: `drop-shadow(0 0 8px ${formColor.primary})` }}
+              />
+              
+              {(() => {
+                const maxIndex = chartData.reduce((maxI, val, i, arr) => Math.abs(val) > Math.abs(arr[maxI]) ? i : maxI, 0);
+                const maxValue = chartData[maxIndex];
+                const x = (maxIndex / (chartData.length - 1)) * 400;
+                const normalizedValue = Math.max(0, Math.min(1, Math.abs(maxValue) / 15));
+                const y = 140 - (normalizedValue * 120 + 10);
+                return (
+                  <circle
+                    cx={x}
+                    cy={y}
+                    r="5"
+                    fill="white"
+                    stroke={formColor.primary}
+                    strokeWidth="2.5"
+                  />
+                );
+              })()}
+            </svg>
+          ) : (
+            <div className="flex items-center justify-center h-full text-gray-500 text-sm">
+              No data
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Metrics Section - Stacked vertically */}
+      <div className="px-5 pb-20 space-y-4 flex-1">
+        {/* ROM Progress Bar */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-300">Range of Motion</span>
+            <span className="text-lg font-bold text-white">{Math.round(romProgress)}%</span>
+          </div>
+          <div className="relative h-3 bg-white/10 rounded-full overflow-hidden">
+            <div 
+              className="absolute inset-y-0 left-0 rounded-full transition-all duration-500"
+              style={{ 
+                width: `${romProgress}%`,
+                background: 'linear-gradient(to right, #3b82f6, #60a5fa)'
+              }}
+            />
+          </div>
+          <p className="text-xs text-gray-400 pt-1">
+            {romProgress >= 90 
+              ? '✓ Excellent depth! You achieved optimal range of motion.'
+              : romProgress >= 70
+              ? 'Good effort. Try to go a bit deeper for better muscle activation.'
+              : 'Limited depth detected. Focus on controlled, deeper movements.'}
+          </p>
+        </div>
+
+        {/* Movement Phases - Using same visualization as LiftPhases */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-sm font-medium text-gray-300">Movement Phases</span>
           </div>
           
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-400">Confidence</span>
-            <span className="text-sm font-semibold text-white/80">{mlPrediction.confidence}%</span>
+          {/* Stacked Horizontal Progress Bar */}
+          <div className="relative h-3 bg-white/10 rounded-full overflow-hidden">
+            {/* Concentric (Lifting) portion */}
+            <div 
+              className="absolute inset-y-0 left-0 bg-gradient-to-r from-teal-500 to-cyan-400 transition-all duration-500"
+              style={{ width: `${liftingPercent}%` }}
+            />
+            {/* Eccentric (Lowering) portion */}
+            <div 
+              className="absolute inset-y-0 bg-gradient-to-r from-yellow-500 to-orange-400 transition-all duration-500"
+              style={{ left: `${liftingPercent}%`, right: 0 }}
+            />
+          </div>
+
+          {/* Labels below progress bar */}
+          <div className="flex items-center justify-between pt-1">
+            <div className="flex items-center gap-2">
+              <div className="w-1 h-10 bg-gradient-to-b from-teal-500 to-cyan-400 rounded-full" />
+              <div className="flex flex-col">
+                <span className="text-lg font-bold text-white">{liftingPercent}%</span>
+                <span className="text-xs text-gray-400">Concentric</span>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <div className="flex flex-col items-end">
+                <span className="text-lg font-bold text-white">{loweringPercent}%</span>
+                <span className="text-xs text-gray-400">Eccentric</span>
+              </div>
+              <div className="w-1 h-10 bg-gradient-to-b from-yellow-500 to-orange-400 rounded-full" />
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom Cards - Two rounded squares side by side */}
+        <div className="grid grid-cols-2 gap-3 pt-1">
+          {/* Left Card - Peak Velocity with chart background */}
+          <div className="relative bg-[#1f1f1f] rounded-2xl overflow-hidden border border-white/10 p-4 aspect-square flex flex-col justify-between">
+            {/* Mini chart background */}
+            <div className="absolute inset-0 opacity-30">
+              {chartData && chartData.length > 0 && (
+                <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                  <defs>
+                    <linearGradient id={`velocityGrad${repNumber}`} x1="0%" y1="0%" x2="0%" y2="100%">
+                      <stop offset="0%" style={{ stopColor: '#a3e635', stopOpacity: 0.6 }} />
+                      <stop offset="100%" style={{ stopColor: '#a3e635', stopOpacity: 0 }} />
+                    </linearGradient>
+                  </defs>
+                  <polygon
+                    points={`
+                      ${chartData.map((value, index) => {
+                        const x = (index / (chartData.length - 1)) * 100;
+                        const normalizedValue = Math.max(0, Math.min(1, Math.abs(value) / 15));
+                        const y = 100 - (normalizedValue * 80 + 10);
+                        return `${x},${y}`;
+                      }).join(' ')}
+                      100,100 0,100
+                    `}
+                    fill={`url(#velocityGrad${repNumber})`}
+                  />
+                  <polyline
+                    points={chartData.map((value, index) => {
+                      const x = (index / (chartData.length - 1)) * 100;
+                      const normalizedValue = Math.max(0, Math.min(1, Math.abs(value) / 15));
+                      const y = 100 - (normalizedValue * 80 + 10);
+                      return `${x},${y}`;
+                    }).join(' ')}
+                    fill="none"
+                    stroke="#a3e635"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              )}
+            </div>
+            
+            {/* Content overlay */}
+            <div className="relative z-10">
+              <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">Peak Velocity</span>
+            </div>
+            <div className="relative z-10">
+              <span className="text-3xl font-bold text-lime-400">{metrics.peakVelocity}</span>
+              <span className="text-sm text-gray-400 ml-1">m/s</span>
+              <div className="flex items-center gap-1 mt-1">
+                <svg className="w-3 h-3 text-lime-400" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                </svg>
+                <span className="text-[10px] text-gray-500">{velocityProgress.toFixed(0)}% of max</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Card - Rep Duration / Tempo */}
+          <div className="relative bg-[#1f1f1f] rounded-2xl overflow-hidden border border-white/10 p-4 aspect-square flex flex-col justify-between">
+            {/* Content */}
+            <div className="relative z-10">
+              <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">Rep Duration</span>
+            </div>
+            <div className="relative z-10">
+              <span className="text-3xl font-bold text-white">{metrics.time}</span>
+              <span className="text-sm text-gray-400 ml-1">sec</span>
+              <div className="flex items-center gap-1 mt-1">
+                <div className="flex gap-0.5">
+                  <div className="w-1.5 h-3 rounded-sm bg-purple-400" />
+                  <div className="w-1.5 h-4 rounded-sm bg-purple-500" />
+                  <div className="w-1.5 h-2.5 rounded-sm bg-purple-400" />
+                </div>
+                <span className="text-[10px] text-gray-500">
+                  {parseFloat(metrics.time) < 2 ? 'Explosive' : parseFloat(metrics.time) < 3.5 ? 'Controlled' : 'Slow tempo'}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       </div>

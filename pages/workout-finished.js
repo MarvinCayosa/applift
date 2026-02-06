@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react';
 import WorkoutSummaryCard from '../components/workoutFinished/WorkoutSummaryCard';
 import WorkoutEffort from '../components/workoutFinished/WorkoutEffort';
 import LiftPhases from '../components/workoutFinished/LiftPhases';
-import RepByRepCard from '../components/workoutFinished/RepByRepCard';
 import { useWorkoutLogging } from '../context/WorkoutLoggingContext';
 import { useWorkoutStreak } from '../utils/useWorkoutStreak';
 import LoadingScreen from '../components/LoadingScreen';
@@ -154,6 +153,19 @@ export default function WorkoutFinished() {
           totalWorkoutTime={parseInt(totalTime) || 0}
           setsData={parsedSetsData}
           totalReps={parseInt(totalReps) || 0}
+          onSeeMore={() => {
+            // Navigate to performance details page
+            router.push({
+              pathname: '/performance-details',
+              query: {
+                workoutName,
+                equipment,
+                setsData,
+                recommendedSets,
+                recommendedReps
+              }
+            });
+          }}
         />
 
         {/* Workout Effort - High-level effort indicator */}
@@ -164,13 +176,6 @@ export default function WorkoutFinished() {
 
         {/* Movement Phases - Eccentric vs Concentric */}
         <LiftPhases />
-
-        {/* Rep by rep section - now a reusable component */}
-        <RepByRepCard 
-          setsData={setsData}
-          parsedSetsData={parsedSetsData}
-          recommendedSets={recommendedSets}
-        />
 
         {/* Upload status indicator */}
         {uploadProgress && uploadProgress !== 'completed' && (

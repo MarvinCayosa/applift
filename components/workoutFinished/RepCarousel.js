@@ -54,40 +54,40 @@ export default function RepCarousel({ repsData }) {
   };
 
   return (
-    <div className="space-y-3">
+    <div className="h-full flex flex-col">
       <div 
         ref={carouselRef}
-        className="overflow-hidden"
+        className="flex-1 overflow-hidden relative"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
         <div 
-          className="flex transition-transform duration-300 ease-out"
+          className="h-full flex transition-transform duration-300 ease-out"
           style={{ transform: `translateX(-${currentIndex * 100}%)` }}
         >
           {repsData.map((repData, index) => (
-            <div key={index} className="w-full flex-shrink-0">
+            <div key={index} className="w-full h-full flex-shrink-0">
               <RepInsightCard repData={repData} repNumber={index + 1} />
             </div>
           ))}
         </div>
-      </div>
 
-      {/* Dots indicator - updated style */}
-      <div className="flex justify-center gap-1.5 pt-2">
-        {repsData.map((_, index) => (
-          <button
-            key={index}
-            onClick={() => setCurrentIndex(index)}
-            className={`h-1.5 rounded-full transition-all ${
-              index === currentIndex 
-                ? 'w-6 bg-white' 
-                : 'w-1.5 bg-white/30'
-            }`}
-            aria-label={`Go to rep ${index + 1}`}
-          />
-        ))}
+        {/* Dots indicator - Inside carousel container at bottom */}
+        <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-2 z-10">
+          {repsData.map((_, index) => (
+            <button
+              key={index}
+              onClick={() => setCurrentIndex(index)}
+              className={`h-2 rounded-full transition-all ${
+                index === currentIndex 
+                  ? 'w-8 bg-white' 
+                  : 'w-2 bg-white/40'
+              }`}
+              aria-label={`Go to rep ${index + 1}`}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );

@@ -8,7 +8,8 @@ export default function WorkoutSummaryCard({
   totalCalories,
   totalWorkoutTime,
   setsData,
-  totalReps
+  totalReps,
+  onSeeMore
 }) {
   const canvasRef = useRef(null);
   const chartRef = useRef(null);
@@ -232,9 +233,24 @@ export default function WorkoutSummaryCard({
   return (
     <div className="w-full bg-white/10 backdrop-blur-sm rounded-3xl p-5 shadow-xl animate-fade-in-up">
       {/* Title Section */}
-      <div className="mb-3">
-        <h2 className="text-xl font-bold text-white mb-1">{workoutName || 'Training'}</h2>
-        <p className="text-xs text-gray-400">{equipment || 'Your performance'}</p>
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className="flex-1">
+          <h2 className="text-xl font-bold text-white mb-1">{workoutName || 'Training'}</h2>
+          <p className="text-xs text-gray-400">{equipment || 'Your performance'}</p>
+        </div>
+        
+        {/* See More button */}
+        {onSeeMore && (
+          <button
+            onClick={onSeeMore}
+            className="text-sm text-purple-400 hover:text-purple-300 transition-colors font-medium flex items-center gap-1 mt-0.5 shrink-0"
+          >
+            See More
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* Chart Container */}

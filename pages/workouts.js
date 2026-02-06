@@ -15,8 +15,8 @@ const exercisesByEquipment = {
       image: '/images/workout-cards/barbell-flat-bench-press.jpg',
     },
     {
-      title: 'Front Squats',
-      image: '/images/workout-cards/barbell-front-squats.jpg',
+      title: 'Back Squats',
+      image: '/images/workout-cards/barbell_back_squats.jpg',
     },
   ],
   Dumbbell: [
@@ -25,8 +25,8 @@ const exercisesByEquipment = {
       image: '/images/workout-cards/dumbbell-concentration-curls.jpg',
     },
     {
-      title: 'Single-arm Overhead Extension',
-      image: '/images/workout-cards/dumbbell-overhead-extension.jpg',
+      title: 'Overhead Triceps Extension',
+      image: '/images/workout-cards/dumbbell_overhead_tricep_extensions.png',
     },
   ],
   'Weight Stack': [
@@ -451,9 +451,10 @@ export default function Workouts() {
           {/* Mobile Carousel - compact slides matching Equipment Tag width */}
           <div 
             ref={workoutCarouselRef}
-            className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide scroll-smooth content-fade-up-3 md:hidden mb-3 px-2"
+            className="flex overflow-x-auto overflow-y-hidden snap-x snap-mandatory scrollbar-hide scroll-smooth content-fade-up-3 md:hidden mb-3 px-2"
             style={{
-              animationDelay: '0.3s'
+              animationDelay: '0.3s',
+              touchAction: 'pan-x'
             }}
           >
             {workouts.map((workout, idx) => (
@@ -533,7 +534,7 @@ export default function Workouts() {
                     
                     {/* Content overlay - only title */}
                     <div className="absolute inset-0 flex items-end p-3 sm:p-4">
-                      <h3 className="text-lg sm:text-xl font-semibold text-white">{workout.title}</h3>
+                      <h3 className="text-2xl sm:text-3xl font-semibold text-white">{workout.title}</h3>
                     </div>
                   </>
                 )}
@@ -608,7 +609,7 @@ export default function Workouts() {
                       }}
                     />
                     <div className="absolute inset-0 flex items-end p-3 sm:p-4">
-                      <h3 className="text-lg sm:text-xl font-semibold text-white">{workout.title}</h3>
+                      <h3 className="text-2xl sm:text-3xl font-semibold text-white">{workout.title}</h3>
                     </div>
                   </>
                 )}

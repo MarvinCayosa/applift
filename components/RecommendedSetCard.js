@@ -171,9 +171,9 @@ export default function RecommendedSetCard({
 
                 {/* Content overlay */}
                 <div className="absolute inset-0 flex flex-col justify-between p-3">
-                  {/* Title */}
-                  <div className="flex items-center">
-                    <h2 className="text-xl font-bold text-white">
+                  {/* Title - aligned with refresh button */}
+                  <div className="flex items-center justify-between pr-12">
+                    <h2 className="text-xl font-bold text-white pl-1">
                       {workout}
                     </h2>
                   </div>
