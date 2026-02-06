@@ -48,7 +48,7 @@ export default function CustomSetCard({
             <div className="absolute inset-0 flex flex-col justify-between p-5">
               {/* Title and swap icon */}
               <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold text-white">
+                <h2 className="text-xl font-bold text-white">
                   Custom Set
                 </h2>
                 <button
@@ -65,17 +65,17 @@ export default function CustomSetCard({
                 <div className="rounded-2xl px-4 py-3 min-w-[90px]">
                   <p className="text-[11px] text-white/70 mb-1">Weight</p>
                   <div className="flex items-baseline gap-1">
-                    <p className="text-3xl font-bold text-white leading-none">__</p>
+                    <p className="text-4xl font-bold text-white leading-none">__</p>
                     <p className="text-xs text-white/70 leading-none">kg</p>
                   </div>
                 </div>
                 <div className="rounded-2xl px-4 py-3 min-w-[70px] text-center">
                   <p className="text-[11px] text-white/70 mb-1">Sets</p>
-                  <p className="text-3xl font-bold text-white leading-none">_</p>
+                  <p className="text-4xl font-bold text-white leading-none">_</p>
                 </div>
                 <div className="rounded-2xl px-4 py-3 min-w-[70px] text-center">
                   <p className="text-[11px] text-white/70 mb-1">Reps</p>
-                  <p className="text-3xl font-bold text-white leading-none">_</p>
+                  <p className="text-4xl font-bold text-white leading-none">_</p>
                 </div>
               </div>
             </div>

@@ -1,6 +1,7 @@
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import WorkoutSummaryCard from '../components/workoutFinished/WorkoutSummaryCard';
+import WorkoutEffort from '../components/workoutFinished/WorkoutEffort';
 import LiftPhases from '../components/workoutFinished/LiftPhases';
 import RepByRepCard from '../components/workoutFinished/RepByRepCard';
 import { useWorkoutLogging } from '../context/WorkoutLoggingContext';
@@ -153,6 +154,12 @@ export default function WorkoutFinished() {
           totalWorkoutTime={parseInt(totalTime) || 0}
           setsData={parsedSetsData}
           totalReps={parseInt(totalReps) || 0}
+        />
+
+        {/* Workout Effort - High-level effort indicator */}
+        <WorkoutEffort 
+          setsData={parsedSetsData}
+          chartData={parsedChartData}
         />
 
         {/* Movement Phases - Eccentric vs Concentric */}
