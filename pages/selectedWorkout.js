@@ -212,9 +212,9 @@ function InfoHistoryCarousel({ equipment, workout, tips, tutorialVideo, equipmen
   // Get target muscles based on exercise
   const getTargetMuscles = () => {
     if (equipment === 'Barbell' && workout === 'Flat Bench Barbell Press') return 'Chest, Shoulders, Triceps';
-    if (equipment === 'Barbell' && workout === 'Front Squats') return 'Quadriceps, Core, Lower Back';
+    if (equipment === 'Barbell' && workout === 'Back Squats') return 'Quadriceps, Glutes, Hamstrings';
     if (equipment === 'Dumbbell' && workout === 'Concentration Curls') return 'Biceps';
-    if (equipment === 'Dumbbell' && workout === 'Single-arm Overhead Extension') return 'Triceps, Shoulders';
+    if (equipment === 'Dumbbell' && workout === 'Overhead Triceps Extension') return 'Triceps';
     if (equipment === 'Weight Stack' && workout === 'Lateral Pulldown') return 'Back, Lats';
     return 'Quadriceps';
   };
@@ -296,16 +296,16 @@ const workoutDetails = {
         'Drive through your heels as you press'
       ]
     },
-    'Front Squats': {
-      description: 'Hold the barbell across the front of your shoulders with elbows high. Squat down by pushing your hips back and bending your knees, keeping your torso upright throughout.',
+    'Back Squats': {
+      description: 'Position the barbell across your upper back and shoulders. Squat down by pushing your hips back and bending your knees, then drive through your heels to stand back up.',
       recommendedSets: 2,
       recommendedReps: '3',
       difficulty: 'Intermediate',
-      tutorialVideo: 'https://www.youtube.com/watch?v=uYumuL_G_V0',
+      tutorialVideo: 'https://www.youtube.com/watch?v=ultWZbUMPL8',
       tips: [
-        'Keep your elbows high throughout',
+        'Keep your chest up and core engaged',
         'Push your knees out over your toes',
-        'Maintain an upright torso',
+        'Maintain neutral spine throughout',
         'Descend until thighs are parallel to floor'
       ]
     },
@@ -324,14 +324,14 @@ const workoutDetails = {
         'Avoid swinging or using momentum'
       ]
     },
-    'Single-arm Overhead Extension': {
-      description: 'Hold a dumbbell overhead with one arm fully extended. Lower the weight behind your head by bending at the elbow, then extend back up to the starting position.',
+    'Overhead Triceps Extension': {
+      description: 'Hold a dumbbell overhead with both hands. Lower the weight behind your head by bending at the elbows, then extend back up to the starting position.',
       recommendedSets: 2,
       recommendedReps: '3',
       difficulty: 'Beginner',
       tutorialVideo: 'https://www.youtube.com/watch?v=YbX7Wd8jQ-Q',
       tips: [
-        'Keep your upper arm stationary',
+        'Keep your upper arms stationary',
         'Lower the weight behind your head slowly',
         'Fully extend at the top without locking',
         'Engage your core for stability'
@@ -378,11 +378,11 @@ const equipmentColors = {
 const workoutImages = {
   Barbell: {
     'Flat Bench Barbell Press': '/images/workout-cards/barbell-flat-bench-press.jpg',
-    'Front Squats': '/images/workout-cards/barbell-front-squats.jpg',
+    'Back Squats': '/images/workout-cards/barbell_back_squats.jpg',
   },
   Dumbbell: {
     'Concentration Curls': '/images/workout-cards/dumbbell-concentration-curls.jpg',
-    'Single-arm Overhead Extension': '/images/workout-cards/dumbbell-overhead-extension.jpg',
+    'Overhead Triceps Extension': '/images/workout-cards/dumbbell_overhead_tricep_extensions.png',
   },
   'Weight Stack': {
     'Lateral Pulldown': '/images/workout-cards/weightstack-lateral-pulldown.jpg',
@@ -393,11 +393,11 @@ const workoutImages = {
 const tutorialVideos = {
   Barbell: {
     'Flat Bench Barbell Press': '/tutorial-videos/barbell_flat_bench_press_tutorial.mp4',
-    'Front Squats': '/tutorial-videos/barbell_front_squats_tutorial.mp4',
+    'Back Squats': '/tutorial-videos/barbell_back_squats_tutorial.mp4',
   },
   Dumbbell: {
     'Concentration Curls': '/tutorial-videos/dumbbell_concentration_curls_tutorial.mp4',
-    'Single-arm Overhead Extension': '/tutorial-videos/dumbbell_single-arm_overhead_extension_tutorial.mp4',
+    'Overhead Triceps Extension': '/tutorial-videos/dumbbell_overhead_extensions_tutorial.mp4',
   },
   'Weight Stack': {
     'Lateral Pulldown': '/tutorial-videos/weight_stack_lateral_pulldown_tutorial.mp4',
@@ -408,11 +408,11 @@ const tutorialVideos = {
 const targetMuscleImages = {
   Barbell: {
     'Flat Bench Barbell Press': '/images/target-muscles/barbell-flat-bench-barbell-press-muscles.png',
-    'Front Squats': '/images/target-muscles/barbell-front-squats-muscles.png',
+    'Back Squats': '/images/target-muscles/barbell-front-squats-muscles.png', // TODO: Replace with barbell-back-squats-muscles.png when available
   },
   Dumbbell: {
     'Concentration Curls': '/images/target-muscles/dumbbell-concentration-curls-muscles.png',
-    'Single-arm Overhead Extension': '/images/target-muscles/dumbbell-single-arm-overhead-extension-muscles.png',
+    'Overhead Triceps Extension': '/images/target-muscles/dumbbell-single-arm-overhead-extension-muscles.png', // TODO: Replace with dumbbell-overhead-triceps-extension-muscles.png when available
   },
   'Weight Stack': {
     'Lateral Pulldown': '/images/target-muscles/weight-stack-lateral-pulldown-muscles.png',
@@ -423,11 +423,11 @@ const targetMuscleImages = {
 const videoThumbnails = {
   Barbell: {
     'Flat Bench Barbell Press': '/images/video-thumbnails/barbell-flat-bench-press-thumbnail.png',
-    'Front Squats': '/images/video-thumbnails/barbell_front_squats_thumbnail.jpg',
+    'Back Squats': '/images/video-thumbnails/barbell_back_squats_thumbnail.png',
   },
   Dumbbell: {
     'Concentration Curls': '/images/video-thumbnails/dumbbell_concentration_curls_thumbnails.jpg',
-    'Single-arm Overhead Extension': '/images/video-thumbnails/dumbbell_single-arm_overhead_extension_thumbnail.jpg',
+    'Overhead Triceps Extension': '/images/video-thumbnails/dumbell_overhead_triceps_extension_thumbnail.png',
   },
   'Weight Stack': {
     'Lateral Pulldown': '/images/video-thumbnails/weight_stack_lateral_pulldown_thumbnail.jpg',
@@ -682,12 +682,12 @@ export default function SelectedWorkout() {
                 const targetMuscles = 
                   equipment === 'Barbell' && workout === 'Flat Bench Barbell Press'
                     ? ['Chest', 'Shoulders', 'Triceps']
-                    : equipment === 'Barbell' && workout === 'Front Squats'
-                    ? ['Quadriceps', 'Core', 'Lower Back']
+                    : equipment === 'Barbell' && workout === 'Back Squats'
+                    ? ['Quadriceps', 'Glutes', 'Hamstrings']
                     : equipment === 'Dumbbell' && workout === 'Concentration Curls'
                     ? ['Biceps']
-                    : equipment === 'Dumbbell' && workout === 'Single-arm Overhead Extension'
-                    ? ['Triceps', 'Shoulders']
+                    : equipment === 'Dumbbell' && workout === 'Overhead Triceps Extension'
+                    ? ['Triceps']
                     : equipment === 'Weight Stack' && workout === 'Lateral Pulldown'
                     ? ['Back', 'Lats']
                     : ['Quadriceps'];

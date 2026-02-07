@@ -247,14 +247,22 @@ export function useWorkoutSession({
         const currentRepData = repCounterRef.current.exportData();
         const repDurations = currentRepData.reps.map(rep => rep.duration);
         
-        // Prepare rep data for this set
-        const setRepsData = currentRepData.reps.map((rep, index) => ({
-          time: rep.duration,
-          rom: rep.peakAcceleration * 10,
-          peakVelocity: rep.peakVelocity || rep.peakAcceleration / 2,
-          isClean: rep.duration >= 2.0 && rep.duration <= 4.0,
-          chartData: fullFilteredAccelData.current
-        }));
+        // Prepare rep data for this set — each rep gets its OWN data segment
+        const allSamples = currentRepData.samples;
+        const setRepsData = currentRepData.reps.map((rep, index) => {
+          // Extract only the samples within this rep's time window
+          const repSamples = allSamples.filter(
+            s => s.timestamp >= rep.startTime && s.timestamp <= rep.endTime
+          );
+          const repChartData = repSamples.map(s => s.accelMag);
+          return {
+            time: rep.duration,
+            rom: rep.peakAcceleration * 10,
+            peakVelocity: rep.peakVelocity || rep.peakAcceleration / 2,
+            isClean: rep.duration >= 2.0 && rep.duration <= 4.0,
+            chartData: repChartData
+          };
+        });
         
         // Store this set's data
         const currentSetData = {

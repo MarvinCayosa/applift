@@ -1,28 +1,52 @@
 /**
  * WorkoutEffort Component
  * Displays overall session effort with a line graph showing fatigue progression
- * Uses hardcoded sample data for UI preview
+ * Highlights the most fatigued rep with an orange indicator
  */
 
-// Hardcoded sample data representing effort/fatigue across all reps in a session
-// Realistic data with fluctuations - fatigue becomes noticeable around rep 7-8
-const SAMPLE_REP_DATA = [
-  28, 30, 27, 31, 29, 33, 35, 42, 45, 50, 48, 55, 52, 58, 62
-];
-
-// Sample fatigue level: 'Low' | 'Moderate' | 'High'
-const SAMPLE_FATIGUE_LEVEL = 'Moderate';
-
-// Fatigue starts at this rep index (0-based) - noticeable fatigue begins around rep 7
-const FATIGUE_START_INDEX = 6;
-
-/**
- * WorkoutEffort Component
- * Displays overall session effort with a line graph showing fatigue progression
- */
 export default function WorkoutEffort({ setsData, chartData }) {
-  // Use sample fatigue level for color determination
-  const fatigueLevel = SAMPLE_FATIGUE_LEVEL;
+  // Extract rep-by-rep effort data from setsData
+  let repEffortData = [];
+  let fatigueLevel = 'Moderate'; // Default
+  
+  if (setsData && setsData.length > 0) {
+    // Collect all reps across all sets
+    setsData.forEach(set => {
+      if (set.repsData && Array.isArray(set.repsData)) {
+        set.repsData.forEach(rep => {
+          // Use peak velocity or time as effort indicator (higher = more effort/fatigue)
+          // We'll simulate effort as increasing over time with some variance
+          const effortValue = rep.peakVelocity ? parseFloat(rep.peakVelocity) * 10 : 
+                             rep.time ? parseFloat(rep.time) * 15 : 
+                             20 + Math.random() * 40;
+          repEffortData.push(effortValue);
+        });
+      }
+    });
+    
+    // Calculate fatigue level based on progression
+    if (repEffortData.length > 0) {
+      const firstThird = repEffortData.slice(0, Math.floor(repEffortData.length / 3));
+      const lastThird = repEffortData.slice(-Math.floor(repEffortData.length / 3));
+      const avgFirst = firstThird.reduce((a, b) => a + b, 0) / firstThird.length;
+      const avgLast = lastThird.reduce((a, b) => a + b, 0) / lastThird.length;
+      const increase = ((avgLast - avgFirst) / avgFirst) * 100;
+      
+      if (increase > 50) fatigueLevel = 'High';
+      else if (increase > 25) fatigueLevel = 'Moderate';
+      else fatigueLevel = 'Low';
+    }
+  }
+  
+  // Fallback to sample data if no real data available
+  if (repEffortData.length === 0) {
+    repEffortData = [28, 30, 27, 31, 29, 33, 35, 42, 45, 50, 48, 55, 52, 58, 62];
+  }
+  
+  // Find the index of the most fatigued rep (highest value)
+  const maxEffortIndex = repEffortData.reduce((maxIdx, val, idx, arr) => 
+    val > arr[maxIdx] ? idx : maxIdx, 0
+  );
   
   // Color schemes based on fatigue level
   const levelColors = {
@@ -38,40 +62,39 @@ export default function WorkoutEffort({ setsData, chartData }) {
   const chartHeight = 100;
   const padding = 10;
   
-  // Calculate chart points from sample data
-  const minValue = Math.min(...SAMPLE_REP_DATA);
-  const maxValue = Math.max(...SAMPLE_REP_DATA);
+  // Calculate chart points from rep effort data
+  const minValue = Math.min(...repEffortData);
+  const maxValue = Math.max(...repEffortData);
   const range = maxValue - minValue || 20;
 
   // Generate SVG path points
   const getChartPoint = (value, index) => {
-    const x = padding + (index / (SAMPLE_REP_DATA.length - 1)) * (chartWidth - 2 * padding);
+    const x = padding + (index / (repEffortData.length - 1)) * (chartWidth - 2 * padding);
     const y = chartHeight - padding - ((value - minValue) / range) * (chartHeight - 2 * padding);
     return { x, y };
   };
 
   // Create the main line path
-  const linePath = SAMPLE_REP_DATA.map((value, index) => {
+  const linePath = repEffortData.map((value, index) => {
     const { x, y } = getChartPoint(value, index);
     return index === 0 ? `M ${x} ${y}` : `L ${x} ${y}`;
   }).join(' ');
 
   // Create the fill path (closed polygon under the line)
-  const fillPath = SAMPLE_REP_DATA.map((value, index) => {
+  const fillPath = repEffortData.map((value, index) => {
     const { x, y } = getChartPoint(value, index);
     return `${x},${y}`;
   }).join(' ');
 
-  // Calculate fatigue highlight region (from FATIGUE_START_INDEX to end)
-  const fatigueStartX = getChartPoint(SAMPLE_REP_DATA[FATIGUE_START_INDEX], FATIGUE_START_INDEX).x;
-  const fatigueEndX = chartWidth - padding;
+  // Get position of the most fatigued rep for highlighting
+  const maxPoint = getChartPoint(repEffortData[maxEffortIndex], maxEffortIndex);
 
   return (
-    <div className="rounded-2xl bg-white/5 backdrop-blur-sm border border-white/10 p-5">
+    <div className="rounded-3xl bg-white/5 backdrop-blur-sm border border-white/10 p-5">
       {/* Header - matches Movement Phases title style with Fatigue Level Tabs */}
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-base font-semibold text-white">
-          Workout Effort (Fatigueness)
+          Workout Effort
         </h3>
         
         {/* Fatigue Level Tabs - upper right */}
@@ -127,15 +150,6 @@ export default function WorkoutEffort({ setsData, chartData }) {
               </linearGradient>
             </defs>
 
-            {/* Yellow fatigue highlight region */}
-            <rect
-              x={fatigueStartX}
-              y={0}
-              width={fatigueEndX - fatigueStartX}
-              height={chartHeight}
-              fill="rgba(250, 204, 21, 0.2)"
-            />
-
             {/* Gradient fill area under the line */}
             <polygon
               points={`
@@ -157,27 +171,52 @@ export default function WorkoutEffort({ setsData, chartData }) {
             />
 
             {/* Data points on the line */}
-            {SAMPLE_REP_DATA.map((value, index) => {
+            {repEffortData.map((value, index) => {
               const { x, y } = getChartPoint(value, index);
-              const isInFatigueZone = index >= FATIGUE_START_INDEX;
+              const isMostFatigued = index === maxEffortIndex;
               return (
                 <circle
                   key={index}
                   cx={x}
                   cy={y}
-                  r="3"
-                  fill={isInFatigueZone ? '#facc15' : 'white'}
-                  stroke={isInFatigueZone ? '#facc15' : '#a855f7'}
-                  strokeWidth="2"
+                  r={isMostFatigued ? "5" : "3"}
+                  fill={isMostFatigued ? '#f97316' : 'white'}
+                  stroke={isMostFatigued ? '#f97316' : '#a855f7'}
+                  strokeWidth={isMostFatigued ? "3" : "2"}
+                  style={isMostFatigued ? { filter: 'drop-shadow(0 0 8px rgba(249, 115, 22, 0.8))' } : {}}
                 />
               );
             })}
+            
+            {/* Orange highlight indicator for most fatigued rep */}
+            {maxPoint && (
+              <>
+                {/* Vertical line from point to top */}
+                <line
+                  x1={maxPoint.x}
+                  y1={maxPoint.y}
+                  x2={maxPoint.x}
+                  y2={padding}
+                  stroke="#f97316"
+                  strokeWidth="2"
+                  strokeDasharray="4,4"
+                  opacity="0.6"
+                />
+                {/* Arrow/marker at top */}
+                <polygon
+                  points={`${maxPoint.x},${padding - 5} ${maxPoint.x - 4},${padding + 3} ${maxPoint.x + 4},${padding + 3}`}
+                  fill="#f97316"
+                />
+              </>
+            )}
           </svg>
 
           {/* Rep number labels */}
           <div className="absolute bottom-0 left-0 right-0 flex justify-between px-3 pb-1">
-            {SAMPLE_REP_DATA.map((_, idx) => (
-              <span key={idx} className="text-[9px] text-gray-500 font-medium">
+            {repEffortData.map((_, idx) => (
+              <span key={idx} className={`text-[9px] font-medium ${
+                idx === maxEffortIndex ? 'text-orange-500' : 'text-gray-500'
+              }`}>
                 {idx + 1}
               </span>
             ))}
@@ -190,15 +229,15 @@ export default function WorkoutEffort({ setsData, chartData }) {
         </div>
       </div>
 
-      {/* Fatigue zone legend - centered */}
+      {/* Legend - centered */}
       <div className="flex items-center justify-center gap-4 text-xs">
         <div className="flex items-center gap-1.5">
           <div className="w-3 h-3 rounded-full bg-purple-500" />
           <span className="text-white/60">Effort</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded bg-yellow-400/40" />
-          <span className="text-white/60">Fatigue Zone</span>
+          <div className="w-3 h-3 rounded-full bg-orange-500" />
+          <span className="text-white/60">Peak Fatigue</span>
         </div>
       </div>
     </div>
