@@ -22,19 +22,19 @@ export default function PerformanceDetails() {
         <title>Performance Details — AppLift</title>
       </Head>
       
-      {/* Scrollable content - Full height layout */}
+      {/* Scrollable content - Full height layout with safe area support */}
       <div className="flex flex-col h-screen overflow-hidden max-w-2xl mx-auto">
         
-        {/* Header with back button and title */}
-        <div className="px-4 pt-4 pb-2 flex-shrink-0">
+        {/* Header with back button and title - Safe area top padding */}
+        <div className="px-3 sm:px-4 pt-safe pb-2 flex-shrink-0" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
           <PerformanceHeader 
             workoutName={workoutName}
             equipment={equipment}
           />
         </div>
 
-        {/* Rep by rep section - Takes remaining height */}
-        <div className="flex-1 overflow-hidden px-4 pb-4">
+        {/* Rep by rep section - Takes remaining height with responsive padding */}
+        <div className="flex-1 overflow-hidden px-5 sm:px-4" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
           <RepByRepCard 
             setsData={setsData}
             parsedSetsData={parsedSetsData}

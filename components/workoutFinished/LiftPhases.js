@@ -50,7 +50,7 @@ export default function LiftPhases() {
           
           <div className="flex flex-col">
             <span className="text-2xl font-bold text-white">{concentricPercent}%</span>
-            <span className="text-xs text-gray-400">Concentric Power</span>
+            <span className="text-xs text-gray-400">Lifting Power</span>
           </div>
         </div>
 
@@ -58,7 +58,7 @@ export default function LiftPhases() {
         <div className="flex items-center gap-2">
           <div className="flex flex-col items-end">
             <span className="text-2xl font-bold text-white">{eccentricPercent}%</span>
-            <span className="text-xs text-gray-400">Eccentric Control</span>
+            <span className="text-xs text-gray-400">Lowering Control</span>
           </div>
           
           {/* Vertical Indicator Bar */}

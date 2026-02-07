@@ -25,12 +25,12 @@ export default function RepByRepCard({ setsData, parsedSetsData, recommendedSets
   return (
     <div className="h-full flex flex-col animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
       {/* Header with Title on left and Set Tabs on right */}
-      <div className="flex items-center justify-between mb-4 flex-shrink-0">
+      <div className="flex items-center justify-between mb-3 sm:mb-4 flex-shrink-0">
         {/* Title - left aligned */}
-        <h3 className="text-lg font-semibold text-white">Rep by Rep</h3>
+        <h3 className="text-base sm:text-lg font-semibold text-white">Rep by Rep</h3>
         
         {/* Set Tabs - right aligned with purple active color */}
-        <div className="flex gap-1 bg-gray-800/50 rounded-full p-1">
+        <div className="flex gap-0.5 sm:gap-1 bg-gray-800/50 rounded-full p-0.5 sm:p-1">
           {Array.from({ length: parseInt(recommendedSets) || parsedSetsData.length || 1 }, (_, i) => i + 1).map((setNum) => {
             const setData = parsedSetsData.find(s => s.setNumber === setNum);
             const hasData = !!setData;
@@ -42,7 +42,7 @@ export default function RepByRepCard({ setsData, parsedSetsData, recommendedSets
                 key={setNum}
                 onClick={() => hasData && setActiveSet(setNum)}
                 disabled={!hasData}
-                className={`px-2.5 py-1 rounded-full ${isSmallFont ? 'text-[10px]' : 'text-xs'} font-medium transition-all ${
+                className={`px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full ${isSmallFont ? 'text-[9px] sm:text-[10px]' : 'text-[10px] sm:text-xs'} font-medium transition-all ${
                   activeSet === setNum && hasData
                     ? 'bg-purple-500 text-white'
                     : hasData
