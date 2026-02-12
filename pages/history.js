@@ -10,7 +10,7 @@ export default function History() {
 
       <BottomNav />
       
-      <main className="w-full px-4 sm:px-6 md:px-8 pt-10 sm:pt-10 pb-4 md:pb-6">
+      <main className="w-full px-4 sm:px-6 md:px-8 pt-2 sm:pt-3 pb-4 md:pb-6">
         <div className="w-full max-w-4xl mx-auto flex items-center justify-center min-h-[50vh]">
           <h1 className="text-lg">History</h1>
         </div>

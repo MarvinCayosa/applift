@@ -90,7 +90,7 @@ export default function WorkoutEffort({ setsData, chartData }) {
   const maxPoint = getChartPoint(repEffortData[maxEffortIndex], maxEffortIndex);
 
   return (
-    <div className="rounded-3xl bg-white/5 backdrop-blur-sm border border-white/10 p-5">
+    <div className="rounded-3xl bg-white/5 backdrop-blur-sm border border-white/10 p-5 content-fade-up-2">
       {/* Header - matches Movement Phases title style with Fatigue Level Tabs */}
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-base font-semibold text-white">
@@ -229,16 +229,23 @@ export default function WorkoutEffort({ setsData, chartData }) {
         </div>
       </div>
 
-      {/* Legend - centered */}
-      <div className="flex items-center justify-center gap-4 text-xs">
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-full bg-purple-500" />
-          <span className="text-white/60">Effort</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-full bg-orange-500" />
-          <span className="text-white/60">Peak Fatigue</span>
-        </div>
+      {/* Fatigue Insight - centered */}
+      <div className="px-3 py-2.5 bg-white/5 rounded-xl border border-white/10">
+        <p className="text-xs sm:text-sm text-center leading-relaxed">
+          {fatigueLevel === 'High' ? (
+            <span className="text-red-300">
+              High fatigue detected. Your effort increased significantly throughout the workout. Consider more rest between sets.
+            </span>
+          ) : fatigueLevel === 'Moderate' ? (
+            <span className="text-orange-300">
+              Moderate fatigue progression. You maintained good consistency with a natural increase in effort.
+            </span>
+          ) : (
+            <span className="text-emerald-300">
+              Excellent endurance! Your effort remained stable throughout the workout with minimal fatigue.
+            </span>
+          )}
+        </p>
       </div>
     </div>
   );

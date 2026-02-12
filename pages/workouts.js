@@ -321,7 +321,7 @@ export default function Workouts() {
         <title>Workouts — AppLift</title>
       </Head>
 
-      <main className="w-full h-full px-4 sm:px-6 md:px-8 pt-10 sm:pt-10 pb-20 flex flex-col">
+      <main className="w-full h-full px-4 sm:px-6 md:px-8 pt-2 sm:pt-3 pb-20 flex flex-col">
         <div className="mx-auto w-full max-w-4xl space-y-4 sm:space-y-5 md:space-y-6 flex flex-col flex-1 min-h-0">
         {/* Connection status pill */}
         <div className="flex justify-center content-fade-up-1">

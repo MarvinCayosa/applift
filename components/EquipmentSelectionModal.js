@@ -22,10 +22,10 @@ export default function EquipmentSelectionModal({ isOpen, onClose, onSelect, con
         };
       case 'Weight Stack':
         return {
-          outerBg: 'bg-[#7C2D12]',
-          outerBorder: 'border-[#DC2626]',
-          innerBg: 'bg-[#F97316]',
-          innerBorder: 'border-[#FB923C]',
+          outerBg: 'bg-[#7f1d1d]',
+          outerBorder: 'border-[#dc2626]',
+          innerBg: 'bg-[#ef4444]',
+          innerBorder: 'border-[#f87171]',
         };
       default:
         return {

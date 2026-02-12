@@ -74,7 +74,7 @@ export default function RepCarousel({ repsData }) {
         </div>
 
         {/* Dots indicator - Inside carousel container at bottom */}
-        <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-2 z-10">
+        <div className="absolute bottom-2 sm:bottom-3 left-0 right-0 flex justify-center gap-2 z-10">
           {repsData.map((_, index) => (
             <button
               key={index}

@@ -19,7 +19,7 @@ export default function LiftPhases() {
   const eccentricDelta = Math.round(eccentric * 8); // Example calculation
 
   return (
-    <div className="bg-white/10 backdrop-blur-sm rounded-3xl p-5 shadow-xl animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
+    <div className="bg-white/10 backdrop-blur-sm rounded-3xl p-5 shadow-xl content-fade-up-3">
       {/* Header */}
       <div className="mb-4">
         <h3 className="text-base font-semibold text-white">Movement Phases</h3>

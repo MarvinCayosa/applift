@@ -121,7 +121,7 @@ export default function WorkoutFinished() {
       <div className="h-full overflow-y-auto px-4 space-y-3 max-w-2xl mx-auto pb-6">
         
         {/* Header with back button and title on same line */}
-        <div className="pt-10 sm:pt-10 pb-1 flex items-center justify-between">
+        <div className="pt-2 sm:pt-3 pb-1 flex items-center justify-between">
           <button
             onClick={handleGoBack}
             className="flex items-center justify-center h-10 w-10 rounded-full hover:bg-white/10 transition-all"

@@ -391,7 +391,7 @@ export default function WorkoutMonitor() {
       />
 
       {/* Header with semi-transparent background */}
-      <div className="absolute top-0 left-0 right-0 z-30 px-4 pt-10 sm:pt-10 pb-4" style={{
+      <div className="absolute top-0 left-0 right-0 z-30 px-4 pt-2 sm:pt-3 pb-4" style={{
         background: 'linear-gradient(to bottom, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.6) 70%, rgba(0,0,0,0) 100%)'
       }}>
         {/* Top row - Back button and Connection Pill */}
@@ -414,7 +414,7 @@ export default function WorkoutMonitor() {
               isPillExpanded ? 'opacity-0' : 'opacity-0 animate-fade-in'
             }`}
           >
-            <h1 className="text-sm sm:text-base md:text-lg font-bold text-white truncate">{workout}</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-white truncate">{workout}</h1>
           </div>
 
           <ConnectPill
@@ -444,9 +444,9 @@ export default function WorkoutMonitor() {
           
           {/* Equipment Badge */}
           <span className={`text-xs px-3 py-1 rounded-full font-medium ${
-            equipment?.toLowerCase().includes('barbell') ? 'bg-orange-400 text-orange-900' :
+            equipment?.toLowerCase().includes('barbell') ? 'bg-yellow-400 text-yellow-900' :
             equipment?.toLowerCase().includes('dumbbell') || equipment?.toLowerCase().includes('dumbbell') ? 'bg-blue-400 text-blue-900' :
-            equipment?.toLowerCase().includes('weight stack') || equipment?.toLowerCase().includes('weightstack') || equipment?.toLowerCase().includes('cable') ? 'bg-green-400 text-green-900' :
+            equipment?.toLowerCase().includes('weight stack') || equipment?.toLowerCase().includes('weightstack') || equipment?.toLowerCase().includes('cable') ? 'bg-red-400 text-red-900' :
             'bg-teal-400 text-teal-900'
           }`}>
             {equipment}

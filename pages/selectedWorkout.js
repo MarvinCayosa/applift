@@ -552,7 +552,7 @@ export default function SelectedWorkout() {
         <Head>
           <title>Workout — AppLift</title>
         </Head>
-        <main className="mx-auto w-full max-w-[640px] px-4 pt-10">
+        <main className="mx-auto w-full max-w-[640px] px-4 pt-2 sm:pt-3">
           <p>Loading workout details...</p>
         </main>
       </div>
@@ -565,7 +565,7 @@ export default function SelectedWorkout() {
         <title>{workout} — AppLift</title>
       </Head>
 
-      <main ref={mainRef} className="flex-1 w-full px-4 sm:px-6 md:px-8 pt-10 sm:pt-10 pb-24 flex flex-col overflow-hidden">
+      <main ref={mainRef} className="flex-1 w-full px-4 sm:px-6 md:px-8 pt-2 sm:pt-3 pb-24 flex flex-col overflow-hidden">
         <div className="mx-auto w-full max-w-4xl flex flex-col flex-1 space-y-2 overflow-hidden">
         {/* Header with back button and connection pill */}
         <div className="flex items-center justify-between content-fade-up-1 flex-shrink-0 relative">
@@ -586,7 +586,7 @@ export default function SelectedWorkout() {
           <div className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 transition-opacity duration-300 pointer-events-none ${
             isPillExpanded ? 'opacity-0' : 'opacity-0 animate-fade-in'
           }`}>
-            <h1 className="text-base sm:text-lg font-semibold text-white text-center whitespace-nowrap">
+            <h1 className="text-xl sm:text-2xl font-semibold text-white text-center whitespace-nowrap">
               Workout Setup
             </h1>
           </div>

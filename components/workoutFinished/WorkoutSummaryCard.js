@@ -231,7 +231,7 @@ export default function WorkoutSummaryCard({
   };
 
   return (
-    <div className="w-full bg-white/10 backdrop-blur-sm rounded-3xl p-5 shadow-xl animate-fade-in-up">
+    <div className="w-full bg-white/10 backdrop-blur-sm rounded-3xl p-5 shadow-xl content-fade-up-1">
       {/* Title Section */}
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="flex-1">

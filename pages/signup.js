@@ -1865,7 +1865,7 @@ You acknowledge the system's limits (e.g., single IMU, equipment-based sensing) 
           height: 100dvh;
           width: 100vw;
           overflow: hidden;
-          padding-top: env(safe-area-inset-top);
+          padding-top: max(0.5rem, env(safe-area-inset-top));
           padding-bottom: env(safe-area-inset-bottom);
           padding-left: max(1rem, env(safe-area-inset-left));
           padding-right: max(1rem, env(safe-area-inset-right));
