@@ -23,6 +23,26 @@ function MyApp({ Component, pageProps }) {
       console.log('✅ Running as installed PWA - install button hidden');
     }
     
+    // Detect fullscreen/standalone mode and add class to html for CSS targeting
+    const detectFullscreen = () => {
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+      const isFullscreen = window.matchMedia('(display-mode: fullscreen)').matches;
+      const iosStandalone = 'standalone' in navigator && navigator.standalone === true;
+      
+      if (isStandalone || isFullscreen || iosStandalone) {
+        document.documentElement.classList.add('pwa-standalone');
+      } else {
+        document.documentElement.classList.remove('pwa-standalone');
+      }
+    };
+    detectFullscreen();
+    
+    // Listen for display mode changes
+    const mqStandalone = window.matchMedia('(display-mode: standalone)');
+    const mqFullscreen = window.matchMedia('(display-mode: fullscreen)');
+    mqStandalone.addEventListener?.('change', detectFullscreen);
+    mqFullscreen.addEventListener?.('change', detectFullscreen);
+    
     // Register service worker (ensure /public/sw.js exists)
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
       navigator.serviceWorker
@@ -52,6 +72,8 @@ function MyApp({ Component, pageProps }) {
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('appinstalled', handleAppInstalled);
+      mqStandalone.removeEventListener?.('change', detectFullscreen);
+      mqFullscreen.removeEventListener?.('change', detectFullscreen);
     };
   }, []);
 

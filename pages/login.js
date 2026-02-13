@@ -154,6 +154,12 @@ export default function Login() {
           padding-right: max(1rem, env(safe-area-inset-right));
         }
 
+        @media (display-mode: fullscreen), (display-mode: standalone) {
+          .auth-container {
+            padding-top: max(1.25rem, env(safe-area-inset-top, 1.25rem));
+          }
+        }
+
         @media (min-width: 768px) {
           .auth-container {
             min-height: 100vh;
