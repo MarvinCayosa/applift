@@ -91,44 +91,21 @@ export default function WorkoutEffort({ setsData, chartData }) {
 
   return (
     <div className="rounded-3xl bg-white/5 backdrop-blur-sm border border-white/10 p-5 content-fade-up-2">
-      {/* Header - matches Movement Phases title style with Fatigue Level Tabs */}
+      {/* Header - matches Movement Phases title style with single Fatigue Level badge */}
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-base font-semibold text-white">
           Workout Effort
         </h3>
         
-        {/* Fatigue Level Tabs - upper right */}
-        <div className="flex gap-1 bg-black/30 rounded-full p-1">
-          <button
-            className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
-              fatigueLevel === 'Low'
-                ? 'bg-emerald-500 text-white'
-                : 'text-gray-400'
-            }`}
-            disabled
-          >
-            Low
-          </button>
-          <button
-            className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
-              fatigueLevel === 'Moderate'
-                ? 'bg-orange-500 text-white'
-                : 'text-gray-400'
-            }`}
-            disabled
-          >
-            Moderate
-          </button>
-          <button
-            className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
-              fatigueLevel === 'High'
-                ? 'bg-red-500 text-white'
-                : 'text-gray-400'
-            }`}
-            disabled
-          >
-            High
-          </button>
+        {/* Single Fatigue Level Badge - filled style like set tabs */}
+        <div className={`px-3 py-1.5 rounded-full text-xs font-semibold ${
+          fatigueLevel === 'Low'
+            ? 'bg-green-600 text-white'
+            : fatigueLevel === 'Moderate'
+              ? 'bg-orange-500 text-white'
+              : 'bg-red-500 text-white'
+        }`}>
+          {fatigueLevel}
         </div>
       </div>
 
@@ -241,7 +218,7 @@ export default function WorkoutEffort({ setsData, chartData }) {
               Moderate fatigue progression. You maintained good consistency with a natural increase in effort.
             </span>
           ) : (
-            <span className="text-emerald-300">
+            <span className="text-green-400">
               Excellent endurance! Your effort remained stable throughout the workout with minimal fatigue.
             </span>
           )}

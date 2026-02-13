@@ -74,15 +74,15 @@ export default function RepCarousel({ repsData }) {
         </div>
 
         {/* Dots indicator - Inside carousel container at bottom */}
-        <div className="absolute bottom-2 sm:bottom-3 left-0 right-0 flex justify-center gap-2 z-10">
+        <div className="absolute bottom-6 sm:bottom-8 lg:bottom-10 left-0 right-0 flex justify-center gap-2 sm:gap-2.5 lg:gap-3 z-10">
           {repsData.map((_, index) => (
             <button
               key={index}
               onClick={() => setCurrentIndex(index)}
-              className={`h-2 rounded-full transition-all ${
+              className={`h-2 sm:h-2.5 lg:h-3 rounded-full transition-all ${
                 index === currentIndex 
-                  ? 'w-8 bg-white' 
-                  : 'w-2 bg-white/40'
+                  ? 'w-8 sm:w-10 lg:w-12 bg-white' 
+                  : 'w-2 sm:w-2.5 lg:w-3 bg-white/40'
               }`}
               aria-label={`Go to rep ${index + 1}`}
             />

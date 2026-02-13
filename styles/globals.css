@@ -136,6 +136,22 @@ input, textarea, [contenteditable] {
   padding-right: env(safe-area-inset-right);
 }
 
+/* 
+ * Fullscreen / standalone PWA top padding 
+ * When status bar is hidden (fullscreen or standalone mode), increase top padding
+ * When status bar is present (normal browser), keep small padding
+ */
+@media (display-mode: fullscreen), (display-mode: standalone) {
+  .pt-pwa-dynamic {
+    padding-top: max(2rem, env(safe-area-inset-top, 2rem)) !important;
+  }
+}
+
+/* iOS standalone mode (navigator.standalone) - applied via JS class on html */
+html.pwa-standalone .pt-pwa-dynamic {
+  padding-top: max(2rem, env(safe-area-inset-top, 2rem)) !important;
+}
+
 /* animated layered radial highlights using pseudo elements */
 body::before,
 body::after {

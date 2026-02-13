@@ -565,7 +565,7 @@ export default function SelectedWorkout() {
         <title>{workout} — AppLift</title>
       </Head>
 
-      <main ref={mainRef} className="flex-1 w-full px-4 sm:px-6 md:px-8 pt-2 sm:pt-3 pb-24 flex flex-col overflow-hidden">
+      <main ref={mainRef} className="flex-1 w-full px-4 sm:px-6 md:px-8 pt-2 sm:pt-3 pt-pwa-dynamic pb-24 flex flex-col overflow-hidden">
         <div className="mx-auto w-full max-w-4xl flex flex-col flex-1 space-y-2 overflow-hidden">
         {/* Header with back button and connection pill */}
         <div className="flex items-center justify-between content-fade-up-1 flex-shrink-0 relative">
@@ -706,8 +706,9 @@ export default function SelectedWorkout() {
                 // Determine final values based on set type
                 const finalSets = isCustomSet ? (customSets || details.recommendedSets) : details.recommendedSets;
                 const finalReps = isCustomSet ? (customReps || parseReps(details.recommendedReps)) : parseReps(details.recommendedReps);
-                const finalWeight = isCustomSet ? (customWeight || 0) : 0;
-                const finalWeightUnit = customWeightUnit;
+                const defaultRecommendedWeight = 5; // Default recommended weight in kg
+                const finalWeight = isCustomSet ? (customWeight || 0) : defaultRecommendedWeight;
+                const finalWeightUnit = isCustomSet ? customWeightUnit : 'kg';
 
                 console.log('🏋️ Starting Workout:', {
                   exercise: workout,

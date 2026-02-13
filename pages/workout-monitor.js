@@ -68,7 +68,7 @@ export default function WorkoutMonitor() {
     // Default fallback
     return '/images/workout-cards/barbell-comingsoon.jpg';
   };
-  
+   
   const {
     connected,
     device,
@@ -391,7 +391,7 @@ export default function WorkoutMonitor() {
       />
 
       {/* Header with semi-transparent background */}
-      <div className="absolute top-0 left-0 right-0 z-30 px-4 pt-2 sm:pt-3 pb-4" style={{
+      <div className="absolute top-0 left-0 right-0 z-30 px-4 pt-2 sm:pt-3 pt-pwa-dynamic pb-4" style={{
         background: 'linear-gradient(to bottom, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.6) 70%, rgba(0,0,0,0) 100%)'
       }}>
         {/* Top row - Back button and Connection Pill */}
@@ -453,11 +453,9 @@ export default function WorkoutMonitor() {
           </span>
           
           {/* Weight Badge (only show if weight > 0) */}
-          {workoutWeight > 0 && (
-            <span className="text-xs px-3 py-1 rounded-full font-medium bg-amber-400 text-amber-900">
-              {workoutWeight} {workoutWeightUnit}
-            </span>
-          )}
+          <span className="text-xs px-3 py-1 rounded-full font-medium bg-amber-400 text-amber-900">
+            {workoutWeight > 0 ? `${workoutWeight} ${workoutWeightUnit}` : `0 ${workoutWeightUnit}`}
+          </span>
         </div>
       </div>
 

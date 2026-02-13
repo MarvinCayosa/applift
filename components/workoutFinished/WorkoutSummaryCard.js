@@ -231,7 +231,7 @@ export default function WorkoutSummaryCard({
   };
 
   return (
-    <div className="w-full bg-white/10 backdrop-blur-sm rounded-3xl p-5 shadow-xl content-fade-up-1">
+    <div className="w-full rounded-3xl bg-white/5 backdrop-blur-sm border border-white/10 p-5 shadow-xl content-fade-up-1">
       {/* Title Section */}
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="flex-1">
@@ -269,7 +269,7 @@ export default function WorkoutSummaryCard({
               className="w-4 h-4 object-contain"
               style={{ filter: 'drop-shadow(0 0 12px rgba(168, 85, 247, 1)) drop-shadow(0 0 20px rgba(168, 85, 247, 0.6))' }}
             />
-            <span className="text-[9px] text-gray-400">Reps & Sets</span>
+            <span className="text-[9px] text-gray-400">Sets & Reps</span>
           </div>
           <div className="flex items-center gap-1">
             <span className="text-2xl font-bold text-purple-300">{setsData?.length || 0}</span>

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import WorkoutSummaryCard from '../components/workoutFinished/WorkoutSummaryCard';
 import WorkoutEffort from '../components/workoutFinished/WorkoutEffort';
 import LiftPhases from '../components/workoutFinished/LiftPhases';
+import ConsistencyScore from '../components/workoutFinished/ConsistencyScore';
 import { useWorkoutLogging } from '../context/WorkoutLoggingContext';
 import { useWorkoutStreak } from '../utils/useWorkoutStreak';
 import LoadingScreen from '../components/LoadingScreen';
@@ -121,7 +122,7 @@ export default function WorkoutFinished() {
       <div className="h-full overflow-y-auto px-4 space-y-3 max-w-2xl mx-auto pb-6">
         
         {/* Header with back button and title on same line */}
-        <div className="pt-2 sm:pt-3 pb-1 flex items-center justify-between">
+        <div className="pt-2 sm:pt-3 pt-pwa-dynamic pb-1 flex items-center justify-between">
           <button
             onClick={handleGoBack}
             className="flex items-center justify-center h-10 w-10 rounded-full hover:bg-white/10 transition-all"
@@ -167,6 +168,9 @@ export default function WorkoutFinished() {
             });
           }}
         />
+
+        {/* Consistency Score - Rep pattern overlay */}
+        <ConsistencyScore setsData={parsedSetsData} />
 
         {/* Workout Effort - High-level effort indicator */}
         <WorkoutEffort 
