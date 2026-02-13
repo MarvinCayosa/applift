@@ -55,7 +55,8 @@ html {
 body {
   margin: 0;
   padding: 0;
-  /* Use fixed 100vh to prevent layout shifts when status bar appears */
+  /* Use dynamic viewport to avoid weird 100vh behavior on mobile */
+  min-height: 100dvh;
   height: 100vh;
   width: 100vw;
   position: fixed;
@@ -70,6 +71,11 @@ body {
   -webkit-overflow-scrolling: touch;
   -webkit-user-select: none;
   user-select: none;
+  
+  /* Apply safe areas for sides and bottom - let pages handle top padding individually */
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
 }
 
 /* Remove tap highlight color for native feel */
@@ -110,6 +116,24 @@ input, textarea, [contenteditable] {
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
+}
+
+/* Adaptive top padding utility - minimal on Android, respects iOS notch */
+.pt-safe {
+  padding-top: max(0.5rem, env(safe-area-inset-top)) !important;
+}
+
+/* For elements that need to extend under status bar but have children with safe padding */
+.pt-safe-or-default {
+  padding-top: env(safe-area-inset-top, 0.5rem);
+}
+
+/* Full safe area padding (all sides) */
+.p-safe {
+  padding-top: max(0.5rem, env(safe-area-inset-top));
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
 }
 
 /* animated layered radial highlights using pseudo elements */

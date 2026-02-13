@@ -38,7 +38,7 @@ export default function RepInsightCard({ repData, repNumber }) {
   const velocityProgress = Math.min(100, (parseFloat(metrics.peakVelocity) / 10) * 100);
 
   return (
-    <div className="h-full bg-[#1a1a1a] rounded-2xl shadow-xl overflow-y-auto border border-white/10 flex flex-col">
+    <div className="h-full bg-[#1a1a1a] rounded-2xl shadow-xl overflow-hidden border border-white/10 flex flex-col">
       {/* Header with Rep number (left) and Classification badge (right) */}
       <div className="px-4 sm:px-5 pt-3 sm:pt-4 pb-2 sm:pb-3 flex items-center justify-between flex-shrink-0">
         <h4 className="text-sm sm:text-base font-semibold text-white">Rep {repNumber}</h4>
@@ -160,7 +160,7 @@ export default function RepInsightCard({ repData, repNumber }) {
       </div>
 
       {/* Metrics Section - Stacked vertically */}
-      <div className="px-4 sm:px-5 pb-16 sm:pb-20 space-y-3 sm:space-y-4 flex-1">
+      <div className="px-4 sm:px-5 pb-6 sm:pb-8 space-y-3 sm:space-y-4 flex-1">
         {/* Movement Phases - Using same visualization as LiftPhases */}
         <div className="space-y-2">
           <div className="flex items-center justify-between mb-1">
@@ -213,15 +213,6 @@ export default function RepInsightCard({ repData, repNumber }) {
               {/* Mini Circular Progress */}
               <div className="relative w-20 h-20 sm:w-24 sm:h-24">
                 <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-                  <defs>
-                    {/* Gradient for the progress ring */}
-                    <linearGradient id={`romGradientCard${repNumber}`} x1="0%" y1="0%" x2="100%" y2="0%">
-                      <stop offset="0%" style={{ stopColor: '#f97316', stopOpacity: 1 }} />
-                      <stop offset="50%" style={{ stopColor: '#fb923c', stopOpacity: 1 }} />
-                      <stop offset="100%" style={{ stopColor: '#fdba74', stopOpacity: 1 }} />
-                    </linearGradient>
-                  </defs>
-                  
                   {/* Background circle */}
                   <circle
                     cx="50"
@@ -232,20 +223,19 @@ export default function RepInsightCard({ repData, repNumber }) {
                     strokeWidth="7"
                   />
                   
-                  {/* Progress circle */}
+                  {/* Progress circle - solid color like dashboard */}
                   <circle
                     cx="50"
                     cy="50"
                     r="38"
                     fill="none"
-                    stroke={`url(#romGradientCard${repNumber})`}
+                    stroke="#f97316"
                     strokeWidth="7"
                     strokeLinecap="round"
                     strokeDasharray={`${2 * Math.PI * 38}`}
                     strokeDashoffset={`${2 * Math.PI * 38 * (1 - romProgress / 100)}`}
                     style={{ 
-                      transition: 'stroke-dashoffset 1s ease-out',
-                      filter: 'drop-shadow(0 0 6px rgba(249, 115, 22, 0.5))'
+                      transition: 'stroke-dashoffset 1s ease-out'
                     }}
                   />
                 </svg>
@@ -338,7 +328,7 @@ export default function RepInsightCard({ repData, repNumber }) {
         </div>
 
         {/* Insights below cards */}
-        <div className="mt-3 sm:mt-4 px-2 py-3 bg-white/5 rounded-xl border border-white/10">
+        <div className="mt-3 sm:mt-4 mb-6 sm:mb-8 px-2 py-3 bg-white/5 rounded-xl border border-white/10">
           <p className="text-xs sm:text-sm text-purple-300 leading-relaxed text-center">
             {romProgress >= 90 && velocityProgress >= 70
               ? '🎯 Excellent form! Great depth and explosive power combination.'

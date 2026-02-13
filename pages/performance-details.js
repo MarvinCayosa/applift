@@ -26,7 +26,7 @@ export default function PerformanceDetails() {
       <div className="flex flex-col h-screen overflow-hidden max-w-2xl mx-auto">
         
         {/* Header with back button and title - Safe area top padding */}
-        <div className="px-3 sm:px-4 pt-safe pb-2 flex-shrink-0" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
+        <div className="px-3 sm:px-4 pb-2 flex-shrink-0" style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}>
           <PerformanceHeader 
             workoutName={workoutName}
             equipment={equipment}
