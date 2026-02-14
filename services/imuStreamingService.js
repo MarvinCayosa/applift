@@ -104,18 +104,27 @@ const formatTimestamp = (ms) => {
 /**
  * Convert IMU sample to ML-ready format
  * Includes set and rep context for each sample
+ * 
+ * Handles both:
+ * - RepCounter samples (accelMag field)
+ * - Streaming buffer samples (rawMagnitude/filteredMagnitude fields)
  */
 const sampleToMLFormat = (sample, setNum, repNum, baseTimestamp) => {
-  const relativeMs = sample.timestamp - baseTimestamp;
+  const relativeMs = (sample.timestamp || 0) - baseTimestamp;
+  
+  // Handle different magnitude field names: RepCounter uses accelMag, streaming uses rawMagnitude
+  const accelMag = sample.rawMagnitude ?? sample.accelMag ?? 0;
+  const filteredMag = sample.filteredMagnitude ?? sample.accelMag ?? 0; // RepCounter stores filtered as accelMag
+  
   return {
     set: setNum,
     rep: repNum,
-    timestamp: formatTimestamp(relativeMs),
-    timestamp_ms: relativeMs,
+    timestamp: formatTimestamp(Math.max(0, relativeMs)),
+    timestamp_ms: Math.max(0, relativeMs),
     accelX: parseFloat(sample.accelX?.toFixed(4)) || 0,
     accelY: parseFloat(sample.accelY?.toFixed(4)) || 0,
     accelZ: parseFloat(sample.accelZ?.toFixed(4)) || 0,
-    accelMag: parseFloat(sample.rawMagnitude?.toFixed(4)) || 0,
+    accelMag: parseFloat(accelMag?.toFixed?.(4) ?? accelMag) || 0,
     gyroX: parseFloat(sample.gyroX?.toFixed(4)) || 0,
     gyroY: parseFloat(sample.gyroY?.toFixed(4)) || 0,
     gyroZ: parseFloat(sample.gyroZ?.toFixed(4)) || 0,
@@ -125,7 +134,7 @@ const sampleToMLFormat = (sample, setNum, repNum, baseTimestamp) => {
     filteredX: parseFloat(sample.filteredX?.toFixed(4)) || sample.accelX || 0,
     filteredY: parseFloat(sample.filteredY?.toFixed(4)) || sample.accelY || 0,
     filteredZ: parseFloat(sample.filteredZ?.toFixed(4)) || sample.accelZ || 0,
-    filteredMag: parseFloat(sample.filteredMagnitude?.toFixed(4)) || 0
+    filteredMag: parseFloat(filteredMag?.toFixed?.(4) ?? filteredMag) || 0
   };
 };
 
@@ -294,7 +303,8 @@ export const addIMUSample = (sample) => {
   
   currentRepBuffer.push({
     ...sample,
-    timestamp: sample.timestamp || Date.now()
+    timestamp: sample.timestamp || Date.now(),
+    relativeTime: sample.relativeTime || 0 // Store relative time for boundary matching
   });
   
   // Log buffer size periodically
@@ -306,24 +316,75 @@ export const addIMUSample = (sample) => {
 /**
  * Called when a rep is detected
  * Saves the rep data in ML-ready format
+ * 
+ * NEW: Prioritizes using samples passed directly from RepCounter (single source of truth)
+ * Falls back to time-based filtering for legacy compatibility
+ * 
  * Returns the rep data for immediate ML classification
  */
 export const onRepDetected = async (repInfo = {}) => {
-  if (!isStreaming || currentRepBuffer.length === 0) {
-    console.warn('[IMUStreaming] No data to save for rep');
+  if (!isStreaming) {
+    console.warn('[IMUStreaming] Not streaming, ignoring rep detection');
     return null;
   }
 
   currentRepNumber++;
   workoutMetadata.totalReps++;
 
-  // Get base timestamp for this rep
-  const baseTimestamp = currentRepBuffer[0]?.timestamp || Date.now();
-  const endTimestamp = currentRepBuffer[currentRepBuffer.length - 1]?.timestamp || Date.now();
-  const duration = endTimestamp - baseTimestamp;
+  let samplesToUse = [];
+  
+  // *** PRIORITY 1: Use samples passed directly from RepCounter ***
+  // This is the SINGLE SOURCE OF TRUTH, like index.html's approach
+  // RepCounter assigns repNumber to samples and passes them directly
+  if (repInfo.samples && repInfo.samples.length > 0) {
+    samplesToUse = repInfo.samples;
+    console.log(`[IMUStreaming] Rep ${currentRepNumber}: Using ${samplesToUse.length} samples directly from RepCounter (indices ${repInfo.startIndex}-${repInfo.endIndex})`);
+  }
+  // *** PRIORITY 2: Fallback to time-based filtering (legacy) ***
+  else if (repInfo.startTime !== undefined && repInfo.endTime !== undefined && currentRepBuffer.length > 0) {
+    const boundaryStart = repInfo.startTime;
+    const boundaryEnd = repInfo.endTime;
+    
+    const bufferTimeRange = currentRepBuffer.length > 0 
+      ? `${currentRepBuffer[0].relativeTime?.toFixed(0) || 0}-${currentRepBuffer[currentRepBuffer.length - 1].relativeTime?.toFixed(0) || 0}ms`
+      : 'empty';
+    console.log(`[IMUStreaming] Rep ${currentRepNumber} fallback: filtering buffer (${currentRepBuffer.length} samples, ${bufferTimeRange}), boundaries: ${boundaryStart.toFixed(0)}-${boundaryEnd.toFixed(0)}ms`);
+    
+    samplesToUse = currentRepBuffer.filter(sample => {
+      const sampleTime = sample.relativeTime !== undefined ? sample.relativeTime : 0;
+      return sampleTime >= boundaryStart && sampleTime <= boundaryEnd;
+    });
+    
+    console.log(`[IMUStreaming] Fallback filtered to ${samplesToUse.length} samples`);
+    
+    // Keep remaining samples for next rep
+    const remainingSamples = currentRepBuffer.filter(sample => {
+      const sampleTime = sample.relativeTime !== undefined ? sample.relativeTime : 0;
+      return sampleTime > boundaryEnd;
+    });
+    currentRepBuffer = remainingSamples;
+  }
+  // *** PRIORITY 3: Use entire buffer (legacy) ***
+  else if (currentRepBuffer.length > 0) {
+    console.log(`[IMUStreaming] Rep ${currentRepNumber} legacy mode: using entire buffer (${currentRepBuffer.length} samples)`);
+    samplesToUse = [...currentRepBuffer];
+    currentRepBuffer = [];
+  }
+  
+  if (samplesToUse.length === 0) {
+    console.warn(`[IMUStreaming] Rep ${currentRepNumber}: No samples available, skipping`);
+    return null;
+  }
+
+  // Get base timestamp - use the first sample's timestamp
+  // For RepCounter samples: timestamp is the relativeTime
+  // For buffer samples: use relativeTime or timestamp
+  const baseTimestamp = samplesToUse[0]?.timestamp || samplesToUse[0]?.relativeTime || 0;
+  const endTimestamp = samplesToUse[samplesToUse.length - 1]?.timestamp || samplesToUse[samplesToUse.length - 1]?.relativeTime || baseTimestamp;
+  const duration = repInfo.duration ? repInfo.duration * 1000 : (endTimestamp - baseTimestamp);
 
   // Convert samples to ML-ready format
-  const mlSamples = currentRepBuffer.map(sample => 
+  const mlSamples = samplesToUse.map(sample => 
     sampleToMLFormat(sample, currentSetNumber, currentRepNumber, baseTimestamp)
   );
 
@@ -348,8 +409,7 @@ export const onRepDetected = async (repInfo = {}) => {
     currentSetData.reps.push(repData);
   }
 
-  // Clear buffer for next rep
-  currentRepBuffer = [];
+  // Reset rep start time for next rep
   repStartTime = null;
 
   // Update metadata
@@ -362,7 +422,7 @@ export const onRepDetected = async (repInfo = {}) => {
   }
   workoutMetadata.sets[currentSetNumber].reps = currentRepNumber;
 
-  console.log(`[IMUStreaming] Rep ${currentRepNumber} of Set ${currentSetNumber} recorded (${mlSamples.length} samples, ${duration}ms)`);
+  console.log(`[IMUStreaming] Rep ${currentRepNumber} of Set ${currentSetNumber} recorded (${mlSamples.length} samples, ${Math.round(duration)}ms)`);
 
   return {
     setNumber: currentSetNumber,
@@ -400,6 +460,28 @@ export const getRepDataForML = (setNumber = currentSetNumber, repNumber = curren
 };
 
 /**
+ * Get all reps from a set for batch ML inference
+ * Used for background ML processing after set completion
+ */
+export const getSetRepsForML = (setNumber) => {
+  const setData = workoutData.sets[setNumber - 1];
+  if (!setData || !setData.reps || setData.reps.length === 0) return null;
+  
+  return {
+    workoutId,
+    exercise: workoutData.exercise,
+    equipment: workoutData.equipment,
+    setNumber,
+    reps: setData.reps.map(rep => ({
+      repNumber: rep.repNumber,
+      samples: rep.samples,
+      sampleCount: rep.sampleCount,
+      duration: rep.duration
+    }))
+  };
+};
+
+/**
  * Store ML classification result for a rep
  * Call this after ML model returns classification
  */
@@ -425,10 +507,16 @@ export const storeRepClassification = (setNumber, repNumber, classification, con
 export const onSetComplete = async () => {
   if (!isStreaming) return;
 
-  // Save any remaining buffer as final rep of set
-  if (currentRepBuffer.length > 0) {
-    await onRepDetected();
-  }
+  // *** REMOVED: Don't auto-save buffer as a rep ***
+  // RepCounter is the source of truth - if it didn't detect a rep, there's no rep
+  // The old code created phantom reps from leftover buffer samples
+  // if (currentRepBuffer.length > 0) {
+  //   await onRepDetected();
+  // }
+  
+  // Clear the buffer - these samples were not part of any detected rep
+  console.log(`[IMUStreaming] Set ${currentSetNumber} ending, discarding ${currentRepBuffer.length} unused buffer samples`);
+  currentRepBuffer = [];
 
   // Mark set as complete in workout data
   const currentSetData = workoutData.sets[currentSetNumber - 1];
@@ -478,10 +566,14 @@ export const onSetComplete = async () => {
 export const endStreaming = async (userFinished = true) => {
   if (!isStreaming) return null;
 
-  // Save any remaining data
-  if (currentRepBuffer.length > 0) {
-    await onRepDetected();
-  }
+  // *** REMOVED: Don't auto-save buffer as a rep ***
+  // RepCounter is the source of truth - if it didn't detect a rep, there's no rep
+  // if (currentRepBuffer.length > 0) {
+  //   await onRepDetected();
+  // }
+  
+  // Clear the buffer
+  currentRepBuffer = [];
 
   // If there were reps in current set but set wasn't marked complete
   if (currentRepNumber > 0 && !workoutMetadata.sets[currentSetNumber]?.endTime) {
@@ -754,6 +846,7 @@ export default {
   cancelStreaming,
   getStreamingState,
   getRepDataForML,
+  getSetRepsForML,
   storeRepClassification,
   getCompleteWorkoutData,
   exportWorkoutAsCSV

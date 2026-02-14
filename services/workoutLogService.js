@@ -316,7 +316,8 @@ export const getUserWorkoutLogs = async (userId, options = {}) => {
     // PRIMARY: Query new hierarchical structure using PARALLEL queries
     // Structure: userWorkouts/{userId}/{equipment}/{exercise}/logs/{workoutId}
     try {
-      const equipmentTypes = ['dumbbell', 'barbell', 'weight-stack'];
+      // Include all possible equipment types including variations
+      const equipmentTypes = ['dumbbell', 'barbell', 'weight-stack', 'dumbell', 'weightstack', 'weight stack', 'cable'];
       
       // Helper to fetch all logs for one equipment type
       const fetchEquipmentLogs = async (equipment) => {
@@ -368,11 +369,10 @@ export const getUserWorkoutLogs = async (userId, options = {}) => {
     if (logs.length === 0) {
       try {
         const userLogsRef = collection(db, USER_WORKOUTS_COLLECTION, userId, 'logs');
-        const q = query(
-          userLogsRef,
-          where('status', '==', status),
-          limit(limitCount * 2)
-        );
+        // Only add status filter if status is specified
+        const q = status 
+          ? query(userLogsRef, where('status', '==', status), limit(limitCount * 2))
+          : query(userLogsRef, limit(limitCount * 2));
         
         const snapshot = await getDocs(q);
         snapshot.forEach((doc) => {
@@ -388,12 +388,19 @@ export const getUserWorkoutLogs = async (userId, options = {}) => {
     // FALLBACK 2: Try old format (odUSerId in workoutLogs)
     if (logs.length === 0) {
       try {
-        const q1 = query(
-          collection(db, WORKOUT_LOGS_COLLECTION),
-          where('odUSerId', '==', userId),
-          where('status', '==', status),
-          limit(limitCount * 2)
-        );
+        // Only add status filter if status is specified
+        const q1 = status 
+          ? query(
+              collection(db, WORKOUT_LOGS_COLLECTION),
+              where('odUSerId', '==', userId),
+              where('status', '==', status),
+              limit(limitCount * 2)
+            )
+          : query(
+              collection(db, WORKOUT_LOGS_COLLECTION),
+              where('odUSerId', '==', userId),
+              limit(limitCount * 2)
+            );
         
         const snapshot1 = await getDocs(q1);
         snapshot1.forEach((doc) => {
@@ -409,12 +416,19 @@ export const getUserWorkoutLogs = async (userId, options = {}) => {
     // FALLBACK 3: Try oldest format (userId in workoutLogs)
     if (logs.length === 0) {
       try {
-        const q2 = query(
-          collection(db, WORKOUT_LOGS_COLLECTION),
-          where('userId', '==', userId),
-          where('status', '==', status),
-          limit(limitCount * 2)
-        );
+        // Only add status filter if status is specified
+        const q2 = status 
+          ? query(
+              collection(db, WORKOUT_LOGS_COLLECTION),
+              where('userId', '==', userId),
+              where('status', '==', status),
+              limit(limitCount * 2)
+            )
+          : query(
+              collection(db, WORKOUT_LOGS_COLLECTION),
+              where('userId', '==', userId),
+              limit(limitCount * 2)
+            );
         
         const snapshot2 = await getDocs(q2);
         snapshot2.forEach((doc) => {

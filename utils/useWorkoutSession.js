@@ -20,6 +20,7 @@ export function useWorkoutSession({
   const [countdownValue, setCountdownValue] = useState(3);
   const [countdownActive, setCountdownActive] = useState(false);
   const recordingStartTime = useRef(0);
+  const workoutStartTime = useRef(0); // Track total workout time including breaks
   const rawDataLog = useRef([]);
   
   // Refs to avoid closure issues in callbacks
@@ -155,13 +156,11 @@ export function useWorkoutSession({
         return newData.length > MAX_CHART_POINTS ? newData.slice(-MAX_CHART_POINTS) : newData;
       });
       
-      // Rep counting
-      repCounterRef.current.addSample(
-        data.accelX, data.accelY, data.accelZ,
-        data.gyroX, data.gyroY, data.gyroZ,
-        data.roll, data.pitch, data.yaw,
-        data.filteredMagnitude, relativeTime
-      );
+      // Rep counting - pass complete sample object for proper ML data storage
+      repCounterRef.current.addSample({
+        ...data,
+        relativeTime // Include relative time for timestamp
+      });
       
       const newStats = repCounterRef.current.getStats();
       setRepStats(newStats);
@@ -171,12 +170,30 @@ export function useWorkoutSession({
         console.log(`[WorkoutSession] Rep ${newStats.repCount} detected!`);
         lastRepCountRef.current = newStats.repCount;
         
-        // Call onRepDetected callback
+        // Get the precise boundary info from RepCounter
+        const repData = repCounterRef.current.exportData();
+        const lastRep = repData.reps[repData.reps.length - 1];
+        
+        // *** CRITICAL FIX: Extract samples directly from RepCounter by repNumber ***
+        // This matches index.html's approach - samples are assigned repNumber in allSamples
+        // We pass these samples directly instead of relying on time-based filtering
+        const samplesForRep = repData.samples.filter(s => s.repNumber === newStats.repCount);
+        console.log(`[WorkoutSession] Rep ${newStats.repCount}: extracted ${samplesForRep.length} samples from RepCounter (indices ${lastRep?.actualStartIndex}-${lastRep?.actualEndIndex})`);
+        
+        // Call onRepDetected callback with samples directly from RepCounter
+        // This is the SINGLE SOURCE OF TRUTH, like index.html
         if (onRepDetectedRef.current) {
           onRepDetectedRef.current({
             repNumber: newStats.repCount,
-            duration: newStats.avgRepDuration,
-            peakAcceleration: newStats.thresholdHigh
+            duration: lastRep?.duration || newStats.avgRepDuration,
+            peakAcceleration: lastRep?.peakValue || newStats.thresholdHigh,
+            // Precise boundary times
+            startTime: lastRep?.actualStartTime !== undefined ? lastRep.actualStartTime : lastRep?.startTime,
+            endTime: lastRep?.actualEndTime !== undefined ? lastRep.actualEndTime : lastRep?.endTime,
+            startIndex: lastRep?.actualStartIndex,
+            endIndex: lastRep?.actualEndIndex,
+            // *** NEW: Pass samples directly from RepCounter ***
+            samples: samplesForRep
           });
         }
       }
@@ -250,17 +267,21 @@ export function useWorkoutSession({
         // Prepare rep data for this set — each rep gets its OWN data segment
         const allSamples = currentRepData.samples;
         const setRepsData = currentRepData.reps.map((rep, index) => {
-          // Extract only the samples within this rep's time window
-          const repSamples = allSamples.filter(
-            s => s.timestamp >= rep.startTime && s.timestamp <= rep.endTime
-          );
-          const repChartData = repSamples.map(s => s.accelMag);
+          // *** Use repNumber assignment for precise extraction ***
+          // This matches the index.html algorithm exactly
+          const repSamples = allSamples.filter(s => s.repNumber === rep.repNumber);
+          // Use filteredMagnitude for proper charting (smooth curve)
+          const repChartData = repSamples.map(s => s.filteredMagnitude || s.accelMag || 0);
+          
           return {
+            repNumber: rep.repNumber,
             time: rep.duration,
             rom: rep.peakAcceleration * 10,
             peakVelocity: rep.peakVelocity || rep.peakAcceleration / 2,
             isClean: rep.duration >= 2.0 && rep.duration <= 4.0,
-            chartData: repChartData
+            chartData: repChartData,
+            // Include raw samples for ML if needed
+            samples: repSamples
           };
         });
         
@@ -277,25 +298,31 @@ export function useWorkoutSession({
         // Build updated workout stats with current set included
         const updatedSetData = [...workoutStats.setData, currentSetData];
         const updatedTotalReps = workoutStats.totalReps + repStats.repCount;
-        const updatedTotalTime = workoutStats.totalTime + elapsedTime;
         const updatedAllRepDurations = [...workoutStats.allRepDurations, ...repDurations];
-        
-        setWorkoutStats(prev => ({
-          totalReps: updatedTotalReps,
-          allRepDurations: updatedAllRepDurations,
-          completedSets: prev.completedSets + 1,
-          totalTime: updatedTotalTime,
-          setData: updatedSetData
-        }));
         
         // Set complete - trigger break or workout complete
         if (currentSet >= recommendedSets) {
           // Last set complete - workout finished
+          // Calculate ACTUAL workout duration from start to end (including breaks)
+          const actualWorkoutDuration = workoutStartTime.current > 0 
+            ? Math.round((Date.now() - workoutStartTime.current) / 1000)
+            : workoutStats.totalTime + elapsedTime;
+          
+          const updatedTotalTime = actualWorkoutDuration;
+          
+          setWorkoutStats(prev => ({
+            totalReps: updatedTotalReps,
+            allRepDurations: updatedAllRepDurations,
+            completedSets: currentSet,
+            totalTime: updatedTotalTime,
+            setData: updatedSetData
+          }));
+          
           setIsRecording(false);
           setIsPaused(false);
           
           if (onWorkoutComplete) {
-            // Use the updated stats that include the current set
+            // Use the updated stats that include the current set and ACTUAL duration
             onWorkoutComplete({
               workoutStats: {
                 totalReps: updatedTotalReps,
@@ -314,6 +341,17 @@ export function useWorkoutSession({
           }
         } else {
           // More sets remaining - take a break
+          // Just update the set data, don't calculate total time yet
+          const updatedTotalTime = workoutStats.totalTime + elapsedTime;
+          
+          setWorkoutStats(prev => ({
+            totalReps: updatedTotalReps,
+            allRepDurations: updatedAllRepDurations,
+            completedSets: prev.completedSets + 1,
+            totalTime: updatedTotalTime,
+            setData: updatedSetData
+          }));
+          
           startBreak();
           if (onSetComplete) {
             onSetComplete(currentSet);
@@ -367,6 +405,11 @@ export function useWorkoutSession({
     setRepStats(repCounterRef.current.getStats());
     setCurrentSet(prev => prev + 1);
     
+    // *** CRITICAL: Reset lastRepCountRef so Set 2+ can detect reps ***
+    // Without this, the check `newStats.repCount > lastRepCountRef.current` fails
+    // because lastRepCountRef still holds Set 1's final count
+    lastRepCountRef.current = 0;
+    
     // Clear chart data for new set BEFORE countdown
     setTimeData([]);
     setRawAccelData([]);
@@ -407,6 +450,12 @@ export function useWorkoutSession({
     isPausedRef.current = false;
     setIsRecording(true);
     isRecordingRef.current = true;
+    
+    // Set workout start time on first set (after countdown starts)
+    if (currentSet === 1 && workoutStartTime.current === 0) {
+      workoutStartTime.current = Date.now();
+      console.log('[WorkoutSession] Workout started at:', new Date(workoutStartTime.current).toISOString());
+    }
     
     // Show countdown overlay
     setShowCountdown(true);
@@ -449,6 +498,7 @@ export function useWorkoutSession({
     
     // Reset data BEFORE countdown
     recordingStartTime.current = 0;
+    workoutStartTime.current = 0; // Reset workout start time
     rawDataLog.current = [];
     repCounterRef.current.reset();
     resetFilters();
@@ -479,6 +529,7 @@ export function useWorkoutSession({
     
     // Reset for next session
     setCurrentSet(1);
+    workoutStartTime.current = 0;
     setWorkoutStats({ totalReps: 0, allRepDurations: [], completedSets: 0, totalTime: 0, setData: [] });
     repCounterRef.current.reset();
     setRepStats(repCounterRef.current.getStats());

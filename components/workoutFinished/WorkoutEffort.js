@@ -4,10 +4,10 @@
  * Highlights the most fatigued rep with an orange indicator
  */
 
-export default function WorkoutEffort({ setsData, chartData }) {
+export default function WorkoutEffort({ setsData, chartData, fatigueScore, fatigueLevel: propsFatigueLevel }) {
   // Extract rep-by-rep effort data from setsData
   let repEffortData = [];
-  let fatigueLevel = 'Moderate'; // Default
+  let fatigueLevel = propsFatigueLevel || 'Moderate'; // Use prop if available
   
   if (setsData && setsData.length > 0) {
     // Collect all reps across all sets
@@ -24,8 +24,8 @@ export default function WorkoutEffort({ setsData, chartData }) {
       }
     });
     
-    // Calculate fatigue level based on progression
-    if (repEffortData.length > 0) {
+    // Calculate fatigue level based on progression (only if not provided via props)
+    if (repEffortData.length > 0 && !propsFatigueLevel) {
       const firstThird = repEffortData.slice(0, Math.floor(repEffortData.length / 3));
       const lastThird = repEffortData.slice(-Math.floor(repEffortData.length / 3));
       const avgFirst = firstThird.reduce((a, b) => a + b, 0) / firstThird.length;

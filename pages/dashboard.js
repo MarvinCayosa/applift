@@ -65,7 +65,7 @@ export default function Dashboard() {
     fetchCalendarData,
   } = useWorkoutLogs({ 
     autoFetch: true, 
-    limitCount: 20,
+    limitCount: 500,  // Load all workouts for stats calculation
     includeStats: true,
     includeCalendar: true,
   });

@@ -111,6 +111,39 @@ export default function WorkoutMonitor() {
     });
   }, [plannedSets, plannedReps, weight, weightUnit, setType]);
   
+  // Initialize streaming session immediately on page load (mark as unfinished)
+  // This removes the delay when user presses start
+  const hasInitializedStreaming = useRef(false);
+  
+  useEffect(() => {
+    // Only initialize once when we have all workout params available
+    if (hasInitializedStreaming.current) return;
+    if (!workout || !equipment) return;
+    
+    const initSession = async () => {
+      console.log('🚀 Initializing streaming session on page load...');
+      
+      const result = await startStreaming({
+        exercise: workout,
+        equipment: equipment,
+        plannedSets: parseInt(plannedSets) || recommendedSets,
+        plannedReps: parseInt(plannedReps) || recommendedReps,
+        weight: parseFloat(weight) || workoutWeight,
+        weightUnit: weightUnit || workoutWeightUnit,
+        setType: setType || workoutSetType
+      });
+      
+      if (result?.success) {
+        console.log('✅ Streaming session initialized (unfinished):', result.workoutId);
+        hasInitializedStreaming.current = true;
+      } else {
+        console.warn('⚠️ Failed to initialize streaming session on load');
+      }
+    };
+    
+    initSession();
+  }, [workout, equipment, plannedSets, plannedReps, weight, weightUnit, setType, startStreaming, recommendedSets, recommendedReps, workoutWeight, workoutWeightUnit, workoutSetType]);
+  
   // Use the workout session hook for all algorithm logic
   const {
     isRecording,
@@ -173,6 +206,44 @@ export default function WorkoutMonitor() {
       // Finish streaming and determine completion status
       const result = await finishWorkout();
       
+      // *** CRITICAL: Merge classification data from streaming service ***
+      // finalStats.setData doesn't have ML classifications
+      // result.workoutData.sets DOES have classifications from background ML
+      const mergedSetData = finalStats.setData.map((localSet, setIdx) => {
+        const streamingSet = result?.workoutData?.sets?.find(
+          s => s.setNumber === localSet.setNumber
+        ) || result?.workoutData?.sets?.[setIdx];
+        
+        if (!streamingSet || !streamingSet.reps) {
+          console.log(`[WorkoutComplete] No streaming data for Set ${localSet.setNumber}, keeping local`);
+          return localSet;
+        }
+        
+        // Merge classification data into each rep
+        const mergedRepsData = localSet.repsData?.map((localRep, repIdx) => {
+          const streamingRep = streamingSet.reps.find(
+            r => r.repNumber === repIdx + 1
+          ) || streamingSet.reps[repIdx];
+          
+          if (streamingRep?.classification) {
+            console.log(`[WorkoutComplete] Merging classification for Set ${localSet.setNumber} Rep ${repIdx + 1}:`, streamingRep.classification);
+            return {
+              ...localRep,
+              classification: streamingRep.classification,
+              chartData: streamingRep.samples?.map(s => s.filteredMag) || localRep.chartData
+            };
+          }
+          return localRep;
+        }) || [];
+        
+        return {
+          ...localSet,
+          repsData: mergedRepsData
+        };
+      });
+      
+      console.log('[WorkoutComplete] Merged set data with classifications:', mergedSetData);
+      
       // Calculate avg concentric/eccentric
       const avgRepDuration = finalStats.allRepDurations.length > 0
         ? finalStats.allRepDurations.reduce((a, b) => a + b, 0) / finalStats.allRepDurations.length
@@ -187,7 +258,7 @@ export default function WorkoutMonitor() {
           calories: Math.round(finalStats.totalReps * 5),
           avgConcentric: (avgRepDuration * 0.4).toFixed(1),
           avgEccentric: (avgRepDuration * 0.6).toFixed(1),
-          setData: finalStats.setData,
+          setData: mergedSetData, // Use merged data with classifications
           // Include streaming result status
           status: result?.status || 'completed',
           workoutId: result?.workoutId || workoutId,
@@ -210,7 +281,7 @@ export default function WorkoutMonitor() {
           avgEccentric: (avgRepDuration * 0.6).toFixed(1),
           chartData: JSON.stringify(chartData.filteredAccelData),
           timeData: JSON.stringify(chartData.timeData),
-          setsData: JSON.stringify(finalStats.setData),
+          setsData: JSON.stringify(mergedSetData), // Use merged data with classifications
           recommendedSets: recommendedSets,
           recommendedReps: recommendedReps,
           weight: workoutWeight,
@@ -218,6 +289,7 @@ export default function WorkoutMonitor() {
           setType: workoutSetType,
           status: result?.status || 'completed',
           workoutId: result?.workoutId || workoutId,
+          gcsPath: result?.workoutData?.gcsPath || result?.metadata?.gcsPath || '',
         }
       });
     }
@@ -235,7 +307,14 @@ export default function WorkoutMonitor() {
       setType: workoutSetType
     });
 
-    // Start the streaming session (creates workout folder in GCS)
+    // Check if streaming is already initialized (from page load)
+    if (isStreaming) {
+      console.log('🎬 Streaming already active, starting recording session...');
+      startRecordingSession();
+      return;
+    }
+
+    // Fallback: Start the streaming session if not already initialized
     const result = await startStreaming({
       exercise: workout,
       equipment: equipment,

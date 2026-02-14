@@ -1,18 +1,27 @@
 import { useRouter } from 'next/router';
 
-export default function LiftPhases() {
+export default function LiftPhases({ 
+  avgConcentric: propsConcentric, 
+  avgEccentric: propsEccentric,
+  concentricPercent: propsConcentricPercent,
+  eccentricPercent: propsEccentricPercent
+}) {
   const router = useRouter();
-  const { avgConcentric, avgEccentric, totalReps } = router.query;
+  const { avgConcentric: queryConcentric, avgEccentric: queryEccentric, totalReps } = router.query;
 
-  // Parse values
-  const concentric = parseFloat(avgConcentric) || 0;
-  const eccentric = parseFloat(avgEccentric) || 0;
+  // Use props if available, otherwise fall back to query params
+  const concentric = propsConcentric ?? (parseFloat(queryConcentric) || 0);
+  const eccentric = propsEccentric ?? (parseFloat(queryEccentric) || 0);
   const total = concentric + eccentric || 1;
   const reps = parseInt(totalReps) || 0;
 
-  // Calculate percentages
-  const concentricPercent = ((concentric / total) * 100).toFixed(1);
-  const eccentricPercent = ((eccentric / total) * 100).toFixed(1);
+  // Calculate percentages (use props if available, ensure 1 decimal place)
+  const rawConcentricPercent = propsConcentricPercent ?? ((concentric / total) * 100);
+  const rawEccentricPercent = propsEccentricPercent ?? ((eccentric / total) * 100);
+  
+  // Format to 1 decimal place
+  const concentricPercent = parseFloat(rawConcentricPercent).toFixed(1);
+  const eccentricPercent = parseFloat(rawEccentricPercent).toFixed(1);
 
   // Calculate delta/change metrics (placeholder - can be enhanced with historical data)
   const concentricDelta = Math.round(concentric * 10); // Example calculation

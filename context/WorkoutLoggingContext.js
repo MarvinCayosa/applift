@@ -36,10 +36,12 @@ import {
   cancelStreaming,
   getStreamingState,
   getRepDataForML,
+  getSetRepsForML,
   storeRepClassification,
   getCompleteWorkoutData,
   exportWorkoutAsCSV
 } from '../services/imuStreamingService';
+import { classifyReps } from '../services/mlClassificationService';
 
 const WorkoutLoggingContext = createContext(null);
 
@@ -60,6 +62,10 @@ export function WorkoutLoggingProvider({ children }) {
   const [currentRep, setCurrentRep] = useState(0);
   const [completedSets, setCompletedSets] = useState(0);
   const [totalReps, setTotalReps] = useState(0);
+  
+  // Background ML inference tracking
+  const backgroundMLTasks = useRef(new Map()); // setNumber -> Promise
+  const [backgroundMLStatus, setBackgroundMLStatus] = useState({}); // setNumber -> 'pending' | 'complete' | 'error'
 
   /**
    * Start streaming session (called when recording begins)
@@ -166,8 +172,63 @@ export function WorkoutLoggingProvider({ children }) {
   }, []);
 
   /**
+   * Run background ML inference for a completed set
+   * This runs asynchronously without blocking the UI
+   */
+  const runBackgroundMLForSet = useCallback(async (setNumber, exercise) => {
+    if (!user?.uid) return;
+    
+    try {
+      setBackgroundMLStatus(prev => ({ ...prev, [setNumber]: 'pending' }));
+      console.log(`[WorkoutLogging] ⚡ Starting background ML for Set ${setNumber}...`);
+      
+      // Get all reps data from the completed set
+      const setData = getSetRepsForML(setNumber);
+      if (!setData || !setData.reps || setData.reps.length === 0) {
+        console.warn(`[WorkoutLogging] No rep data for Set ${setNumber}`);
+        setBackgroundMLStatus(prev => ({ ...prev, [setNumber]: 'error' }));
+        return;
+      }
+      
+      // Get auth token
+      const token = await user.getIdToken();
+      
+      // Call ML classification API
+      const result = await classifyReps(exercise, setData.reps, token);
+      
+      if (result && result.classifications) {
+        // Store classifications in the streaming service
+        result.classifications.forEach((cls, idx) => {
+          const repNumber = setData.reps[idx]?.repNumber || idx + 1;
+          storeRepClassification(
+            setNumber, 
+            repNumber, 
+            {
+              prediction: cls.prediction,
+              label: cls.label,
+              confidence: cls.confidence,
+              probabilities: cls.probabilities,
+              method: result.modelAvailable ? 'ml' : 'rules'
+            },
+            cls.confidence
+          );
+        });
+        
+        console.log(`[WorkoutLogging] ✅ Background ML complete for Set ${setNumber}: ${result.classifications.length} reps classified`);
+        setBackgroundMLStatus(prev => ({ ...prev, [setNumber]: 'complete' }));
+      } else {
+        setBackgroundMLStatus(prev => ({ ...prev, [setNumber]: 'error' }));
+      }
+    } catch (error) {
+      console.error(`[WorkoutLogging] ❌ Background ML failed for Set ${setNumber}:`, error);
+      setBackgroundMLStatus(prev => ({ ...prev, [setNumber]: 'error' }));
+    }
+  }, [user]);
+
+  /**
    * Handle set completion
    * Finalizes current set and prepares for next
+   * Also triggers background ML inference for the completed set
    */
   const handleSetComplete = useCallback(async () => {
     if (!isStreaming) return null;
@@ -180,6 +241,13 @@ export function WorkoutLoggingProvider({ children }) {
         setCurrentSet(result.completedSet + 1);
         setCurrentRep(0);
         console.log(`[WorkoutLogging] Set ${result.completedSet} complete, total reps: ${result.totalReps}`);
+        
+        // Trigger background ML inference for the completed set (non-blocking)
+        if (workoutConfig?.exercise) {
+          // Run in background - don't await
+          const mlTask = runBackgroundMLForSet(result.completedSet, workoutConfig.exercise);
+          backgroundMLTasks.current.set(result.completedSet, mlTask);
+        }
       }
       
       return result;
@@ -188,7 +256,28 @@ export function WorkoutLoggingProvider({ children }) {
       setStreamError(error.message);
       return null;
     }
-  }, [isStreaming]);
+  }, [isStreaming, workoutConfig, runBackgroundMLForSet]);
+
+  /**
+   * Wait for all background ML tasks to complete (with timeout)
+   */
+  const waitForBackgroundML = useCallback(async (timeoutMs = 5000) => {
+    const tasks = Array.from(backgroundMLTasks.current.values());
+    if (tasks.length === 0) return;
+    
+    console.log(`[WorkoutLogging] ⏳ Waiting for ${tasks.length} background ML tasks...`);
+    
+    try {
+      // Race between tasks completing and timeout
+      await Promise.race([
+        Promise.allSettled(tasks),
+        new Promise(resolve => setTimeout(resolve, timeoutMs))
+      ]);
+      console.log(`[WorkoutLogging] ✅ Background ML tasks settled`);
+    } catch (error) {
+      console.warn('[WorkoutLogging] Some background ML tasks failed:', error);
+    }
+  }, []);
 
   /**
    * End the workout
@@ -198,6 +287,9 @@ export function WorkoutLoggingProvider({ children }) {
     if (!isStreaming) return null;
 
     try {
+      // Wait for background ML to complete (max 5 seconds)
+      await waitForBackgroundML(5000);
+      
       const result = await endStreaming(true);
       
       setIsStreaming(false);
@@ -230,7 +322,7 @@ export function WorkoutLoggingProvider({ children }) {
       setStreamError(error.message);
       return null;
     }
-  }, [isStreaming, user]);
+  }, [isStreaming, user, waitForBackgroundML]);
 
   /**
    * Cancel the workout
@@ -317,6 +409,7 @@ export function WorkoutLoggingProvider({ children }) {
     currentRep,
     completedSets,
     totalReps,
+    backgroundMLStatus, // Track background ML inference status per set
     
     // Core Actions
     startStreaming,

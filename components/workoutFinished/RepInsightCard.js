@@ -1,80 +1,108 @@
+import { useState } from 'react';
+
 export default function RepInsightCard({ repData, repNumber }) {
-  const { time, rom, peakVelocity, chartData, liftingTime, loweringTime } = repData;
+  const { time, rom, peakVelocity, chartData, liftingTime, loweringTime, classification, smoothnessScore } = repData;
+  const [showConfidenceOverlay, setShowConfidenceOverlay] = useState(false);
 
-  // Calculate lifting/lowering percentages from actual data or use placeholders
+  // Calculate lifting/lowering percentages from actual data
   const totalPhaseTime = (liftingTime || 0) + (loweringTime || 0);
-  const liftingPercent = totalPhaseTime > 0 
+  const hasPhaseData = totalPhaseTime > 0;
+  const liftingPercent = hasPhaseData
     ? ((liftingTime || 0) / totalPhaseTime * 100).toFixed(1)
-    : (35 + Math.random() * 10).toFixed(1); // Placeholder: 35-45%
-  const loweringPercent = totalPhaseTime > 0 
+    : null;
+  const loweringPercent = hasPhaseData
     ? ((loweringTime || 0) / totalPhaseTime * 100).toFixed(1)
-    : (100 - parseFloat(liftingPercent)).toFixed(1);
+    : null;
 
-  // Mock data for UI preview: Rep 1 is "Clean", all others are "Uncontrolled"
-  const isFirstRep = repNumber === 1;
-  const mlPrediction = {
-    confidence: isFirstRep ? 92 : 82,
-    formQuality: isFirstRep ? 'clean' : 'uncontrolled'
+  // Use real ML classification if available
+  const hasClassification = !!classification;
+  const mlPrediction = classification ? {
+    confidence: Math.round((classification.confidence || 0.8) * 100),
+    formQuality: classification.prediction === 0 ? 'clean' : 
+                 classification.prediction === 1 ? 'uncontrolled' : 'abrupt',
+    label: classification.label || 'Clean',
+    method: classification.method || 'unknown',
+    probabilities: classification.probabilities || null,
+    prediction: classification.prediction
+  } : null;
+  
+  // Determine form quality display and color based on classification
+  const getFormDisplay = (prediction) => {
+    if (!prediction) {
+      return { label: 'Pending', color: { primary: '#6b7280', secondary: '#9ca3af' } };
+    }
+    if (prediction.formQuality === 'clean' || prediction.label === 'Clean') {
+      return { label: prediction.label || 'Clean', color: { primary: '#22c55e', secondary: '#22c55e' } };
+    }
+    if (prediction.formQuality === 'abrupt' || prediction.label?.includes('Abrupt') || prediction.label?.includes('Too Fast')) {
+      return { label: prediction.label || 'Abrupt', color: { primary: '#ef4444', secondary: '#f87171' } };
+    }
+    return { label: prediction.label || 'Uncontrolled', color: { primary: '#f59e0b', secondary: '#fbbf24' } };
   };
   
-  // Determine form quality display and color (using same green as rep quality)
-  const formQuality = mlPrediction.formQuality === 'clean' ? 'Clean' : 'Uncontrolled';
-  const formColor = mlPrediction.formQuality === 'clean'
-    ? { primary: '#22c55e', secondary: '#22c55e' }
-    : { primary: '#f59e0b', secondary: '#fbbf24' };
+  const formDisplay = getFormDisplay(mlPrediction);
+  const formQuality = formDisplay.label;
+  const formColor = formDisplay.color;
 
-  // Placeholder metrics
-  const metrics = {
-    time: time || (1.5 + Math.random() * 2).toFixed(1),
-    rom: rom || Math.floor(80 + Math.random() * 40), // Actual ROM achieved
-    expectedRom: 120, // Expected/target ROM
-    peakVelocity: peakVelocity != null ? parseFloat(peakVelocity).toFixed(2) : (3 + Math.random() * 4).toFixed(2)
-  };
+  // Actual metrics - no random fallbacks
+  const repTime = time ? parseFloat(time) : null;
+  const repRom = rom ? parseFloat(rom) : null;
+  const repPeakVelocity = peakVelocity != null ? parseFloat(peakVelocity) : null;
+  const hasChartData = chartData && chartData.length > 0;
 
-  // Calculate ROM progress percentage
-  const romProgress = Math.min(100, (metrics.rom / metrics.expectedRom) * 100);
+  // ROM target reference (120° full curl ROM)
+  const expectedRom = 120;
+  const romProgress = repRom != null ? Math.min(100, (repRom / expectedRom) * 100) : null;
 
-  // Peak velocity normalized (0-10 m/s scale)
-  const velocityProgress = Math.min(100, (parseFloat(metrics.peakVelocity) / 10) * 100);
+  // Peak velocity normalized (0-10 scale)
+  const velocityProgress = repPeakVelocity != null ? Math.min(100, (repPeakVelocity / 10) * 100) : null;
 
-  // Calculate Rep Quality Score (0-100%) based on multiple factors
+  // Calculate Rep Quality Score from ACTUAL data only
   const calculateRepQuality = () => {
     let qualityScore = 0;
-    let factors = 0;
+    let totalWeight = 0;
 
     // Factor 1: ROM (30% weight)
-    if (romProgress) {
+    if (romProgress != null) {
       qualityScore += (romProgress / 100) * 30;
-      factors++;
+      totalWeight += 30;
     }
 
-    // Factor 2: Velocity (25% weight) - optimal is 50-80% of max
-    if (velocityProgress) {
-      const velocityOptimal = velocityProgress >= 50 && velocityProgress <= 80 ? 100 : 
-                              velocityProgress < 50 ? (velocityProgress / 50) * 100 :
-                              100 - ((velocityProgress - 80) / 20) * 30;
+    // Factor 2: Velocity (25% weight) - optimal is 30-70% of max
+    if (velocityProgress != null) {
+      const velocityOptimal = velocityProgress >= 30 && velocityProgress <= 70 ? 100 : 
+                              velocityProgress < 30 ? (velocityProgress / 30) * 100 :
+                              100 - ((velocityProgress - 70) / 30) * 40;
       qualityScore += (velocityOptimal / 100) * 25;
-      factors++;
+      totalWeight += 25;
     }
 
-    // Factor 3: Form Quality from ML (35% weight)
-    const formQualityScore = mlPrediction.confidence || 80;
-    qualityScore += (formQualityScore / 100) * 35;
-    factors++;
+    // Factor 3: ML Classification confidence (35% weight)
+    if (mlPrediction) {
+      const classificationBonus = mlPrediction.formQuality === 'clean' ? mlPrediction.confidence : 
+                                  mlPrediction.formQuality === 'uncontrolled' ? mlPrediction.confidence * 0.6 :
+                                  mlPrediction.confidence * 0.4;
+      qualityScore += (classificationBonus / 100) * 35;
+      totalWeight += 35;
+    }
 
-    // Factor 4: Tempo balance (10% weight) - lifting should be 35-45%
-    const liftingPct = parseFloat(liftingPercent);
-    const tempoScore = Math.max(0, 100 - Math.abs(liftingPct - 40) * 3);
-    qualityScore += (tempoScore / 100) * 10;
-    factors++;
+    // Factor 4: Tempo balance (10% weight) - Lifting should be 35-45%
+    if (hasPhaseData) {
+      const liftingPct = parseFloat(liftingPercent);
+      const tempoScore = Math.max(0, 100 - Math.abs(liftingPct - 40) * 3);
+      qualityScore += (tempoScore / 100) * 10;
+      totalWeight += 10;
+    }
 
-    return Math.round(qualityScore);
+    if (totalWeight === 0) return null;
+    return Math.round((qualityScore / totalWeight) * 100);
   };
 
   const repQuality = calculateRepQuality();
 
   // Determine effort/quality level and color based on quality score
   const getRepEffortLevel = (quality) => {
+    if (quality == null) return { level: '—', color: '#6b7280', textColor: 'text-gray-400' };
     if (quality >= 85) return { level: 'Excellent', color: '#22c55e', textColor: 'text-green-500' };
     if (quality >= 70) return { level: 'Good', color: '#22c55e', textColor: 'text-green-500' };
     if (quality >= 55) return { level: 'Moderate', color: '#eab308', textColor: 'text-yellow-500' };
@@ -83,21 +111,25 @@ export default function RepInsightCard({ repData, repNumber }) {
 
   const repEffort = getRepEffortLevel(repQuality);
 
-  // Sample chart data for velocity color demo - shows speeding up / slowing down phases
-  const sampleChartData = [
-    0.5, 1.2, 2.5, 4.5, 7, 9.5, 11.5, 13, 14, 13.5, 12, 9.5, 7, 4.5, 2.5, 1,
-    0.5, 1.5, 3.5, 6, 8.5, 11, 13, 14.5, 13, 11, 8.5, 6, 3.5, 1.5, 0.5
+  // Classification labels and colors for overlay
+  const classLabels = [
+    { label: 'Clean', color: '#22c55e' },
+    { label: 'Uncontrolled', color: '#f59e0b' },
+    { label: 'Too Fast', color: '#ef4444' }
   ];
-  const displayChartData = (chartData && chartData.length > 0) ? chartData : sampleChartData;
 
   return (
-    <div className="h-full rounded-3xl bg-white/5 backdrop-blur-sm shadow-xl overflow-hidden flex flex-col">
+    <div className="h-full rounded-3xl bg-white/5 backdrop-blur-sm shadow-xl overflow-hidden flex flex-col relative">
       {/* Header with Rep number (left) and Classification badge (right) */}
       <div className="px-5 pt-4 pb-3 flex items-center justify-between flex-shrink-0">
         <h4 className="text-sm sm:text-base lg:text-lg font-semibold text-white">Rep {repNumber}</h4>
         
-        {/* Classification Badge with Confidence - Top Right */}
-        <div className="inline-flex items-center gap-2 sm:gap-2.5 px-3 sm:px-3.5 lg:px-4 py-1.5 sm:py-2 rounded-full bg-black/60 backdrop-blur-sm">
+        {/* Classification Badge with Confidence - Top Right - HOVERABLE TOOLTIP */}
+        <div 
+          className="relative inline-flex items-center gap-2 sm:gap-2.5 px-3 sm:px-3.5 lg:px-4 py-1.5 sm:py-2 rounded-full bg-black/60 backdrop-blur-sm group cursor-help"
+          onMouseEnter={() => mlPrediction && setShowConfidenceOverlay(true)}
+          onMouseLeave={() => setShowConfidenceOverlay(false)}
+        >
           <div 
             className="w-2.5 sm:w-3 h-2.5 sm:h-3 rounded-full" 
             style={{ backgroundColor: formColor.primary }}
@@ -105,9 +137,64 @@ export default function RepInsightCard({ repData, repNumber }) {
           <span className="text-xs sm:text-sm lg:text-base font-semibold text-white">
             {formQuality}
           </span>
-          <span className="text-xs sm:text-sm lg:text-base font-semibold" style={{ color: formColor.secondary }}>
-            {mlPrediction.confidence}%
-          </span>
+          {mlPrediction && (
+            <span className="text-xs sm:text-sm lg:text-base font-semibold" style={{ color: formColor.secondary }}>
+              {mlPrediction.confidence}%
+            </span>
+          )}
+          
+          {/* Tooltip - appears on hover */}
+          {showConfidenceOverlay && mlPrediction && (
+            <div 
+              className="absolute top-full right-0 mt-2 z-50 pointer-events-none"
+              style={{ minWidth: '220px' }}
+            >
+              <div className="bg-black rounded-xl p-4 shadow-2xl border border-gray-700">
+                <h4 className="text-xs font-semibold text-white mb-3">Confidence Levels</h4>
+                <div className="space-y-2.5">
+                  {classLabels.map((cls, idx) => {
+                    // Get probability from array if available
+                    let prob = 0;
+                    if (mlPrediction.probabilities && Array.isArray(mlPrediction.probabilities)) {
+                      prob = Math.round(mlPrediction.probabilities[idx] * 100);
+                    } else if (mlPrediction.prediction === idx) {
+                      prob = mlPrediction.confidence;
+                    }
+                    
+                    const isSelected = mlPrediction.prediction === idx;
+                    
+                    return (
+                      <div key={cls.label} className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: cls.color }} />
+                            <span className={`text-xs font-medium ${isSelected ? 'text-white' : 'text-gray-400'}`}>
+                              {cls.label}
+                            </span>
+                          </div>
+                          <span className={`text-xs font-bold ${isSelected ? 'text-white' : 'text-gray-500'}`}>
+                            {prob}%
+                          </span>
+                        </div>
+                        <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full rounded-full transition-all duration-300"
+                            style={{ 
+                              width: `${prob}%`, 
+                              backgroundColor: cls.color
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="text-[10px] text-gray-500 text-center mt-3 pt-2 border-t border-gray-800">
+                  {mlPrediction.method === 'ml_model' ? 'ML Model' : 'Rule-based'}
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -116,64 +203,74 @@ export default function RepInsightCard({ repData, repNumber }) {
         {/* Graph Container - responsive height */}
         <div className="w-full bg-black/40 rounded-xl overflow-hidden" style={{ height: 'clamp(140px, 35vw, 240px)' }}>
           {chartData && chartData.length > 0 ? (
-            <svg className="w-full h-full" viewBox="0 0 400 140" preserveAspectRatio="none">
-              <defs>
-                <linearGradient id={`repGradient${repNumber}`} x1="0%" y1="0%" x2="0%" y2="100%">
-                  <stop offset="0%" style={{ stopColor: formColor.primary, stopOpacity: 0.5 }} />
-                  <stop offset="100%" style={{ stopColor: formColor.primary, stopOpacity: 0.05 }} />
-                </linearGradient>
-              </defs>
+            (() => {
+              // Use proper min-max normalization like relabeler.py
+              const minVal = Math.min(...chartData);
+              const maxVal = Math.max(...chartData);
+              const range = maxVal - minVal || 1;
+              const padding = 10;
               
-              {/* Grid lines */}
-              <line x1="0" y1="35" x2="400" y2="35" stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
-              <line x1="0" y1="70" x2="400" y2="70" stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
-              <line x1="0" y1="105" x2="400" y2="105" stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
-              
-              <polygon
-                points={`
-                  ${chartData.map((value, index) => {
-                    const x = (index / (chartData.length - 1)) * 400;
-                    const normalizedValue = Math.max(0, Math.min(1, Math.abs(value) / 15));
-                    const y = 140 - (normalizedValue * 120 + 10);
-                    return `${x},${y}`;
-                  }).join(' ')}
-                  400,140 0,140
-                `}
-                fill={`url(#repGradient${repNumber})`}
-              />
-              
-              <polyline
-                points={chartData.map((value, index) => {
-                  const x = (index / (chartData.length - 1)) * 400;
-                  const normalizedValue = Math.max(0, Math.min(1, Math.abs(value) / 15));
-                  const y = 140 - (normalizedValue * 120 + 10);
-                  return `${x},${y}`;
-                }).join(' ')}
-                fill="none"
-                stroke={formColor.primary}
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              
-              {(() => {
-                const maxIndex = chartData.reduce((maxI, val, i, arr) => Math.abs(val) > Math.abs(arr[maxI]) ? i : maxI, 0);
-                const maxValue = chartData[maxIndex];
-                const x = (maxIndex / (chartData.length - 1)) * 400;
-                const normalizedValue = Math.max(0, Math.min(1, Math.abs(maxValue) / 15));
-                const y = 140 - (normalizedValue * 120 + 10);
-                return (
-                  <circle
-                    cx={x}
-                    cy={y}
-                    r="5"
-                    fill="white"
+              return (
+                <svg className="w-full h-full" viewBox="0 0 400 140" preserveAspectRatio="none">
+                  <defs>
+                    <linearGradient id={`repGradient${repNumber}`} x1="0%" y1="0%" x2="0%" y2="100%">
+                      <stop offset="0%" style={{ stopColor: formColor.primary, stopOpacity: 0.5 }} />
+                      <stop offset="100%" style={{ stopColor: formColor.primary, stopOpacity: 0.05 }} />
+                    </linearGradient>
+                  </defs>
+                  
+                  {/* Grid lines */}
+                  <line x1="0" y1="35" x2="400" y2="35" stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
+                  <line x1="0" y1="70" x2="400" y2="70" stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
+                  <line x1="0" y1="105" x2="400" y2="105" stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
+                  
+                  <polygon
+                    points={`
+                      ${chartData.map((value, index) => {
+                        const x = (index / (chartData.length - 1)) * 400;
+                        const normalizedValue = (value - minVal) / range;
+                        const y = 140 - padding - (normalizedValue * (140 - 2 * padding));
+                        return `${x},${y}`;
+                      }).join(' ')}
+                      400,${140 - padding} 0,${140 - padding}
+                    `}
+                    fill={`url(#repGradient${repNumber})`}
+                  />
+                  
+                  <polyline
+                    points={chartData.map((value, index) => {
+                      const x = (index / (chartData.length - 1)) * 400;
+                      const normalizedValue = (value - minVal) / range;
+                      const y = 140 - padding - (normalizedValue * (140 - 2 * padding));
+                      return `${x},${y}`;
+                    }).join(' ')}
+                    fill="none"
                     stroke={formColor.primary}
                     strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
                   />
-                );
-              })()}
-            </svg>
+                  
+                  {(() => {
+                    const maxIndex = chartData.reduce((maxI, val, i, arr) => val > arr[maxI] ? i : maxI, 0);
+                    const maxValue = chartData[maxIndex];
+                    const x = (maxIndex / (chartData.length - 1)) * 400;
+                    const normalizedValue = (maxValue - minVal) / range;
+                    const y = 140 - padding - (normalizedValue * (140 - 2 * padding));
+                    return (
+                      <circle
+                        cx={x}
+                        cy={y}
+                        r="5"
+                        fill="white"
+                        stroke={formColor.primary}
+                        strokeWidth="2.5"
+                      />
+                    );
+                  })()}
+                </svg>
+              );
+            })()
           ) : (
             <div className="flex items-center justify-center h-full text-gray-500 text-sm">
               No data
@@ -193,7 +290,7 @@ export default function RepInsightCard({ repData, repNumber }) {
           </div>
           <div className="flex flex-col">
             <span className="text-[10px] sm:text-xs lg:text-sm font-medium text-gray-300">Rep Quality</span>
-            <span className={`text-lg sm:text-2xl lg:text-3xl font-bold ${repEffort.textColor}`}>{repQuality}%</span>
+            <span className={`text-lg sm:text-2xl lg:text-3xl font-bold ${repEffort.textColor}`}>{repQuality != null ? `${repQuality}%` : '—'}</span>
           </div>
         </div>
 
@@ -206,107 +303,99 @@ export default function RepInsightCard({ repData, repNumber }) {
           </div>
           <div className="flex flex-col">
             <span className="text-[10px] sm:text-xs lg:text-sm font-medium text-gray-300">Rep Duration</span>
-            <span className="text-lg sm:text-2xl lg:text-3xl font-bold text-white">{metrics.time}s</span>
+            <span className="text-lg sm:text-2xl lg:text-3xl font-bold text-white">{repTime != null ? `${repTime}s` : '—'}</span>
           </div>
         </div>
       </div>
 
       {/* Metrics Section - Stacked vertically */}
       <div className="px-5 pb-5 space-y-5 sm:space-y-6 lg:space-y-7 flex-shrink-0">
-        {/* Movement Phases - Using same visualization as LiftPhases */}
+        {/* Movement Phases */}
         <div className="space-y-2 sm:space-y-3">
           <div className="flex items-center justify-between mb-1">
             <span className="text-xs sm:text-sm lg:text-base font-medium text-gray-300">Movement Phases</span>
           </div>
           
-          {/* Stacked Horizontal Progress Bar */}
-          <div className="relative h-3 sm:h-4 lg:h-5 bg-white/10 rounded-full overflow-hidden">
-            {/* Concentric (Lifting) portion */}
-            <div 
-              className="absolute inset-y-0 left-0 bg-gradient-to-r from-teal-500 to-cyan-400 transition-all duration-500"
-              style={{ width: `${liftingPercent}%` }}
-            />
-            {/* Eccentric (Lowering) portion */}
-            <div 
-              className="absolute inset-y-0 bg-gradient-to-r from-yellow-500 to-orange-400 transition-all duration-500"
-              style={{ left: `${liftingPercent}%`, right: 0 }}
-            />
-          </div>
+          {hasPhaseData ? (
+            <>
+              {/* Stacked Horizontal Progress Bar */}
+              <div className="relative h-3 sm:h-4 lg:h-5 bg-white/10 rounded-full overflow-hidden">
+                <div 
+                  className="absolute inset-y-0 left-0 bg-gradient-to-r from-teal-500 to-cyan-400 transition-all duration-500"
+                  style={{ width: `${liftingPercent}%` }}
+                />
+                <div 
+                  className="absolute inset-y-0 bg-gradient-to-r from-yellow-500 to-orange-400 transition-all duration-500"
+                  style={{ left: `${liftingPercent}%`, right: 0 }}
+                />
+              </div>
 
-          {/* Labels below progress bar */}
-          <div className="flex items-center justify-between pt-1.5 sm:pt-2.5">
-            <div className="flex items-center gap-2 sm:gap-2.5">
-              <div className="w-1 h-10 sm:h-12 lg:h-14 bg-gradient-to-b from-teal-500 to-cyan-400 rounded-full" />
-              <div className="flex flex-col">
-                <span className="text-base sm:text-lg lg:text-xl font-bold text-white">{liftingPercent}%</span>
-                <span className="text-[10px] sm:text-xs lg:text-sm text-gray-400">Lifting</span>
+              {/* Labels below progress bar */}
+              <div className="flex items-center justify-between pt-1.5 sm:pt-2.5">
+                <div className="flex items-center gap-2 sm:gap-2.5">
+                  <div className="w-1 h-10 sm:h-12 lg:h-14 bg-gradient-to-b from-teal-500 to-cyan-400 rounded-full" />
+                  <div className="flex flex-col">
+                    <span className="text-base sm:text-lg lg:text-xl font-bold text-white">{liftingPercent}%</span>
+                    <span className="text-[10px] sm:text-xs lg:text-sm text-gray-400">Lifting</span>
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-2 sm:gap-2.5">
+                  <div className="flex flex-col items-end">
+                    <span className="text-base sm:text-lg lg:text-xl font-bold text-white">{loweringPercent}%</span>
+                    <span className="text-[10px] sm:text-xs lg:text-sm text-gray-400">Lowering</span>
+                  </div>
+                  <div className="w-1 h-10 sm:h-12 lg:h-14 bg-gradient-to-b from-yellow-500 to-orange-400 rounded-full" />
+                </div>
               </div>
+            </>
+          ) : (
+            <div className="flex items-center justify-center py-4 bg-white/5 rounded-xl">
+              <span className="text-xs text-gray-500">Phase data available after analysis</span>
             </div>
-            
-            <div className="flex items-center gap-2 sm:gap-2.5">
-              <div className="flex flex-col items-end">
-                <span className="text-base sm:text-lg lg:text-xl font-bold text-white">{loweringPercent}%</span>
-                <span className="text-[10px] sm:text-xs lg:text-sm text-gray-400">Lowering</span>
-              </div>
-              <div className="w-1 h-10 sm:h-12 lg:h-14 bg-gradient-to-b from-yellow-500 to-orange-400 rounded-full" />
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Bottom Cards - Two rounded squares side by side */}
         <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:gap-5">
           {/* Left Card - Range of Motion with circular progress */}
           <div className="relative bg-black/30 rounded-xl sm:rounded-2xl overflow-hidden p-3 sm:p-5 lg:p-6 flex flex-col justify-between" style={{ minHeight: 'clamp(140px, 40vw, 280px)' }}>
-            {/* Content */}
             <div className="relative z-10">
               <span className="text-[10px] sm:text-xs lg:text-sm font-medium text-gray-300">Range of Motion</span>
             </div>
             <div className="relative z-10 flex items-center justify-center flex-1 min-h-0 py-2 sm:py-3">
-              {/* Mini Circular Progress - Larger size */}
-              <div className="relative" style={{ width: 'clamp(70px, 22vw, 140px)', height: 'clamp(70px, 22vw, 140px)' }}>
-                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-                  {/* Background circle */}
-                  <circle
-                    cx="50"
-                    cy="50"
-                    r="42"
-                    fill="none"
-                    stroke="rgba(255, 255, 255, 0.1)"
-                    strokeWidth="8"
-                  />
-                  
-                  {/* Progress circle - solid color */}
-                  <circle
-                    cx="50"
-                    cy="50"
-                    r="42"
-                    fill="none"
-                    stroke="#f97316"
-                    strokeWidth="8"
-                    strokeLinecap="round"
-                    strokeDasharray={`${2 * Math.PI * 42}`}
-                    strokeDashoffset={`${2 * Math.PI * 42 * (1 - romProgress / 100)}`}
-                    style={{ 
-                      transition: 'stroke-dashoffset 1s ease-out'
-                    }}
-                  />
-                </svg>
-                
-                {/* Percentage text in center */}
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="text-lg sm:text-2xl lg:text-3xl font-bold text-white">
-                    {Math.round(romProgress)}%
-                  </span>
+              {romProgress != null ? (
+                <div className="relative" style={{ width: 'clamp(70px, 22vw, 140px)', height: 'clamp(70px, 22vw, 140px)' }}>
+                  <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                    <circle cx="50" cy="50" r="42" fill="none" stroke="rgba(255, 255, 255, 0.1)" strokeWidth="8" />
+                    <circle
+                      cx="50" cy="50" r="42" fill="none"
+                      stroke="#f97316" strokeWidth="8" strokeLinecap="round"
+                      strokeDasharray={`${2 * Math.PI * 42}`}
+                      strokeDashoffset={`${2 * Math.PI * 42 * (1 - romProgress / 100)}`}
+                      style={{ transition: 'stroke-dashoffset 1s ease-out' }}
+                    />
+                  </svg>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span className="text-lg sm:text-2xl lg:text-3xl font-bold text-white">
+                      {Math.round(romProgress)}%
+                    </span>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center gap-1">
+                  <span className="text-2xl font-bold text-gray-500">—</span>
+                  <span className="text-[10px] text-gray-600">No data</span>
+                </div>
+              )}
             </div>
           </div>
 
           {/* Right Card - Peak Velocity with chart background */}
           <div className="relative bg-black/30 rounded-xl sm:rounded-2xl overflow-hidden p-3 sm:p-5 lg:p-6 flex flex-col justify-between" style={{ minHeight: 'clamp(140px, 40vw, 280px)' }}>
-            {/* Mini chart background */}
-            <div className="absolute inset-0 opacity-80">
-              {displayChartData && displayChartData.length > 0 && (
+            {/* Mini chart background - only render with actual data */}
+            {hasChartData && (
+              <div className="absolute inset-0 opacity-80">
                 <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
                   <defs>
                     <linearGradient id={`velocityFillGrad${repNumber}`} x1="0%" y1="0%" x2="0%" y2="100%">
@@ -315,11 +404,10 @@ export default function RepInsightCard({ repData, repNumber }) {
                     </linearGradient>
                   </defs>
                   
-                  {/* Fill area */}
                   <polygon
                     points={`
-                      ${displayChartData.map((value, index) => {
-                        const x = (index / (displayChartData.length - 1)) * 100;
+                      ${chartData.map((value, index) => {
+                        const x = (index / (chartData.length - 1)) * 100;
                         const normalizedValue = Math.max(0, Math.min(1, Math.abs(value) / 15));
                         const y = 100 - (normalizedValue * 80 + 10);
                         return `${x},${y}`;
@@ -329,99 +417,77 @@ export default function RepInsightCard({ repData, repNumber }) {
                     fill={`url(#velocityFillGrad${repNumber})`}
                   />
                   
-                  {/* Line segments colored by velocity magnitude: red (slow) → yellow (medium) → green (fast) */}
-                  {displayChartData.map((value, index) => {
+                  {chartData.map((value, index) => {
                     if (index === 0) return null;
-                    const prevValue = displayChartData[index - 1];
-                    
+                    const prevValue = chartData[index - 1];
                     const prevNorm = Math.max(0, Math.min(1, Math.abs(prevValue) / 15));
                     const currNorm = Math.max(0, Math.min(1, Math.abs(value) / 15));
                     const avgNorm = (prevNorm + currNorm) / 2;
                     
-                    // 5-level color gradient: red → orange → yellow → lime → green
                     let color;
-                    if (avgNorm < 0.2) {
-                      color = '#ef4444'; // Red - very slow
-                    } else if (avgNorm < 0.4) {
-                      color = '#f97316'; // Orange - slow
-                    } else if (avgNorm < 0.55) {
-                      color = '#eab308'; // Yellow - medium
-                    } else if (avgNorm < 0.75) {
-                      color = '#84cc16'; // Lime - fast
-                    } else {
-                      color = '#22c55e'; // Green - very fast
-                    }
+                    if (avgNorm < 0.2) color = '#ef4444';
+                    else if (avgNorm < 0.4) color = '#f97316';
+                    else if (avgNorm < 0.55) color = '#eab308';
+                    else if (avgNorm < 0.75) color = '#84cc16';
+                    else color = '#22c55e';
                     
-                    const x1 = ((index - 1) / (displayChartData.length - 1)) * 100;
+                    const x1 = ((index - 1) / (chartData.length - 1)) * 100;
                     const y1 = 100 - (prevNorm * 80 + 10);
-                    const x2 = (index / (displayChartData.length - 1)) * 100;
+                    const x2 = (index / (chartData.length - 1)) * 100;
                     const y2 = 100 - (currNorm * 80 + 10);
                     
                     return (
-                      <line
-                        key={index}
-                        x1={x1}
-                        y1={y1}
-                        x2={x2}
-                        y2={y2}
-                        stroke={color}
-                        strokeWidth="3"
-                        strokeLinecap="round"
-                      />
+                      <line key={index} x1={x1} y1={y1} x2={x2} y2={y2}
+                        stroke={color} strokeWidth="3" strokeLinecap="round" />
                     );
                   })}
                   
-                  {/* Peak velocity circle marker */}
                   {(() => {
-                    const maxIndex = displayChartData.reduce((maxI, val, i, arr) => Math.abs(val) > Math.abs(arr[maxI]) ? i : maxI, 0);
-                    const maxValue = displayChartData[maxIndex];
-                    const cx = (maxIndex / (displayChartData.length - 1)) * 100;
+                    const maxIndex = chartData.reduce((maxI, val, i, arr) => Math.abs(val) > Math.abs(arr[maxI]) ? i : maxI, 0);
+                    const maxValue = chartData[maxIndex];
+                    const cx = (maxIndex / (chartData.length - 1)) * 100;
                     const normalizedValue = Math.max(0, Math.min(1, Math.abs(maxValue) / 15));
                     const cy = 100 - (normalizedValue * 80 + 10);
-                    return (
-                      <circle
-                        cx={cx}
-                        cy={cy}
-                        r="4"
-                        fill="#22c55e"
-                        stroke="white"
-                        strokeWidth="1.5"
-                      />
-                    );
+                    return <circle cx={cx} cy={cy} r="4" fill="#22c55e" stroke="white" strokeWidth="1.5" />;
                   })()}
                 </svg>
-              )}
-            </div>
+              </div>
+            )}
             
-            {/* Content overlay */}
             <div className="relative z-10">
               <span className="text-[10px] sm:text-xs lg:text-sm font-medium text-gray-300">Peak Velocity</span>
             </div>
             <div className="relative z-10">
-              <span className="text-xl sm:text-3xl lg:text-4xl font-bold text-green-400">{metrics.peakVelocity}</span>
-              <span className="text-[10px] sm:text-xs lg:text-sm text-gray-400 ml-1">m/s</span>
-              <div className="flex items-center gap-1 mt-1.5 sm:mt-2">
-                <svg className="w-2.5 sm:w-3.5 lg:w-4 h-2.5 sm:h-3.5 lg:h-4 text-green-400" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                </svg>
-                <span className="text-[9px] sm:text-[10px] lg:text-xs text-gray-500">{velocityProgress.toFixed(0)}% of max</span>
-              </div>
+              {repPeakVelocity != null ? (
+                <>
+                  <span className="text-xl sm:text-3xl lg:text-4xl font-bold text-green-400">{repPeakVelocity.toFixed(2)}</span>
+                  <span className="text-[10px] sm:text-xs lg:text-sm text-gray-400 ml-1">m/s</span>
+                  {velocityProgress != null && (
+                    <div className="flex items-center gap-1 mt-1.5 sm:mt-2">
+                      <svg className="w-2.5 sm:w-3.5 lg:w-4 h-2.5 sm:h-3.5 lg:h-4 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                      </svg>
+                      <span className="text-[9px] sm:text-[10px] lg:text-xs text-gray-500">{velocityProgress.toFixed(0)}% of max</span>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <span className="text-2xl font-bold text-gray-500">—</span>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Insights below cards */}
+        {/* Insights below cards - based on ML classification */}
         <div className="pt-2 sm:pt-3 lg:pt-4 pb-8 sm:pb-10 lg:pb-12">
           <p className="text-xs sm:text-sm lg:text-base text-purple-300 leading-relaxed text-center">
-            {romProgress >= 90 && velocityProgress >= 70
-              ? 'Excellent form! Great depth and explosive power combination.'
-              : romProgress >= 90
-              ? 'Perfect depth achieved! Try increasing velocity for more power.'
-              : velocityProgress >= 70
-              ? 'Great power output! Focus on achieving deeper range of motion.'
-              : romProgress >= 70
-              ? 'Good movement. Work on both depth and speed for optimal results.'
-              : 'Focus on controlled, deeper movements with consistent velocity.'}
+            {!mlPrediction
+              ? 'Analyzing rep performance...'
+              : mlPrediction.formQuality === 'clean'
+              ? '✓ Clean rep! Controlled tempo with smooth movement throughout the range.'
+              : mlPrediction.formQuality === 'uncontrolled'
+              ? '⚠ Uncontrolled movement detected. Focus on maintaining steady tempo and control.'
+              : '⚠ Too fast! Slow down the movement to maintain proper form and muscle tension.'}
           </p>
         </div>
       </div>

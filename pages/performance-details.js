@@ -10,11 +10,14 @@ export default function PerformanceDetails() {
     equipment,
     setsData,
     recommendedSets,
-    recommendedReps
+    recommendedReps,
+    workoutId,
+    analysisData: analysisDataRaw
   } = router.query;
 
   // Parse JSON data from query params
   const parsedSetsData = setsData ? JSON.parse(setsData) : [];
+  const analysisData = analysisDataRaw ? JSON.parse(analysisDataRaw) : null;
 
   return (
     <div className="min-h-screen bg-black text-white">
@@ -33,13 +36,16 @@ export default function PerformanceDetails() {
           />
         </div>
 
-        {/* Rep by rep section - Takes remaining height with responsive padding */}
-        <div className="flex-1 overflow-hidden px-5 sm:px-4" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
-          <RepByRepCard 
-            setsData={setsData}
-            parsedSetsData={parsedSetsData}
-            recommendedSets={recommendedSets}
-          />
+        {/* Scrollable body */}
+        <div className="flex-1 overflow-y-auto px-5 sm:px-4" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
+          {/* Rep by rep carousel section */}
+          <div className="flex-1" style={{ minHeight: '60vh' }}>
+            <RepByRepCard 
+              setsData={setsData}
+              parsedSetsData={parsedSetsData}
+              recommendedSets={recommendedSets}
+            />
+          </div>
         </div>
       </div>
     </div>

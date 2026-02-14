@@ -178,7 +178,8 @@ export class WorkoutStreakService {
         today.setHours(0, 0, 0, 0);
         lastWorkout.setHours(0, 0, 0, 0);
         
-        const daysDiff = Math.floor((today - lastWorkout) / (1000 * 60 * 60 * 24));
+        // Calculate calendar days difference (not time difference)
+        const daysDiff = Math.round((today - lastWorkout) / (1000 * 60 * 60 * 24));
         
         // If more than 1 day has passed, reset current streak
         if (daysDiff > 1) {

@@ -119,8 +119,12 @@ export function useWorkoutStreak() {
     
     const date = new Date(streakData.lastWorkoutDate.seconds * 1000);
     const now = new Date();
-    const diffTime = Math.abs(now - date);
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    
+    // Compare calendar dates (not time difference)
+    // This ensures proper "Yesterday" labeling regardless of time
+    const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const todayOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const diffDays = Math.round((todayOnly - dateOnly) / (1000 * 60 * 60 * 24));
     
     if (diffDays === 0) return "Today";
     if (diffDays === 1) return "Yesterday";
