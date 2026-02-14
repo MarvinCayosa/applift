@@ -445,7 +445,7 @@ export default function Workouts() {
 
         {/* Workout carousel */}
         {scannedEquipment && (scannedEquipment.type === 'Barbell' || scannedEquipment.type === 'Dumbbell' || scannedEquipment.type === 'Weight Stack') && (
-          <section className="pt-2.5 sm:pt-4.5 flex-1 flex flex-col min-h-0 pb-2">
+          <section className="pt-2.5 sm:pt-5 flex-1 flex flex-col min-h-0 pb-2">
             <h2 className="text-center text-xs sm:text-sm font-semibold text-white/80 px-4 content-fade-up-3 mb-3" style={{ animationDelay: '0.15s' }}>Choose Your Workout</h2>
 
           {/* Mobile Carousel - compact slides matching Equipment Tag width */}

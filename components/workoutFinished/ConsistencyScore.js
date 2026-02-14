@@ -160,19 +160,6 @@ export default function ConsistencyScore({ setsData }) {
             </linearGradient>
           </defs>
 
-          {/* Subtle grid lines */}
-          {[0.25, 0.5, 0.75].map((frac, i) => (
-            <line
-              key={i}
-              x1={padding}
-              y1={padding + frac * (chartHeight - 2 * padding)}
-              x2={chartWidth - padding}
-              y2={padding + frac * (chartHeight - 2 * padding)}
-              stroke="rgba(255,255,255,0.06)"
-              strokeWidth="1"
-            />
-          ))}
-
           {/* Rep lines - draw each rep's curve */}
           {repCharts.map((rep, idx) => {
             const color = repColors[idx % repColors.length];

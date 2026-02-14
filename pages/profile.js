@@ -13,7 +13,7 @@ export default function Profile() {
           <div className="text-center">
             <h1 className="text-2xl font-semibold text-white">Profile</h1>
             <p className="text-sm text-white/70 mt-2.5">This is a placeholder Profile page.</p>
-            <div className="mt-4.5">
+            <div className="mt-5">
               <Link href="/dashboard"><a className="text-sm text-white/80 underline">Back to Dashboard</a></Link>
             </div>
           </div>

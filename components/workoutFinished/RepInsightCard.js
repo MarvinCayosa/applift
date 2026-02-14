@@ -93,7 +93,7 @@ export default function RepInsightCard({ repData, repNumber }) {
   return (
     <div className="h-full rounded-3xl bg-white/5 backdrop-blur-sm shadow-xl overflow-hidden flex flex-col">
       {/* Header with Rep number (left) and Classification badge (right) */}
-      <div className="px-5 pt-5.5 pb-3 flex items-center justify-between flex-shrink-0">
+      <div className="px-5 pt-4 pb-3 flex items-center justify-between flex-shrink-0">
         <h4 className="text-sm sm:text-base lg:text-lg font-semibold text-white">Rep {repNumber}</h4>
         
         {/* Classification Badge with Confidence - Top Right */}
@@ -183,7 +183,7 @@ export default function RepInsightCard({ repData, repNumber }) {
       </div>
 
       {/* Stats Bar - Rep Quality and Rep Duration */}
-      <div className="px-5 pt-5.5 pb-5 flex items-center justify-center gap-8 sm:gap-12 lg:gap-16 flex-shrink-0">
+      <div className="px-5 pt-2 pb-5 flex items-center justify-center gap-8 sm:gap-12 lg:gap-16 flex-shrink-0">
         {/* Rep Quality */}
         <div className="flex items-center gap-2 sm:gap-3">
           <div className="w-6 h-6 sm:w-8 sm:h-8 lg:w-9 lg:h-9 flex items-center justify-center flex-shrink-0">
@@ -411,7 +411,7 @@ export default function RepInsightCard({ repData, repNumber }) {
         </div>
 
         {/* Insights below cards */}
-        <div className="pt-4.5 sm:pt-5.5 lg:pt-6.5 pb-8 sm:pb-10 lg:pb-12">
+        <div className="pt-2 sm:pt-3 lg:pt-4 pb-8 sm:pb-10 lg:pb-12">
           <p className="text-xs sm:text-sm lg:text-base text-purple-300 leading-relaxed text-center">
             {romProgress >= 90 && velocityProgress >= 70
               ? 'Excellent form! Great depth and explosive power combination.'
