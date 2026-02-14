@@ -231,7 +231,7 @@ export default function WorkoutSummaryCard({
   };
 
   return (
-    <div className="w-full rounded-3xl bg-white/5 backdrop-blur-sm border border-white/10 p-5 shadow-xl content-fade-up-1">
+    <div className="w-full rounded-3xl bg-white/5 backdrop-blur-sm p-5 shadow-xl content-fade-up-1">
       {/* Title Section */}
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="flex-1">
@@ -243,7 +243,7 @@ export default function WorkoutSummaryCard({
         {onSeeMore && (
           <button
             onClick={onSeeMore}
-            className="text-sm text-purple-400 hover:text-purple-300 transition-colors font-medium flex items-center gap-1 mt-0.5 shrink-0"
+            className="text-sm text-purple-400 hover:text-purple-300 transition-colors font-medium flex items-center gap-1 mt-1 shrink-0"
           >
             See More
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -254,7 +254,7 @@ export default function WorkoutSummaryCard({
       </div>
 
       {/* Chart Container */}
-      <div className="relative h-48 rounded-2xl overflow-hidden mb-4 bg-white/5">
+      <div className="relative h-48 rounded-2xl overflow-hidden mb-4 bg-black/30">
         <canvas ref={canvasRef} className="w-full h-full" />
       </div>
 

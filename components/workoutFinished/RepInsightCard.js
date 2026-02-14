@@ -17,10 +17,10 @@ export default function RepInsightCard({ repData, repNumber }) {
     formQuality: isFirstRep ? 'clean' : 'uncontrolled'
   };
   
-  // Determine form quality display
+  // Determine form quality display and color (using same green as rep quality)
   const formQuality = mlPrediction.formQuality === 'clean' ? 'Clean' : 'Uncontrolled';
   const formColor = mlPrediction.formQuality === 'clean'
-    ? { primary: '#10b981', secondary: '#34d399' }
+    ? { primary: '#22c55e', secondary: '#22c55e' }
     : { primary: '#f59e0b', secondary: '#fbbf24' };
 
   // Placeholder metrics
@@ -37,6 +37,52 @@ export default function RepInsightCard({ repData, repNumber }) {
   // Peak velocity normalized (0-10 m/s scale)
   const velocityProgress = Math.min(100, (parseFloat(metrics.peakVelocity) / 10) * 100);
 
+  // Calculate Rep Quality Score (0-100%) based on multiple factors
+  const calculateRepQuality = () => {
+    let qualityScore = 0;
+    let factors = 0;
+
+    // Factor 1: ROM (30% weight)
+    if (romProgress) {
+      qualityScore += (romProgress / 100) * 30;
+      factors++;
+    }
+
+    // Factor 2: Velocity (25% weight) - optimal is 50-80% of max
+    if (velocityProgress) {
+      const velocityOptimal = velocityProgress >= 50 && velocityProgress <= 80 ? 100 : 
+                              velocityProgress < 50 ? (velocityProgress / 50) * 100 :
+                              100 - ((velocityProgress - 80) / 20) * 30;
+      qualityScore += (velocityOptimal / 100) * 25;
+      factors++;
+    }
+
+    // Factor 3: Form Quality from ML (35% weight)
+    const formQualityScore = mlPrediction.confidence || 80;
+    qualityScore += (formQualityScore / 100) * 35;
+    factors++;
+
+    // Factor 4: Tempo balance (10% weight) - lifting should be 35-45%
+    const liftingPct = parseFloat(liftingPercent);
+    const tempoScore = Math.max(0, 100 - Math.abs(liftingPct - 40) * 3);
+    qualityScore += (tempoScore / 100) * 10;
+    factors++;
+
+    return Math.round(qualityScore);
+  };
+
+  const repQuality = calculateRepQuality();
+
+  // Determine effort/quality level and color based on quality score
+  const getRepEffortLevel = (quality) => {
+    if (quality >= 85) return { level: 'Excellent', color: '#22c55e', textColor: 'text-green-500' };
+    if (quality >= 70) return { level: 'Good', color: '#22c55e', textColor: 'text-green-500' };
+    if (quality >= 55) return { level: 'Moderate', color: '#eab308', textColor: 'text-yellow-500' };
+    return { level: 'Needs Work', color: '#ef4444', textColor: 'text-red-500' };
+  };
+
+  const repEffort = getRepEffortLevel(repQuality);
+
   // Sample chart data for velocity color demo - shows speeding up / slowing down phases
   const sampleChartData = [
     0.5, 1.2, 2.5, 4.5, 7, 9.5, 11.5, 13, 14, 13.5, 12, 9.5, 7, 4.5, 2.5, 1,
@@ -45,13 +91,13 @@ export default function RepInsightCard({ repData, repNumber }) {
   const displayChartData = (chartData && chartData.length > 0) ? chartData : sampleChartData;
 
   return (
-    <div className="h-full rounded-3xl bg-white/5 backdrop-blur-sm border border-white/10 shadow-xl overflow-hidden flex flex-col">
+    <div className="h-full rounded-3xl bg-white/5 backdrop-blur-sm shadow-xl overflow-hidden flex flex-col">
       {/* Header with Rep number (left) and Classification badge (right) */}
-      <div className="px-4 sm:px-5 lg:px-6 pt-4 sm:pt-5 lg:pt-6 pb-3 sm:pb-4 flex items-center justify-between flex-shrink-0">
+      <div className="px-5 pt-5.5 pb-3 flex items-center justify-between flex-shrink-0">
         <h4 className="text-sm sm:text-base lg:text-lg font-semibold text-white">Rep {repNumber}</h4>
         
         {/* Classification Badge with Confidence - Top Right */}
-        <div className="inline-flex items-center gap-2 sm:gap-2.5 px-3 sm:px-3.5 lg:px-4 py-1.5 sm:py-2 rounded-full bg-black/60 backdrop-blur-sm border border-white/20">
+        <div className="inline-flex items-center gap-2 sm:gap-2.5 px-3 sm:px-3.5 lg:px-4 py-1.5 sm:py-2 rounded-full bg-black/60 backdrop-blur-sm">
           <div 
             className="w-2.5 sm:w-3 h-2.5 sm:h-3 rounded-full" 
             style={{ backgroundColor: formColor.primary }}
@@ -66,9 +112,9 @@ export default function RepInsightCard({ repData, repNumber }) {
       </div>
 
       {/* Graph Section */}
-      <div className="relative px-4 sm:px-5 lg:px-6 pb-4 sm:pb-5 lg:pb-6 flex-shrink-0">
+      <div className="relative px-5 pb-5 flex-shrink-0">
         {/* Graph Container - responsive height */}
-        <div className="w-full bg-black/40 rounded-xl overflow-hidden border border-white/10" style={{ height: 'clamp(140px, 35vw, 240px)' }}>
+        <div className="w-full bg-black/40 rounded-xl overflow-hidden" style={{ height: 'clamp(140px, 35vw, 240px)' }}>
           {chartData && chartData.length > 0 ? (
             <svg className="w-full h-full" viewBox="0 0 400 140" preserveAspectRatio="none">
               <defs>
@@ -136,18 +182,18 @@ export default function RepInsightCard({ repData, repNumber }) {
         </div>
       </div>
 
-      {/* Stats Bar - Confidence and Rep Duration */}
-      <div className="px-4 sm:px-5 lg:px-6 pt-4 sm:pt-5 lg:pt-6 pb-4 sm:pb-5 lg:pb-6 flex items-center justify-center gap-8 sm:gap-12 lg:gap-16 flex-shrink-0">
-        {/* Confidence */}
+      {/* Stats Bar - Rep Quality and Rep Duration */}
+      <div className="px-5 pt-5.5 pb-5 flex items-center justify-center gap-8 sm:gap-12 lg:gap-16 flex-shrink-0">
+        {/* Rep Quality */}
         <div className="flex items-center gap-2 sm:gap-3">
           <div className="w-6 h-6 sm:w-8 sm:h-8 lg:w-9 lg:h-9 flex items-center justify-center flex-shrink-0">
             <svg className="w-full h-full text-white" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
             </svg>
           </div>
           <div className="flex flex-col">
-            <span className="text-[10px] sm:text-xs lg:text-sm font-medium text-gray-300">Confidence</span>
-            <span className="text-lg sm:text-2xl lg:text-3xl font-bold text-white">{mlPrediction.confidence}%</span>
+            <span className="text-[10px] sm:text-xs lg:text-sm font-medium text-gray-300">Rep Quality</span>
+            <span className={`text-lg sm:text-2xl lg:text-3xl font-bold ${repEffort.textColor}`}>{repQuality}%</span>
           </div>
         </div>
 
@@ -166,7 +212,7 @@ export default function RepInsightCard({ repData, repNumber }) {
       </div>
 
       {/* Metrics Section - Stacked vertically */}
-      <div className="px-4 sm:px-5 lg:px-6 pb-4 sm:pb-5 lg:pb-6 space-y-4 sm:space-y-5 lg:space-y-6 flex-shrink-0">
+      <div className="px-5 pb-5 space-y-5 sm:space-y-6 lg:space-y-7 flex-shrink-0">
         {/* Movement Phases - Using same visualization as LiftPhases */}
         <div className="space-y-2 sm:space-y-3">
           <div className="flex items-center justify-between mb-1">
@@ -188,7 +234,7 @@ export default function RepInsightCard({ repData, repNumber }) {
           </div>
 
           {/* Labels below progress bar */}
-          <div className="flex items-center justify-between pt-1 sm:pt-2">
+          <div className="flex items-center justify-between pt-1.5 sm:pt-2.5">
             <div className="flex items-center gap-2 sm:gap-2.5">
               <div className="w-1 h-10 sm:h-12 lg:h-14 bg-gradient-to-b from-teal-500 to-cyan-400 rounded-full" />
               <div className="flex flex-col">
@@ -210,7 +256,7 @@ export default function RepInsightCard({ repData, repNumber }) {
         {/* Bottom Cards - Two rounded squares side by side */}
         <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:gap-5">
           {/* Left Card - Range of Motion with circular progress */}
-          <div className="relative bg-black/30 rounded-xl sm:rounded-2xl overflow-hidden border border-white/10 p-3 sm:p-5 lg:p-6 flex flex-col justify-between" style={{ minHeight: 'clamp(140px, 40vw, 280px)' }}>
+          <div className="relative bg-black/30 rounded-xl sm:rounded-2xl overflow-hidden p-3 sm:p-5 lg:p-6 flex flex-col justify-between" style={{ minHeight: 'clamp(140px, 40vw, 280px)' }}>
             {/* Content */}
             <div className="relative z-10">
               <span className="text-[10px] sm:text-xs lg:text-sm font-medium text-gray-300">Range of Motion</span>
@@ -223,23 +269,23 @@ export default function RepInsightCard({ repData, repNumber }) {
                   <circle
                     cx="50"
                     cy="50"
-                    r="40"
+                    r="42"
                     fill="none"
                     stroke="rgba(255, 255, 255, 0.1)"
-                    strokeWidth="6"
+                    strokeWidth="8"
                   />
                   
                   {/* Progress circle - solid color */}
                   <circle
                     cx="50"
                     cy="50"
-                    r="40"
+                    r="42"
                     fill="none"
                     stroke="#f97316"
-                    strokeWidth="6"
+                    strokeWidth="8"
                     strokeLinecap="round"
-                    strokeDasharray={`${2 * Math.PI * 40}`}
-                    strokeDashoffset={`${2 * Math.PI * 40 * (1 - romProgress / 100)}`}
+                    strokeDasharray={`${2 * Math.PI * 42}`}
+                    strokeDashoffset={`${2 * Math.PI * 42 * (1 - romProgress / 100)}`}
                     style={{ 
                       transition: 'stroke-dashoffset 1s ease-out'
                     }}
@@ -257,7 +303,7 @@ export default function RepInsightCard({ repData, repNumber }) {
           </div>
 
           {/* Right Card - Peak Velocity with chart background */}
-          <div className="relative bg-black/30 rounded-xl sm:rounded-2xl overflow-hidden border border-white/10 p-3 sm:p-5 lg:p-6 flex flex-col justify-between" style={{ minHeight: 'clamp(140px, 40vw, 280px)' }}>
+          <div className="relative bg-black/30 rounded-xl sm:rounded-2xl overflow-hidden p-3 sm:p-5 lg:p-6 flex flex-col justify-between" style={{ minHeight: 'clamp(140px, 40vw, 280px)' }}>
             {/* Mini chart background */}
             <div className="absolute inset-0 opacity-80">
               {displayChartData && displayChartData.length > 0 && (
@@ -352,10 +398,10 @@ export default function RepInsightCard({ repData, repNumber }) {
               <span className="text-[10px] sm:text-xs lg:text-sm font-medium text-gray-300">Peak Velocity</span>
             </div>
             <div className="relative z-10">
-              <span className="text-xl sm:text-3xl lg:text-4xl font-bold text-emerald-400">{metrics.peakVelocity}</span>
+              <span className="text-xl sm:text-3xl lg:text-4xl font-bold text-green-400">{metrics.peakVelocity}</span>
               <span className="text-[10px] sm:text-xs lg:text-sm text-gray-400 ml-1">m/s</span>
-              <div className="flex items-center gap-1 mt-1 sm:mt-1.5">
-                <svg className="w-2.5 sm:w-3.5 lg:w-4 h-2.5 sm:h-3.5 lg:h-4 text-emerald-400" fill="currentColor" viewBox="0 0 20 20">
+              <div className="flex items-center gap-1 mt-1.5 sm:mt-2">
+                <svg className="w-2.5 sm:w-3.5 lg:w-4 h-2.5 sm:h-3.5 lg:h-4 text-green-400" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
                 </svg>
                 <span className="text-[9px] sm:text-[10px] lg:text-xs text-gray-500">{velocityProgress.toFixed(0)}% of max</span>
@@ -365,14 +411,14 @@ export default function RepInsightCard({ repData, repNumber }) {
         </div>
 
         {/* Insights below cards */}
-        <div className="pt-4 sm:pt-5 lg:pt-6 pb-8 sm:pb-10 lg:pb-12">
+        <div className="pt-4.5 sm:pt-5.5 lg:pt-6.5 pb-8 sm:pb-10 lg:pb-12">
           <p className="text-xs sm:text-sm lg:text-base text-purple-300 leading-relaxed text-center">
             {romProgress >= 90 && velocityProgress >= 70
-              ? '🎯 Excellent form! Great depth and explosive power combination.'
+              ? 'Excellent form! Great depth and explosive power combination.'
               : romProgress >= 90
-              ? '💪 Perfect depth achieved! Try increasing velocity for more power.'
+              ? 'Perfect depth achieved! Try increasing velocity for more power.'
               : velocityProgress >= 70
-              ? '⚡ Great power output! Focus on achieving deeper range of motion.'
+              ? 'Great power output! Focus on achieving deeper range of motion.'
               : romProgress >= 70
               ? 'Good movement. Work on both depth and speed for optimal results.'
               : 'Focus on controlled, deeper movements with consistent velocity.'}

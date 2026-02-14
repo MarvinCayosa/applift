@@ -391,7 +391,7 @@ export default function WorkoutMonitor() {
       />
 
       {/* Header with semi-transparent background */}
-      <div className="absolute top-0 left-0 right-0 z-30 px-4 pt-2 sm:pt-3 pt-pwa-dynamic pb-4" style={{
+      <div className="absolute top-0 left-0 right-0 z-30 px-4 pt-2.5 sm:pt-3.5 pt-pwa-dynamic pb-4" style={{
         background: 'linear-gradient(to bottom, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.6) 70%, rgba(0,0,0,0) 100%)'
       }}>
         {/* Top row - Back button and Connection Pill */}
@@ -570,7 +570,7 @@ export default function WorkoutMonitor() {
                     <span className="text-3xl font-semibold text-white/60">{recommendedReps}</span>
                   </div>
                   {/* Bottom Section - Progress Bar (aligned with set card) */}
-                  <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden mt-2">
+                  <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden mt-2.5">
                     <div 
                       className="h-full rounded-full transition-all duration-300 ease-in-out"
                       style={{
@@ -600,7 +600,7 @@ export default function WorkoutMonitor() {
                     <span className="text-3xl font-semibold text-white/60">{recommendedSets}</span>
                   </div>
                   {/* Bottom Section - Progress Bar */}
-                  <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden mt-2">
+                  <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden mt-2.5">
                     <div 
                       className="h-full rounded-full transition-all duration-300 ease-in-out"
                       style={{

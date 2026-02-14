@@ -138,7 +138,7 @@ export default function ConsistencyScore({ setsData }) {
   const scoreStyle = getScoreColor(consistencyScore);
 
   return (
-    <div className="rounded-3xl bg-white/5 backdrop-blur-sm border border-white/10 p-5 content-fade-up-3">
+    <div className="rounded-3xl bg-white/5 backdrop-blur-sm p-5 content-fade-up-3">
       {/* Header */}
       <div className="mb-4">
         <h3 className="text-base font-semibold text-white">
@@ -195,30 +195,6 @@ export default function ConsistencyScore({ setsData }) {
         </svg>
       </div>
 
-      {/* Rep Legend */}
-      <div className="flex flex-wrap gap-2 mb-3 justify-center">
-        {repCharts.map((rep, idx) => {
-          const color = repColors[idx % repColors.length];
-          const isInconsistent = idx === inconsistentRepIndex;
-          
-          return (
-            <div key={idx} className="flex items-center gap-1.5">
-              <div 
-                className="w-3 h-0.5 rounded-full" 
-                style={{ 
-                  backgroundColor: color,
-                  ...(isInconsistent ? { height: '2px', backgroundImage: 'repeating-linear-gradient(90deg, ' + color + ' 0px, ' + color + ' 4px, transparent 4px, transparent 7px)' } : {})
-                }} 
-              />
-              <span className={`text-[10px] ${isInconsistent ? 'text-white font-medium' : 'text-gray-500'}`}>
-                Rep {rep.globalRepNumber}
-                {isInconsistent && ' ●'}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-
       {/* Consistency Score Label */}
       <div className="mb-3 py-2">
         <div className="flex items-baseline justify-between">
@@ -231,7 +207,7 @@ export default function ConsistencyScore({ setsData }) {
       </div>
 
       {/* Insight */}
-      <div className="mt-3 px-3 py-2.5 bg-white/5 rounded-xl border border-white/10">
+      <div className="mt-3.5 px-3 py-2.5 bg-white/5 rounded-xl">
         <p className="text-xs sm:text-sm text-white text-center leading-relaxed">
           {consistencyScore >= 85 ? (
             <span className="text-white">
