@@ -321,7 +321,7 @@ export default function Workouts() {
         <title>Workouts — AppLift</title>
       </Head>
 
-      <main className="w-full h-full px-4 sm:px-6 md:px-8 pt-2 sm:pt-3 pt-pwa-dynamic pb-20 flex flex-col">
+      <main className="w-full h-full px-4 sm:px-6 md:px-8 pt-2.5 sm:pt-3.5 pt-pwa-dynamic pb-20 flex flex-col">
         <div className="mx-auto w-full max-w-4xl space-y-4 sm:space-y-5 md:space-y-6 flex flex-col flex-1 min-h-0">
         {/* Connection status pill */}
         <div className="flex justify-center content-fade-up-1">
@@ -391,7 +391,7 @@ export default function Workouts() {
                       <p className="text-sm text-white/70">Please try again</p>
                       <button
                         onClick={() => setShowEquipmentModal(true)}
-                        className="mt-2 px-6 py-2.5 rounded-full font-medium text-sm transition-all duration-300 bg-[#7C3AED] hover:bg-[#8B5CF6] text-white shadow-lg shadow-purple-900/30"
+                        className="mt-2.5 px-6 py-2.5 rounded-full font-medium text-sm transition-all duration-300 bg-[#7C3AED] hover:bg-[#8B5CF6] text-white shadow-lg shadow-purple-900/30"
                       >
                         Enter manually
                       </button>
@@ -445,7 +445,7 @@ export default function Workouts() {
 
         {/* Workout carousel */}
         {scannedEquipment && (scannedEquipment.type === 'Barbell' || scannedEquipment.type === 'Dumbbell' || scannedEquipment.type === 'Weight Stack') && (
-          <section className="pt-2 sm:pt-4 flex-1 flex flex-col min-h-0 pb-2">
+          <section className="pt-2.5 sm:pt-4.5 flex-1 flex flex-col min-h-0 pb-2">
             <h2 className="text-center text-xs sm:text-sm font-semibold text-white/80 px-4 content-fade-up-3 mb-3" style={{ animationDelay: '0.15s' }}>Choose Your Workout</h2>
 
           {/* Mobile Carousel - compact slides matching Equipment Tag width */}
@@ -506,7 +506,7 @@ export default function Workouts() {
                     
                     <div className="absolute inset-0 flex flex-col items-center justify-center">
                       <span className="text-xl sm:text-2xl font-semibold text-white/90">Coming Soon</span>
-                      <span className="text-xs sm:text-sm text-white/60 mt-1 sm:mt-2">More exercises on the way</span>
+                      <span className="text-xs sm:text-sm text-white/60 mt-1.5 sm:mt-2.5">More exercises on the way</span>
                     </div>
                   </>
                 ) : (
@@ -585,7 +585,7 @@ export default function Workouts() {
                     />
                     <div className="absolute inset-0 flex flex-col items-center justify-center">
                       <span className="text-xl sm:text-2xl font-semibold text-white/90">Coming Soon</span>
-                      <span className="text-xs sm:text-sm text-white/60 mt-1 sm:mt-2">More exercises on the way</span>
+                      <span className="text-xs sm:text-sm text-white/60 mt-1.5 sm:mt-2.5">More exercises on the way</span>
                     </div>
                   </>
                 ) : (

@@ -90,7 +90,7 @@ export default function WorkoutEffort({ setsData, chartData }) {
   const maxPoint = getChartPoint(repEffortData[maxEffortIndex], maxEffortIndex);
 
   return (
-    <div className="rounded-3xl bg-white/5 backdrop-blur-sm border border-white/10 p-5 content-fade-up-2">
+    <div className="rounded-3xl bg-white/5 backdrop-blur-sm p-5 content-fade-up-2">
       {/* Header - matches Movement Phases title style with single Fatigue Level badge */}
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-base font-semibold text-white">
@@ -199,15 +199,10 @@ export default function WorkoutEffort({ setsData, chartData }) {
             ))}
           </div>
         </div>
-
-        {/* X-axis label */}
-        <div className="text-center mt-2">
-          <span className="text-xs text-gray-400">Rep Number</span>
-        </div>
       </div>
 
       {/* Fatigue Insight - centered */}
-      <div className="px-3 py-2.5 bg-white/5 rounded-xl border border-white/10">
+      <div className="px-3 py-2.5 bg-white/5 rounded-xl">
         <p className="text-xs sm:text-sm text-center leading-relaxed">
           {fatigueLevel === 'High' ? (
             <span className="text-red-300">

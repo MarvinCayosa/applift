@@ -26,7 +26,7 @@ export default function PerformanceDetails() {
       <div className="flex flex-col h-screen overflow-hidden max-w-2xl mx-auto">
         
         {/* Header with back button and title - Safe area top padding */}
-        <div className="px-3 sm:px-4 pb-2 flex-shrink-0 pt-2 sm:pt-3 pt-pwa-dynamic">
+        <div className="px-3 sm:px-4 pb-2 flex-shrink-0 pt-2.5 sm:pt-3.5 pt-pwa-dynamic">
           <PerformanceHeader 
             workoutName={workoutName}
             equipment={equipment}

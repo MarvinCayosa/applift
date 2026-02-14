@@ -18,7 +18,7 @@ export default function WorkoutStatsCard({ totalReps, calories, totalTime }) {
           />
         </div>
         <div className="text-2xl font-bold text-gray-900">{totalReps || 0}</div>
-        <div className="text-xs text-gray-500 mt-1">Reps</div>
+        <div className="text-xs text-gray-500 mt-1.5">Reps</div>
       </div>
 
       {/* Calories */}
@@ -31,7 +31,7 @@ export default function WorkoutStatsCard({ totalReps, calories, totalTime }) {
           />
         </div>
         <div className="text-2xl font-bold text-gray-900">{calories || 0}</div>
-        <div className="text-xs text-gray-500 mt-1">Calories</div>
+        <div className="text-xs text-gray-500 mt-1.5">Calories</div>
       </div>
 
       {/* Time */}
@@ -44,7 +44,7 @@ export default function WorkoutStatsCard({ totalReps, calories, totalTime }) {
           />
         </div>
         <div className="text-2xl font-bold text-gray-900">{formatTime(totalTime || 0)}</div>
-        <div className="text-xs text-gray-500 mt-1">Time</div>
+        <div className="text-xs text-gray-500 mt-1.5">Time</div>
       </div>
     </div>
   );

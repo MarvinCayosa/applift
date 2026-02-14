@@ -189,7 +189,7 @@ function ExerciseInfoCarousel({ equipment, workout, tips, getTargetMuscles }) {
 
                 {/* Arrow icon - bottom left (only if not last tip) */}
                 {!isLastTip && (
-                  <div className="flex justify-start mt-auto pt-1 opacity-50">
+                  <div className="flex justify-start mt-auto pt-1.5 opacity-50">
                     <img 
                       src="/images/icons/arrow-point-to-right.png" 
                       alt="" 
@@ -552,7 +552,7 @@ export default function SelectedWorkout() {
         <Head>
           <title>Workout — AppLift</title>
         </Head>
-        <main className="mx-auto w-full max-w-[640px] px-4 pt-2 sm:pt-3">
+        <main className="mx-auto w-full max-w-[640px] px-4 pt-2.5 sm:pt-3.5">
           <p>Loading workout details...</p>
         </main>
       </div>
@@ -565,7 +565,7 @@ export default function SelectedWorkout() {
         <title>{workout} — AppLift</title>
       </Head>
 
-      <main ref={mainRef} className="flex-1 w-full px-4 sm:px-6 md:px-8 pt-2 sm:pt-3 pt-pwa-dynamic pb-24 flex flex-col overflow-hidden">
+      <main ref={mainRef} className="flex-1 w-full px-4 sm:px-6 md:px-8 pt-2.5 sm:pt-3.5 pt-pwa-dynamic pb-24 flex flex-col overflow-hidden">
         <div className="mx-auto w-full max-w-4xl flex flex-col flex-1 space-y-2 overflow-hidden">
         {/* Header with back button and connection pill */}
         <div className="flex items-center justify-between content-fade-up-1 flex-shrink-0 relative">
