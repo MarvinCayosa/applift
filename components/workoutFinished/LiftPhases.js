@@ -67,7 +67,7 @@ export default function LiftPhases() {
       </div>
 
       {/* Average Time Section */}
-      <div className="mt-4.5 pt-4.5 border-t border-white/5 flex items-center justify-between text-sm">
+      <div className="mt-5 pt-5 border-t border-white/5 flex items-center justify-between text-sm">
         <div className="flex items-center gap-2">
           <span className="text-gray-400">Avg Time:</span>
           <span className="text-teal-400 font-semibold">{concentric.toFixed(1)}s</span>
