@@ -35,9 +35,6 @@ export class WorkoutStreakService {
       // Get validated streak data (this will auto-reset expired streaks)
       let currentStreak = await this.getUserStreakData(userId);
 
-      // Get validated streak data (this will auto-reset expired streaks)
-      let currentStreak = await this.getUserStreakData(userId);
-
       // Document references for saving updated data
       const streakRef = doc(db, 'userStreaks', userId);
       const userRef = doc(db, 'users', userId);
