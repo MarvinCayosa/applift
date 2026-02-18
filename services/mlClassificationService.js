@@ -380,28 +380,46 @@ export async function classifyReps(exercise, reps, authToken) {
     });
     
     if (!response.ok) {
-      throw new Error(`Classification failed: ${response.statusText}`);
+      const errorData = await response.json().catch(() => ({}));
+      
+      // Log detailed warning to console
+      console.warn('==========================================');
+      console.warn('[ClassificationService] ML CLASSIFICATION FAILED');
+      console.warn('==========================================');
+      console.warn(`  Exercise: ${exercise}`);
+      console.warn(`  Status: ${response.status} ${response.statusText}`);
+      console.warn(`  Error: ${errorData.error || 'Unknown'}`);
+      console.warn(`  Details: ${errorData.details || 'N/A'}`);
+      console.warn(`  API URL: ${errorData.apiUrl || 'N/A'}`);
+      if (errorData.hint) console.warn(`  Hint: ${errorData.hint}`);
+      console.warn('==========================================');
+      
+      // Return error info so UI can display a warning
+      return {
+        exercise,
+        modelAvailable: false,
+        classifications: [],
+        error: errorData.error || `Classification failed: ${response.status}`,
+        details: errorData.details,
+        hint: errorData.hint,
+        apiUrl: errorData.apiUrl
+      };
     }
     
     return await response.json();
   } catch (error) {
-    console.error('[ClassificationService] API call failed:', error);
-    
-    // Fall back to client-side rule-based classification
-    const qualityLabels = getQualityLabels(exercise);
-    const classifications = reps.map((rep, idx) => {
-      const features = extractMLFeatures(rep);
-      return {
-        repIndex: idx,
-        ...classifyWithRules(features, exercise)
-      };
-    });
+    console.error('==========================================');
+    console.error('[ClassificationService] NETWORK ERROR');
+    console.error('==========================================');
+    console.error(`  Exercise: ${exercise}`);
+    console.error(`  Error: ${error.message}`);
+    console.error('  Could not reach /api/classify-rep endpoint');
+    console.error('==========================================');
     
     return {
       exercise,
       modelAvailable: false,
-      qualityLabels,
-      classifications,
+      classifications: [],
       error: error.message
     };
   }

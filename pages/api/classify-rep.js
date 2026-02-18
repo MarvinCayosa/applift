@@ -2,7 +2,7 @@
  * Rep Classification API Route
  * 
  * Classifies individual reps using ML models via Cloud Run.
- * Falls back to rule-based classification if Cloud Run is unavailable.
+ * Returns clear errors if Cloud Run is unavailable (no silent fallback).
  * 
  * Endpoints:
  * - POST /api/classify-rep - Classify rep(s) for a given exercise
@@ -340,21 +340,14 @@ export default async function handler(req, res) {
     allFeatures = precomputedFeatures;
   }
   
-  // If no model available for this exercise, use rule-based
+  // If no model mapping exists for this exercise
   if (!modelType) {
-    console.log(`[Classify API] No model for ${exercise}, using rule-based classification`);
-    
-    const results = allFeatures.map((feat, idx) => ({
-      repIndex: idx,
-      ...classifyWithRules(feat, exercise),
-      method: 'rule_based'
-    }));
-    
-    return res.status(200).json({
+    console.warn(`[Classify API] WARNING: No model mapping found for exercise "${exercise}". Add it to EXERCISE_TO_MODEL_TYPE in classify-rep.js`);
+    return res.status(400).json({
+      error: `No ML model available for exercise: ${exercise}`,
+      hint: 'Add exercise mapping to EXERCISE_TO_MODEL_TYPE in pages/api/classify-rep.js',
       exercise,
-      modelAvailable: false,
-      qualityLabels,
-      classifications: results
+      modelAvailable: false
     });
   }
   
@@ -383,30 +376,20 @@ export default async function handler(req, res) {
         continue;
       }
       
-      try {
-        const result = await classifyWithCloudRun(modelType, feat);
+      const result = await classifyWithCloudRun(modelType, feat);
         
-        classifications.push({
-          repIndex: idx,
-          prediction: result.prediction,
-          label: result.class_name || qualityLabels[result.prediction] || `Class ${result.prediction}`,
-          confidence: result.confidence,
-          probabilities: result.probabilities.map((p, i) => ({
-            class: i,
-            label: qualityLabels[i] || `Class ${i}`,
-            probability: p
-          })),
-          method: 'ml_model'
-        });
-      } catch (repError) {
-        console.error(`[Classify API] Cloud Run failed for rep ${idx}:`, repError.message);
-        // Fall back to rules for this rep
-        classifications.push({
-          repIndex: idx,
-          ...classifyWithRules(feat, exercise),
-          method: 'rule_based_fallback'
-        });
-      }
+      classifications.push({
+        repIndex: idx,
+        prediction: result.prediction,
+        label: result.class_name || qualityLabels[result.prediction] || `Class ${result.prediction}`,
+        confidence: result.confidence,
+        probabilities: result.probabilities.map((p, i) => ({
+          class: i,
+          label: qualityLabels[i] || `Class ${i}`,
+          probability: p
+        })),
+        method: 'ml_model'
+      });
     }
     
     return res.status(200).json({
@@ -419,21 +402,31 @@ export default async function handler(req, res) {
     });
     
   } catch (error) {
-    console.error('[Classify API] Cloud Run classification failed:', error.message);
+    // Log full error details to console for debugging
+    console.error('============================================');
+    console.error('[Classify API] CLOUD RUN CONNECTION FAILED');
+    console.error('============================================');
+    console.error(`  URL: ${ML_API_URL}/classify`);
+    console.error(`  Exercise: ${exercise} (${modelType})`);
+    console.error(`  Error: ${error.message}`);
+    console.error(`  Cause: ${error.cause || 'N/A'}`);
+    if (error.message.includes('fetch failed') || error.message.includes('ECONNREFUSED')) {
+      console.error('  HINT: Cloud Run service may be down or URL is wrong');
+      console.error(`  Check: NEXT_PUBLIC_ML_API_URL=${ML_API_URL}`);
+    } else if (error.message.includes('AbortError') || error.message.includes('timeout')) {
+      console.error('  HINT: Request timed out - Cloud Run may be cold starting');
+    } else if (error.message.includes('404')) {
+      console.error(`  HINT: Model "${modelType}_RF.pkl" not found on Cloud Run. Did you add the PKL file?`);
+    }
+    console.error('============================================');
     
-    // Fall back to rule-based for all reps
-    const results = allFeatures.map((feat, idx) => ({
-      repIndex: idx,
-      ...classifyWithRules(feat, exercise),
-      method: 'rule_based_fallback'
-    }));
-    
-    return res.status(200).json({
+    return res.status(503).json({
+      error: 'Cloud Run ML API is unavailable',
+      details: error.message,
+      apiUrl: ML_API_URL,
       exercise,
-      modelAvailable: true,
-      modelError: error.message,
-      qualityLabels,
-      classifications: results
+      modelType,
+      hint: 'Check NEXT_PUBLIC_ML_API_URL env var and Cloud Run service status'
     });
   }
 }
