@@ -323,8 +323,20 @@ async function classifyWithCloudRun(modelType, features, retries = 2) {
       });
       
       if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.detail || `Cloud Run API error: ${response.status}`);
+        const errorData = await response.json().catch(() => ({}));
+        // Handle FastAPI validation errors (detail is an array) and regular errors (detail is a string)
+        let errorMessage;
+        if (typeof errorData.detail === 'string') {
+          errorMessage = errorData.detail;
+        } else if (Array.isArray(errorData.detail)) {
+          // Pydantic validation errors: [{loc: [...], msg: "...", type: "..."}]
+          errorMessage = errorData.detail.map(e => `${e.loc?.join('.')}: ${e.msg}`).join('; ');
+        } else if (errorData.detail) {
+          errorMessage = JSON.stringify(errorData.detail);
+        } else {
+          errorMessage = `Cloud Run API error: ${response.status}`;
+        }
+        throw new Error(errorMessage);
       }
       
       const result = await response.json();
@@ -353,33 +365,45 @@ async function classifyWithCloudRun(modelType, features, retries = 2) {
 
 // Main API handler
 export default async function handler(req, res) {
+  // Set cache control headers to prevent caching
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
   
-  const { exercise, reps, features: precomputedFeatures } = req.body;
-  
-  if (!exercise) {
-    return res.status(400).json({ error: 'exercise is required' });
-  }
-  
-  if (!reps && !precomputedFeatures) {
-    return res.status(400).json({ error: 'reps or features array is required' });
-  }
-  
-  const modelType = getModelType(exercise);
-  const qualityLabels = getQualityLabels(exercise);
-  
-  // Extract features if raw rep data provided
-  let allFeatures = [];
-  if (reps && Array.isArray(reps)) {
-    for (const rep of reps) {
-      const feat = extractFeatures(rep);
-      allFeatures.push(feat);
+  try {
+    const { exercise, reps, features: precomputedFeatures } = req.body;
+    
+    console.log(`[Classify API] Request received for exercise: ${exercise}, reps: ${reps?.length || 0}`);
+    
+    if (!exercise) {
+      return res.status(400).json({ error: 'exercise is required' });
     }
-  } else if (precomputedFeatures) {
-    allFeatures = precomputedFeatures;
-  }
+    
+    if (!reps && !precomputedFeatures) {
+      return res.status(400).json({ error: 'reps or features array is required' });
+    }
+    
+    const modelType = getModelType(exercise);
+    const qualityLabels = getQualityLabels(exercise);
+    
+    // Extract features if raw rep data provided
+    let allFeatures = [];
+    if (reps && Array.isArray(reps)) {
+      for (let i = 0; i < reps.length; i++) {
+        try {
+          const feat = extractFeatures(reps[i]);
+          allFeatures.push(feat);
+        } catch (extractError) {
+          console.error(`[Classify API] Feature extraction failed for rep ${i}:`, extractError.message);
+          allFeatures.push(null);
+        }
+      }
+    } else if (precomputedFeatures) {
+      allFeatures = precomputedFeatures;
+    }
   
   // If no model mapping exists for this exercise
   if (!modelType) {
@@ -394,6 +418,7 @@ export default async function handler(req, res) {
   
   // Try Cloud Run ML API
   console.log(`[Classify API] Calling Cloud Run for ${exercise} (${modelType}) at ${ML_API_URL}`);
+  console.log(`[Classify API] Processing ${allFeatures.length} reps, features extracted: ${allFeatures.filter(f => f !== null).length}`);
   
   // Send a warm-up ping first (helps with cold starts)
   await warmUpCloudRun();
@@ -405,6 +430,7 @@ export default async function handler(req, res) {
       const feat = allFeatures[idx];
       
       if (!feat) {
+        console.log(`[Classify API] Rep ${idx}: No features extracted, using fallback`);
         classifications.push({
           repIndex: idx,
           prediction: 0,
@@ -420,6 +446,7 @@ export default async function handler(req, res) {
         continue;
       }
       
+      console.log(`[Classify API] Rep ${idx}: Calling Cloud Run with ${Object.keys(feat).length} features`);
       const result = await classifyWithCloudRun(modelType, feat);
         
       classifications.push({
@@ -474,6 +501,22 @@ export default async function handler(req, res) {
       exercise,
       modelType,
       hint
+    });
+  }
+  } catch (outerError) {
+    // Catch any unexpected errors (parsing, feature extraction, etc.)
+    console.error('============================================');
+    console.error('[Classify API] UNEXPECTED ERROR');
+    console.error('============================================');
+    console.error(`  Error Type: ${outerError.name}`);
+    console.error(`  Error Message: ${outerError.message}`);
+    console.error(`  Stack: ${outerError.stack}`);
+    console.error('============================================');
+    
+    return res.status(500).json({
+      error: 'Internal server error',
+      details: `${outerError.name}: ${outerError.message}`,
+      hint: 'Check Vercel function logs for details'
     });
   }
 }
