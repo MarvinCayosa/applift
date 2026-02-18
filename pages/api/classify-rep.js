@@ -468,7 +468,11 @@ export default async function handler(req, res) {
       }
       
       console.log(`[Classify API] Rep ${idx}: Calling Cloud Run with ${Object.keys(feat).length} features`);
+      console.log(`[Classify API] Rep ${idx}: Key features - duration=${feat.rep_duration_ms}ms, samples=${feat.sample_count}, accelMag_range=${feat.accelMag_range?.toFixed(2) || 'N/A'}`);
+      
       const result = await classifyWithCloudRun(modelType, feat);
+      
+      console.log(`[Classify API] Rep ${idx}: ✅ Classified as "${result.class_name}" (${(result.confidence * 100).toFixed(1)}%)`);
         
       classifications.push({
         repIndex: idx,
@@ -483,6 +487,8 @@ export default async function handler(req, res) {
         method: 'ml_model'
       });
     }
+    
+    console.log(`[Classify API] ✅ All ${classifications.length} reps classified successfully`);
     
     return res.status(200).json({
       exercise,

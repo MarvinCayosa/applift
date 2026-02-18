@@ -176,7 +176,10 @@ export function WorkoutLoggingProvider({ children }) {
    * This runs asynchronously without blocking the UI
    */
   const runBackgroundMLForSet = useCallback(async (setNumber, exercise) => {
-    if (!user?.uid) return;
+    if (!user?.uid) {
+      console.warn(`[WorkoutLogging] ⚠️ No user for ML - Set ${setNumber}`);
+      return;
+    }
     
     try {
       setBackgroundMLStatus(prev => ({ ...prev, [setNumber]: 'pending' }));
@@ -185,21 +188,43 @@ export function WorkoutLoggingProvider({ children }) {
       // Get all reps data from the completed set
       const setData = getSetRepsForML(setNumber);
       if (!setData || !setData.reps || setData.reps.length === 0) {
-        console.warn(`[WorkoutLogging] No rep data for Set ${setNumber}`);
+        console.warn(`[WorkoutLogging] ⚠️ No rep data for Set ${setNumber}`);
         setBackgroundMLStatus(prev => ({ ...prev, [setNumber]: 'error' }));
         return;
       }
+      
+      console.log(`[WorkoutLogging] 📊 Set ${setNumber} has ${setData.reps.length} reps to classify`);
+      setData.reps.forEach((rep, idx) => {
+        console.log(`[WorkoutLogging]   Rep ${idx + 1}: ${rep.samples?.length || 0} samples`);
+      });
       
       // Get auth token
       const token = await user.getIdToken();
       
       // Call ML classification API
+      console.log(`[WorkoutLogging] 🔄 Calling ML API for Set ${setNumber}...`);
       const result = await classifyReps(exercise, setData.reps, token);
       
-      if (result && result.classifications) {
+      console.log(`[WorkoutLogging] 📬 ML API response for Set ${setNumber}:`, {
+        modelAvailable: result?.modelAvailable,
+        classificationsCount: result?.classifications?.length || 0,
+        error: result?.error || null
+      });
+      
+      // Check for errors in the result
+      if (result?.error) {
+        console.error(`[WorkoutLogging] ❌ ML API returned error for Set ${setNumber}: ${result.error}`);
+        if (result.details) console.error(`[WorkoutLogging]   Details: ${result.details}`);
+        if (result.hint) console.error(`[WorkoutLogging]   Hint: ${result.hint}`);
+        setBackgroundMLStatus(prev => ({ ...prev, [setNumber]: 'error' }));
+        return;
+      }
+      
+      if (result && result.classifications && result.classifications.length > 0) {
         // Store classifications in the streaming service
         result.classifications.forEach((cls, idx) => {
           const repNumber = setData.reps[idx]?.repNumber || idx + 1;
+          console.log(`[WorkoutLogging] 💾 Storing classification Set ${setNumber} Rep ${repNumber}: ${cls.label} (${(cls.confidence * 100).toFixed(1)}%)`);
           storeRepClassification(
             setNumber, 
             repNumber, 
@@ -217,10 +242,13 @@ export function WorkoutLoggingProvider({ children }) {
         console.log(`[WorkoutLogging] ✅ Background ML complete for Set ${setNumber}: ${result.classifications.length} reps classified`);
         setBackgroundMLStatus(prev => ({ ...prev, [setNumber]: 'complete' }));
       } else {
+        console.warn(`[WorkoutLogging] ⚠️ No classifications returned for Set ${setNumber}`);
         setBackgroundMLStatus(prev => ({ ...prev, [setNumber]: 'error' }));
       }
     } catch (error) {
       console.error(`[WorkoutLogging] ❌ Background ML failed for Set ${setNumber}:`, error);
+      console.error(`[WorkoutLogging]   Error name: ${error.name}`);
+      console.error(`[WorkoutLogging]   Error message: ${error.message}`);
       setBackgroundMLStatus(prev => ({ ...prev, [setNumber]: 'error' }));
     }
   }, [user]);

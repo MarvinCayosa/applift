@@ -366,6 +366,8 @@ export function classifyWithRules(features, exercise) {
  * @returns {Promise<Object>} Classification results
  */
 export async function classifyReps(exercise, reps, authToken) {
+  console.log(`[ClassificationService] 🔄 Starting classification for ${exercise}, ${reps?.length || 0} reps`);
+  
   try {
     const response = await fetch('/api/classify-rep', {
       method: 'POST',
@@ -378,6 +380,8 @@ export async function classifyReps(exercise, reps, authToken) {
         reps
       })
     });
+    
+    console.log(`[ClassificationService] 📬 Response status: ${response.status}`);
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -406,7 +410,9 @@ export async function classifyReps(exercise, reps, authToken) {
       };
     }
     
-    return await response.json();
+    const result = await response.json();
+    console.log(`[ClassificationService] ✅ Success: ${result.classifications?.length || 0} classifications, modelAvailable=${result.modelAvailable}`);
+    return result;
   } catch (error) {
     console.error('==========================================');
     console.error('[ClassificationService] NETWORK ERROR');
