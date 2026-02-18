@@ -17,6 +17,21 @@ import {
  * Workout Streak Service
  * Manages user workout streaks and statistics
  * 
+ * *** TIKTOK-STYLE STREAK LOGIC ***
+ * 1. Streak = consecutive CALENDAR DAYS with at least 1 workout
+ * 2. Today counts immediately when you complete a workout
+ * 3. If you didn't work out yesterday BUT you work out today → streak continues!
+ *    (This is the key difference - you have until END of today to save your streak)
+ * 4. Streak only breaks if you miss an ENTIRE calendar day
+ * 5. Multiple workouts per day = still just 1 day (no double counting)
+ * 
+ * Example timeline:
+ * - Monday: Workout at 6pm → Streak = 1
+ * - Tuesday: No workout → At midnight, streak would break
+ * - Tuesday: Workout at 11pm → Streak = 2 (saved it!)
+ * - Wednesday: No workout all day → Streak breaks at midnight
+ * - Thursday: Workout → Streak = 1 (fresh start)
+ * 
  * Streak data is stored in two places for flexibility:
  * 1. `userStreaks` collection - Easy to view/edit in Firebase console
  * 2. `users/{userId}/workoutStreak` - For backward compatibility
@@ -24,63 +39,101 @@ import {
 export class WorkoutStreakService {
   
   /**
-   * Calculate and update user's current workout streak
-   * Should be called whenever a user completes a workout
+   * Get the start of day (midnight) for a given date in LOCAL timezone
+   */
+  static getStartOfDay(date) {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  /**
+   * Calculate calendar days between two dates
+   * Returns 0 if same day, 1 if consecutive days, etc.
+   */
+  static getCalendarDaysDiff(date1, date2) {
+    const d1 = this.getStartOfDay(date1);
+    const d2 = this.getStartOfDay(date2);
+    const oneDay = 24 * 60 * 60 * 1000;
+    return Math.round(Math.abs(d2.getTime() - d1.getTime()) / oneDay);
+  }
+
+  /**
+   * TIKTOK-STYLE: Calculate and update user's current workout streak
+   * 
+   * Key behaviors:
+   * - Working out TODAY continues your streak (even if you didn't work out yesterday YET)
+   * - Streak only breaks when you miss an ENTIRE calendar day
+   * - Multiple workouts same day = no change (already counted)
+   * 
    * @param {string} userId - The user's ID
    * @param {Date} workoutDate - Date of the completed workout
    * @returns {Promise<Object>} Updated streak data
    */
   static async updateWorkoutStreak(userId, workoutDate = new Date()) {
     try {
-      // Get validated streak data (this will auto-reset expired streaks)
+      // Get current streak data (validates and may reset expired streaks)
       let currentStreak = await this.getUserStreakData(userId);
 
-      // Document references for saving updated data
       const streakRef = doc(db, 'userStreaks', userId);
       const userRef = doc(db, 'users', userId);
 
-      const today = new Date(workoutDate);
-      today.setHours(0, 0, 0, 0); // Start of day
+      const today = this.getStartOfDay(workoutDate);
       
-      const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
-
-      // Check if user already worked out today
+      // Get last workout date (handle Firestore Timestamp)
       const lastWorkoutDate = currentStreak.lastWorkoutDate 
         ? (currentStreak.lastWorkoutDate.seconds 
           ? new Date(currentStreak.lastWorkoutDate.seconds * 1000)
           : new Date(currentStreak.lastWorkoutDate))
         : null;
 
-      if (lastWorkoutDate) {
-        lastWorkoutDate.setHours(0, 0, 0, 0);
-        
-        // If already worked out today, don't update streak
-        if (lastWorkoutDate.getTime() === today.getTime()) {
-          return currentStreak;
-        }
-      }
+      // Calculate days since last workout
+      const daysSinceLastWorkout = lastWorkoutDate 
+        ? this.getCalendarDaysDiff(lastWorkoutDate, today)
+        : null;
 
+      console.log('[Streak] Update check:', {
+        today: today.toISOString(),
+        lastWorkoutDate: lastWorkoutDate?.toISOString(),
+        daysSinceLastWorkout,
+        currentStreak: currentStreak.currentStreak
+      });
+
+      // *** TIKTOK LOGIC ***
       let newStreak = currentStreak.currentStreak;
       let streakStartDate = currentStreak.streakStartDate;
+      let shouldUpdate = true;
 
-      if (!lastWorkoutDate) {
-        // First workout ever - start streak at 1
+      if (daysSinceLastWorkout === null) {
+        // FIRST WORKOUT EVER - start fresh streak
         newStreak = 1;
         streakStartDate = Timestamp.fromDate(today);
-      } else if (lastWorkoutDate.getTime() === yesterday.getTime()) {
-        // Consecutive day - user worked out yesterday, now working out today
-        // This continues the streak
+        console.log('[Streak] First workout ever! Starting streak at 1');
+        
+      } else if (daysSinceLastWorkout === 0) {
+        // SAME DAY - already worked out today, no change needed
+        console.log('[Streak] Already worked out today, no change');
+        shouldUpdate = false;
+        
+      } else if (daysSinceLastWorkout === 1) {
+        // CONSECUTIVE DAY - perfect! Continue the streak
         newStreak = currentStreak.currentStreak + 1;
+        console.log(`[Streak] Consecutive day! Streak continues: ${currentStreak.currentStreak} → ${newStreak}`);
+        
       } else {
-        // Streak broken - there's a gap between last workout and today
-        // Start a fresh streak at 1
+        // MISSED DAYS (daysSinceLastWorkout >= 2)
+        // Streak is broken - start fresh
         newStreak = 1;
         streakStartDate = Timestamp.fromDate(today);
+        console.log(`[Streak] Missed ${daysSinceLastWorkout - 1} day(s). Streak reset to 1`);
       }
 
-      // Update longest streak if current streak is longer
-      const newLongestStreak = Math.max(newStreak, currentStreak.longestStreak);
+      if (!shouldUpdate) {
+        return currentStreak;
+      }
+
+      // Update longest streak if we beat our record
+      const newLongestStreak = Math.max(newStreak, currentStreak.longestStreak || 0);
       
       // Increment total workout days
       const newTotalWorkoutDays = (currentStreak.totalWorkoutDays || 0) + 1;
@@ -93,34 +146,33 @@ export class WorkoutStreakService {
         totalWorkoutDays: newTotalWorkoutDays,
         streakStartDate: streakStartDate,
         lastUpdated: Timestamp.now(),
-        // Clear lostStreak when user starts working out again
+        // Clear lost streak info when user starts working out again
         lostStreak: null,
         streakLostDate: null
       };
 
-      // Save to userStreaks collection (primary - easy to manage in Firebase console)
+      // Save to both collections
       await setDoc(streakRef, updatedStreakData, { merge: true });
+      await setDoc(userRef, { workoutStreak: updatedStreakData }, { merge: true });
       
-      // Also update users collection for backward compatibility
-      await setDoc(userRef, {
-        workoutStreak: updatedStreakData
-      }, { merge: true });
+      console.log('[Streak] Updated successfully:', updatedStreakData);
 
       return updatedStreakData;
     } catch (error) {
-      console.error('Error updating workout streak:', error);
+      console.error('[Streak] Error updating streak:', error);
       throw error;
     }
   }
 
   /**
    * Get user's current workout streak data
+   * IMPORTANT: This validates the streak and resets if expired
+   * 
    * @param {string} userId - The user's ID  
    * @returns {Promise<Object>} User's streak data
    */
   static async getUserStreakData(userId) {
     try {
-      // Try userStreaks collection first
       const streakRef = doc(db, 'userStreaks', userId);
       let streakDoc = await getDoc(streakRef);
       
@@ -138,7 +190,7 @@ export class WorkoutStreakService {
         }
       }
       
-      // Default values
+      // Default values for new users
       if (!streakData) {
         return {
           currentStreak: 0,
@@ -149,41 +201,43 @@ export class WorkoutStreakService {
         };
       }
 
-      // Check if streak should be reset (if last workout was more than 1 day ago)
+      // *** VALIDATE STREAK - Check if it should be reset ***
+      // Streak breaks if user missed an ENTIRE calendar day
       if (streakData.lastWorkoutDate && streakData.currentStreak > 0) {
         const lastWorkout = streakData.lastWorkoutDate.seconds 
           ? new Date(streakData.lastWorkoutDate.seconds * 1000)
           : new Date(streakData.lastWorkoutDate);
+        
         const today = new Date();
-        
-        // Normalize both dates to start of day for proper calendar day comparison
-        today.setHours(0, 0, 0, 0);
-        lastWorkout.setHours(0, 0, 0, 0);
-        
-        // Calculate calendar days difference using more precise method
-        const oneDay = 1000 * 60 * 60 * 24;
-        const daysDiff = Math.floor((today.getTime() - lastWorkout.getTime()) / oneDay);
-        
-        // If more than 1 calendar day has passed without a workout, reset current streak
-        // Example: Last workout Monday, today is Wednesday (daysDiff = 2) → streak broken
-        // Example: Last workout Monday, today is Tuesday (daysDiff = 1) → streak still active
-        if (daysDiff > 1) {
-          const lostStreak = streakData.currentStreak; // Save the streak that was lost
+        const daysSinceLastWorkout = this.getCalendarDaysDiff(lastWorkout, today);
+
+        console.log('[Streak] Validation check:', {
+          lastWorkout: lastWorkout.toISOString(),
+          today: today.toISOString(),
+          daysSinceLastWorkout,
+          currentStreak: streakData.currentStreak
+        });
+
+        // TIKTOK RULE: Streak breaks after missing MORE THAN 1 calendar day
+        // - 0 days = worked out today ✓
+        // - 1 day = worked out yesterday, today still valid ✓  
+        // - 2+ days = missed at least 1 full day ✗
+        if (daysSinceLastWorkout > 1) {
+          console.log(`[Streak] EXPIRED! Missed ${daysSinceLastWorkout - 1} day(s). Resetting...`);
+          
+          const lostStreak = streakData.currentStreak;
           const resetStreakData = {
             ...streakData,
             currentStreak: 0,
             streakStartDate: null,
-            lostStreak: lostStreak, // Track the lost streak for UI message
+            lostStreak: lostStreak,
             streakLostDate: Timestamp.now()
           };
           
-          // Update in both collections
+          // Persist the reset
           await setDoc(streakRef, resetStreakData, { merge: true });
-          
           const userRef = doc(db, 'users', userId);
-          await setDoc(userRef, {
-            workoutStreak: resetStreakData
-          }, { merge: true });
+          await setDoc(userRef, { workoutStreak: resetStreakData }, { merge: true });
           
           return resetStreakData;
         }
@@ -191,7 +245,7 @@ export class WorkoutStreakService {
 
       return streakData;
     } catch (error) {
-      console.error('Error getting user streak data:', error);
+      console.error('[Streak] Error getting streak data:', error);
       throw error;
     }
   }

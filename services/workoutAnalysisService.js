@@ -166,7 +166,52 @@ export const computeAngleFromAccelerometer = (accelX, accelY, accelZ) => {
 };
 
 /**
- * Compute Range of Motion in degrees from accelerometer
+ * Compute Range of Motion in degrees from ORIENTATION ANGLES (roll/pitch/yaw)
+ * This is more accurate than accelerometer-based ROM because:
+ * 1. Orientation angles are gravity-compensated
+ * 2. They represent actual device rotation, not acceleration
+ * 3. Small movements show small ROM (10% movement = ~10% ROM)
+ */
+export const computeROMFromOrientation = (roll, pitch, yaw) => {
+  if (!roll || roll.length === 0) {
+    return { romDegrees: 0, primaryAxis: 'unknown', rollRange: 0, pitchRange: 0, yawRange: 0 };
+  }
+  
+  // Calculate range on each axis
+  const rollRange = Math.max(...roll) - Math.min(...roll);
+  const pitchRange = Math.max(...pitch) - Math.min(...pitch);
+  const yawRange = Math.max(...yaw) - Math.min(...yaw);
+  
+  // Primary axis is the one with most movement (highest range)
+  let primaryAxis = 'roll';
+  let romDegrees = rollRange;
+  
+  if (pitchRange > romDegrees) {
+    primaryAxis = 'pitch';
+    romDegrees = pitchRange;
+  }
+  if (yawRange > romDegrees) {
+    primaryAxis = 'yaw';
+    romDegrees = yawRange;
+  }
+  
+  return {
+    romDegrees,
+    primaryAxis,
+    rollRange,
+    pitchRange,
+    yawRange,
+    rollMin: Math.min(...roll),
+    rollMax: Math.max(...roll),
+    pitchMin: Math.min(...pitch),
+    pitchMax: Math.max(...pitch),
+    yawMin: Math.min(...yaw),
+    yawMax: Math.max(...yaw)
+  };
+};
+
+/**
+ * Compute Range of Motion in degrees from accelerometer (LEGACY - less accurate)
  */
 export const computeROMDegrees = (accelX, accelY, accelZ) => {
   const angles = computeAngleFromAccelerometer(accelX, accelY, accelZ);
@@ -312,32 +357,64 @@ export const computeRepMetrics = (repData) => {
     };
   }
   
-  // Extract arrays
+  // Extract arrays - accelerometer
   const accelX = samples.map(s => s.accelX || 0);
   const accelY = samples.map(s => s.accelY || 0);
   const accelZ = samples.map(s => s.accelZ || 0);
+  
+  // Extract arrays - gyroscope
   const gyroX = samples.map(s => s.gyroX || 0);
   const gyroY = samples.map(s => s.gyroY || 0);
   const gyroZ = samples.map(s => s.gyroZ || 0);
+  
+  // Extract arrays - ORIENTATION ANGLES (roll/pitch/yaw from IMU firmware)
+  // These are gravity-compensated and represent true device rotation
+  const roll = samples.map(s => s.roll || 0);
+  const pitch = samples.map(s => s.pitch || 0);
+  const yaw = samples.map(s => s.yaw || 0);
+  
   // Try both field names: filteredMag and filteredMagnitude (from streaming vs stored data)
   const filteredMag = samples.map(s => s.filteredMag || s.filteredMagnitude || s.accelMag || 0);
-  const timestamps = samples.map(s => s.timestamp_ms || 0);
+  const timestamps = samples.map(s => s.timestamp_ms || s.timestamp || 0);
   
   // Basic metrics
   const durationMs = duration || (timestamps[timestamps.length - 1] - timestamps[0]);
   
-  // ROM from filtered magnitude
+  // ROM from filtered magnitude (legacy - for backward compatibility)
   const romMetrics = computeROM(filteredMag);
   
-  // ROM in degrees from accelerometer
-  const romDegrees = computeROMDegrees(accelX, accelY, accelZ);
+  // *** ROM in degrees from ORIENTATION ANGLES (more accurate) ***
+  // Check if we have valid orientation data (not all zeros)
+  const hasOrientationData = roll.some(r => r !== 0) || pitch.some(p => p !== 0) || yaw.some(y => y !== 0);
+  const romFromOrientation = hasOrientationData 
+    ? computeROMFromOrientation(roll, pitch, yaw)
+    : { romDegrees: 0, primaryAxis: 'unknown', rollRange: 0, pitchRange: 0, yawRange: 0 };
+  
+  // Use orientation-based ROM if available, otherwise fall back to accelerometer-based
+  const romDegrees = hasOrientationData 
+    ? romFromOrientation 
+    : computeROMDegrees(accelX, accelY, accelZ);
   
   // Smoothness metrics
   const smoothnessMetrics = computeSmoothnessMetrics(accelX, accelY, accelZ, timestamps, filteredMag);
   
-  // Gyroscope metrics
+  // Gyroscope metrics - use for velocity
   const gyroMag = gyroX.map((x, i) => Math.sqrt(x * x + gyroY[i] * gyroY[i] + gyroZ[i] * gyroZ[i]));
-  const gyroPeak = Math.max(...gyroMag);
+  
+  // *** VELOCITY: Use baseline-compensated values ***
+  // First few samples establish baseline (device at rest or moving consistently)
+  const baselineSamples = Math.min(3, Math.floor(gyroMag.length / 4));
+  const gyroBaseline = baselineSamples > 0 
+    ? mean(gyroMag.slice(0, baselineSamples)) 
+    : 0;
+  
+  // Peak velocity is the MAX CHANGE from baseline (captures actual movement intensity)
+  const gyroFromBaseline = gyroMag.map(g => Math.abs(g - gyroBaseline));
+  const gyroPeak = Math.max(...gyroFromBaseline);
+  const gyroMean = mean(gyroFromBaseline);
+  
+  // Also keep absolute metrics for legacy compatibility
+  const gyroPeakAbsolute = Math.max(...gyroMag);
   const gyroRms = Math.sqrt(mean(gyroMag.map(g => g * g)));
   const gyroStd = std(gyroMag);
   
@@ -352,12 +429,21 @@ export const computeRepMetrics = (repData) => {
     shakiness = Math.sqrt(mean(angularAccel.map(a => a * a)));
   }
   
-  // Peak acceleration
+  // Peak acceleration - use baseline compensation
   const accelMag = samples.map(s => s.accelMag || Math.sqrt(s.accelX * s.accelX + s.accelY * s.accelY + s.accelZ * s.accelZ));
-  const peakAcceleration = Math.max(...accelMag);
+  // Baseline is ~9.8 m/s² (gravity). Peak acceleration is the max DEVIATION from baseline.
+  const accelBaseline = 9.81; // Gravity constant
+  const accelFromBaseline = accelMag.map(a => Math.abs(a - accelBaseline));
+  const peakAcceleration = Math.max(...accelFromBaseline);
+  const peakAccelerationAbsolute = Math.max(...accelMag);
   
-  // Eccentric/Concentric phase detection
-  const { liftingTime, loweringTime } = computePhaseTimings(filteredMag, timestamps);
+  // *** PHASE TIMING: Use ORIENTATION angles for more accurate phase detection ***
+  // Orientation angles (roll/pitch/yaw) don't have gravity issues
+  // This finds the actual turning point in the movement
+  const phaseTimings = hasOrientationData 
+    ? computePhaseTimingsFromOrientation(roll, pitch, yaw, timestamps)
+    : computePhaseTimings(accelX, accelY, accelZ, timestamps);
+  const { liftingTime, loweringTime, primaryAxis: phaseAxis, peakTimePercent } = phaseTimings;
   
   return {
     repNumber,
@@ -365,15 +451,21 @@ export const computeRepMetrics = (repData) => {
     durationMs,
     sampleCount: samples.length,
     
-    // ROM metrics
+    // ROM metrics (orientation-based, more accurate)
     rom: romMetrics.rom,
     romNormalized: romMetrics.romNormalized,
     peak: romMetrics.peak,
     trough: romMetrics.trough,
     romDegrees: romDegrees.romDegrees,
-    minAngle: romDegrees.minAngle,
-    maxAngle: romDegrees.maxAngle,
+    minAngle: romDegrees.minAngle || romDegrees.pitchMin,
+    maxAngle: romDegrees.maxAngle || romDegrees.pitchMax,
     meanAngle: romDegrees.meanAngle,
+    // New: orientation-based ROM details
+    romPrimaryAxis: romDegrees.primaryAxis,
+    romRollRange: romDegrees.rollRange,
+    romPitchRange: romDegrees.pitchRange,
+    romYawRange: romDegrees.yawRange,
+    hasOrientationData,
     
     // Smoothness metrics
     smoothnessScore: smoothnessMetrics.smoothnessScore,
@@ -381,23 +473,29 @@ export const computeRepMetrics = (repData) => {
     normalizedJerk: smoothnessMetrics.normalizedJerk,
     directionChanges: smoothnessMetrics.directionChanges,
     
-    // Gyroscope metrics
-    gyroPeak,
+    // Gyroscope metrics (baseline-compensated for better velocity detection)
+    gyroPeak, // Velocity change from baseline
+    gyroPeakAbsolute, // Absolute peak (legacy)
+    gyroMean, // Average velocity change
     gyroRms,
     gyroStd,
+    gyroBaseline, // For debugging
     shakiness,
     
-    // Phase timings
+    // Phase timings (using orientation angles when available)
     liftingTime,
     loweringTime,
     totalPhaseTime: liftingTime + loweringTime,
     liftingPercent: liftingTime + loweringTime > 0 
       ? (liftingTime / (liftingTime + loweringTime)) * 100 
       : 50,
+    primaryMovementAxis: phaseAxis,
+    peakTimePercent,
     
-    // Peak metrics
+    // Peak metrics (baseline-compensated)
     peakAcceleration,
-    peakVelocity: gyroPeak, // Angular velocity as proxy
+    peakAccelerationAbsolute,
+    peakVelocity: gyroPeak, // Angular velocity change from baseline
     
     // Chart data for visualization
     chartData: filteredMag
@@ -405,79 +503,224 @@ export const computeRepMetrics = (repData) => {
 };
 
 /**
- * Compute eccentric/concentric phase timings
- * Concentric (lifting) = valley to peak (signal increasing)
- * Eccentric (lowering) = peak to valley (signal decreasing)
+ * Compute eccentric/concentric phase timings using PRIMARY AXIS method
+ * 
+ * Algorithm (from main_csv.py):
+ * 1. Determine the PRIMARY movement axis (X, Y, or Z) based on which has highest range of motion
+ * 2. Find peaks on the primary axis signal (both positive and negative peaks)
+ * 3. Concentric = time BEFORE the main peak (lifting/pushing phase)
+ * 4. Eccentric = time AFTER the main peak (lowering/returning phase)
+ * 
+ * This is more accurate than using magnitude because it captures the actual movement direction.
+ * 
+ * @param {number[]} accelX - X-axis acceleration values
+ * @param {number[]} accelY - Y-axis acceleration values  
+ * @param {number[]} accelZ - Z-axis acceleration values
+ * @param {number[]} timestamps - Timestamps in ms
+ * @returns {{ liftingTime: number, loweringTime: number, primaryAxis: string, peakTimePercent: number }}
  */
-const computePhaseTimings = (signal, timestamps) => {
-  if (!signal || signal.length < 3) {
-    return { liftingTime: 0, loweringTime: 0 };
+const computePhaseTimings = (accelX, accelY, accelZ, timestamps) => {
+  if (!accelX || accelX.length < 3) {
+    return { liftingTime: 0, loweringTime: 0, primaryAxis: 'unknown', peakTimePercent: 50 };
   }
   
   // Check if timestamps are valid (not all zeros)
-  const hasValidTimestamps = timestamps && timestamps.length === signal.length 
+  const hasValidTimestamps = timestamps && timestamps.length === accelX.length 
     && timestamps.some(t => t > 0) 
     && (timestamps[timestamps.length - 1] - timestamps[0]) > 0;
   
-  // Find valley (minimum) and peak (maximum) indices
-  let valleyIdx = 0;
-  let peakIdx = 0;
-  let minVal = signal[0];
-  let maxVal = signal[0];
+  // *** STEP 1: Determine PRIMARY movement axis (highest range of motion) ***
+  const xRange = Math.max(...accelX) - Math.min(...accelX);
+  const yRange = Math.max(...accelY) - Math.min(...accelY);
+  const zRange = Math.max(...accelZ) - Math.min(...accelZ);
   
-  for (let i = 0; i < signal.length; i++) {
-    if (signal[i] < minVal) {
-      minVal = signal[i];
-      valleyIdx = i;
-    }
-    if (signal[i] > maxVal) {
-      maxVal = signal[i];
-      peakIdx = i;
-    }
+  let primarySignal;
+  let primaryAxis;
+  
+  if (xRange >= yRange && xRange >= zRange) {
+    primarySignal = accelX;
+    primaryAxis = 'X';
+  } else if (yRange >= xRange && yRange >= zRange) {
+    primarySignal = accelY;
+    primaryAxis = 'Y';
+  } else {
+    primarySignal = accelZ;
+    primaryAxis = 'Z';
   }
   
-  // If peak and valley are at same position, no phase split possible
-  if (peakIdx === valleyIdx) return { liftingTime: 0, loweringTime: 0 };
+  // *** STEP 2: Find peaks on primary axis (both positive and negative) ***
+  const { peaks: positivePeaks } = findPeaks(primarySignal, 0.1);
   
-  let liftingTime = 0;
-  let loweringTime = 0;
+  // Find negative peaks by inverting the signal
+  const invertedSignal = primarySignal.map(v => -v);
+  const { peaks: negativePeaks } = findPeaks(invertedSignal, 0.1);
+  
+  // Combine all peaks and find the most prominent one
+  const allPeaks = [
+    ...positivePeaks.map(p => ({ ...p, type: 'positive' })),
+    ...negativePeaks.map(p => ({ index: p.index, value: primarySignal[p.index], prominence: p.prominence, type: 'negative' }))
+  ];
+  
+  // *** STEP 3: Find the MAIN peak (most prominent) ***
+  let transitionIdx;
+  
+  if (allPeaks.length > 0) {
+    // Sort by absolute value of signal at peak position (find most prominent movement)
+    const peakAmplitudes = allPeaks.map(p => Math.abs(primarySignal[p.index]));
+    const mainPeakArrayIdx = peakAmplitudes.indexOf(Math.max(...peakAmplitudes));
+    transitionIdx = allPeaks[mainPeakArrayIdx].index;
+  } else {
+    // Fallback: use index of maximum absolute value
+    const absValues = primarySignal.map(Math.abs);
+    transitionIdx = absValues.indexOf(Math.max(...absValues));
+  }
+  
+  // *** STEP 4: Calculate phase timings ***
+  // Concentric (lifting) = time BEFORE peak
+  // Eccentric (lowering) = time AFTER peak
+  
+  let liftingTime = 0;  // Concentric
+  let loweringTime = 0; // Eccentric
   
   if (hasValidTimestamps) {
     // Use actual timestamps for accurate timing
-    if (valleyIdx < peakIdx) {
-      for (let i = 1; i < signal.length; i++) {
-        const dt = (timestamps[i] - timestamps[i - 1]) / 1000;
-        if (dt <= 0) continue;
-        if (i <= peakIdx) {
-          liftingTime += dt;
-        } else {
-          loweringTime += dt;
-        }
-      }
-    } else {
-      for (let i = 1; i < signal.length; i++) {
-        const dt = (timestamps[i] - timestamps[i - 1]) / 1000;
-        if (dt <= 0) continue;
-        if (i <= valleyIdx) {
-          loweringTime += dt;
-        } else {
-          liftingTime += dt;
-        }
-      }
-    }
+    const startTime = timestamps[0];
+    const peakTime = timestamps[transitionIdx];
+    const endTime = timestamps[timestamps.length - 1];
+    
+    liftingTime = (peakTime - startTime) / 1000;  // Convert ms to seconds
+    loweringTime = (endTime - peakTime) / 1000;
   } else {
-    // No valid timestamps — estimate from sample count (~20ms per sample at 50Hz)
-    const totalDuration = signal.length * 0.02;
-    if (valleyIdx < peakIdx) {
-      liftingTime = (peakIdx / signal.length) * totalDuration;
-      loweringTime = ((signal.length - peakIdx) / signal.length) * totalDuration;
-    } else {
-      loweringTime = (valleyIdx / signal.length) * totalDuration;
-      liftingTime = ((signal.length - valleyIdx) / signal.length) * totalDuration;
-    }
+    // No valid timestamps - estimate from sample count (~50ms per sample at 20Hz)
+    const sampleRate = 0.05; // 50ms per sample (20Hz)
+    const totalDuration = primarySignal.length * sampleRate;
+    
+    liftingTime = (transitionIdx / primarySignal.length) * totalDuration;
+    loweringTime = ((primarySignal.length - transitionIdx) / primarySignal.length) * totalDuration;
   }
   
-  return { liftingTime, loweringTime };
+  // Ensure non-negative values
+  liftingTime = Math.max(0, liftingTime);
+  loweringTime = Math.max(0, loweringTime);
+  
+  // Calculate peak time as percentage
+  const peakTimePercent = primarySignal.length > 0 
+    ? (transitionIdx / primarySignal.length) * 100 
+    : 50;
+  
+  return { 
+    liftingTime, 
+    loweringTime, 
+    primaryAxis,
+    peakTimePercent
+  };
+};
+
+/**
+ * Compute eccentric/concentric phase timings from ORIENTATION ANGLES
+ * 
+ * This is MORE ACCURATE than accelerometer-based because:
+ * 1. Orientation angles (roll/pitch/yaw) are gravity-compensated
+ * 2. They represent actual device rotation (true movement)
+ * 3. The peak in orientation = the turning point of the exercise
+ * 
+ * Algorithm (similar to main_csv.py but using orientation):
+ * 1. Find the primary rotation axis (roll, pitch, or yaw with highest range)
+ * 2. Find the EXTREMUM (max or min) on that axis = the turning point
+ * 3. Concentric = time to reach extremum (lifting)
+ * 4. Eccentric = time from extremum to end (lowering)
+ */
+const computePhaseTimingsFromOrientation = (roll, pitch, yaw, timestamps) => {
+  if (!roll || roll.length < 3) {
+    return { liftingTime: 0, loweringTime: 0, primaryAxis: 'unknown', peakTimePercent: 50 };
+  }
+  
+  // Check if timestamps are valid
+  const hasValidTimestamps = timestamps && timestamps.length === roll.length 
+    && timestamps.some(t => t > 0) 
+    && (timestamps[timestamps.length - 1] - timestamps[0]) > 0;
+  
+  // Find primary rotation axis (highest range)
+  const rollRange = Math.max(...roll) - Math.min(...roll);
+  const pitchRange = Math.max(...pitch) - Math.min(...pitch);
+  const yawRange = Math.max(...yaw) - Math.min(...yaw);
+  
+  let primarySignal;
+  let primaryAxis;
+  
+  if (rollRange >= pitchRange && rollRange >= yawRange) {
+    primarySignal = roll;
+    primaryAxis = 'roll';
+  } else if (pitchRange >= rollRange && pitchRange >= yawRange) {
+    primarySignal = pitch;
+    primaryAxis = 'pitch';
+  } else {
+    primarySignal = yaw;
+    primaryAxis = 'yaw';
+  }
+  
+  // Find the turning point (extremum) - this is where concentric ends and eccentric begins
+  // For most exercises, this is either the MAX or MIN on the primary axis
+  const maxIdx = primarySignal.indexOf(Math.max(...primarySignal));
+  const minIdx = primarySignal.indexOf(Math.min(...primarySignal));
+  
+  // Determine which extremum is the true turning point:
+  // If max is closer to middle, it's likely the turning point (typical curl motion)
+  // If min is closer to middle, it's likely the turning point (e.g., overhead extension)
+  const midPoint = primarySignal.length / 2;
+  const maxDistFromEdge = Math.min(maxIdx, primarySignal.length - 1 - maxIdx);
+  const minDistFromEdge = Math.min(minIdx, primarySignal.length - 1 - minIdx);
+  
+  // The extremum that's more "internal" (further from edges) is the turning point
+  let transitionIdx;
+  if (maxDistFromEdge > minDistFromEdge) {
+    transitionIdx = maxIdx;
+  } else if (minDistFromEdge > maxDistFromEdge) {
+    transitionIdx = minIdx;
+  } else {
+    // Both equally internal - use the one closer to center
+    transitionIdx = Math.abs(maxIdx - midPoint) < Math.abs(minIdx - midPoint) ? maxIdx : minIdx;
+  }
+  
+  // Ensure transition isn't at the very edge (fallback to center if so)
+  if (transitionIdx <= 1 || transitionIdx >= primarySignal.length - 2) {
+    // Use center point as fallback (indicates roughly equal phases)
+    transitionIdx = Math.round(primarySignal.length / 2);
+  }
+  
+  // Calculate phase timings
+  let liftingTime = 0;  // Concentric (before turning point)
+  let loweringTime = 0; // Eccentric (after turning point)
+  
+  if (hasValidTimestamps) {
+    const startTime = timestamps[0];
+    const peakTime = timestamps[transitionIdx];
+    const endTime = timestamps[timestamps.length - 1];
+    
+    liftingTime = (peakTime - startTime) / 1000;
+    loweringTime = (endTime - peakTime) / 1000;
+  } else {
+    // Estimate from sample count (~50ms per sample at 20Hz)
+    const sampleRate = 0.05;
+    const totalDuration = primarySignal.length * sampleRate;
+    
+    liftingTime = (transitionIdx / primarySignal.length) * totalDuration;
+    loweringTime = ((primarySignal.length - transitionIdx) / primarySignal.length) * totalDuration;
+  }
+  
+  // Ensure non-negative
+  liftingTime = Math.max(0, liftingTime);
+  loweringTime = Math.max(0, loweringTime);
+  
+  const peakTimePercent = (transitionIdx / primarySignal.length) * 100;
+  
+  return { 
+    liftingTime, 
+    loweringTime, 
+    primaryAxis,
+    peakTimePercent,
+    transitionIdx
+  };
 };
 
 /**
@@ -973,6 +1216,7 @@ export default {
   computeRepConsistency,
   computeSmoothnessMetrics,
   computeROMDegrees,
+  computeROMFromOrientation,
   extractMLFeatures,
   QUALITY_NAMES_BY_EXERCISE
 };

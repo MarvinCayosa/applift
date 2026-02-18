@@ -235,8 +235,12 @@ export default function Settings() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showSignOutModal, setShowSignOutModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showClearDataModal, setShowClearDataModal] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [clearDataConfirmText, setClearDataConfirmText] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isClearingData, setIsClearingData] = useState(false);
+  const [clearDataResult, setClearDataResult] = useState(null);
   
   // Profile customization state
   const [profileColor, setProfileColor] = useState('');
@@ -886,6 +890,59 @@ export default function Settings() {
     } finally {
       setIsDeleting(false);
       setShowDeleteModal(false);
+    }
+  };
+
+  const handleClearAllData = async () => {
+    if (clearDataConfirmText !== 'CLEAR') return;
+    
+    setIsClearingData(true);
+    setClearDataResult(null);
+    
+    try {
+      // Get the user's auth token
+      const idToken = await user.getIdToken();
+      
+      // Call the clear data API
+      const response = await fetch('/api/clear-user-data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        },
+        body: JSON.stringify({ confirmUserId: user.uid })
+      });
+      
+      const result = await response.json();
+      
+      if (response.ok && result.success) {
+        setClearDataResult({
+          success: true,
+          message: `Successfully cleared all data! Deleted ${result.details.gcsFilesDeleted} IMU files and ${result.details.firestoreDocsDeleted} workout logs.`
+        });
+        
+        // Close modal after a delay to show success message
+        setTimeout(() => {
+          setShowClearDataModal(false);
+          setClearDataConfirmText('');
+          setClearDataResult(null);
+          // Refresh the page to show fresh state
+          router.reload();
+        }, 2000);
+      } else {
+        setClearDataResult({
+          success: false,
+          message: result.error || 'Failed to clear data. Please try again.'
+        });
+      }
+    } catch (error) {
+      console.error('Error clearing data:', error);
+      setClearDataResult({
+        success: false,
+        message: 'Network error. Please check your connection and try again.'
+      });
+    } finally {
+      setIsClearingData(false);
     }
   };
 
@@ -1631,6 +1688,22 @@ export default function Settings() {
                 <span className="text-sm font-medium text-orange-400">Sign Out</span>
               </button>
 
+              {/* Clear All Data */}
+              <button
+                onClick={() => setShowClearDataModal(true)}
+                className="w-full px-5 py-4 flex items-center gap-3 hover:bg-white/5 transition-colors border-b border-white/10"
+              >
+                <div className="w-8 h-8 rounded-full bg-yellow-500/20 flex items-center justify-center">
+                  <svg className="w-4 h-4 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 7h16M10 11v6m4-6v6M5 7l1 12a2 2 0 002 2h8a2 2 0 002-2l1-12M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3" />
+                  </svg>
+                </div>
+                <div className="flex-1 text-left">
+                  <span className="text-sm font-medium text-yellow-400">Clear All Data</span>
+                  <p className="text-xs text-white/40 mt-0.5">Delete workout logs, IMU data & reset streak</p>
+                </div>
+              </button>
+
               {/* Delete Account */}
               <button
                 onClick={() => setShowDeleteModal(true)}
@@ -1792,6 +1865,97 @@ export default function Settings() {
                 {isChangingPassword ? 'Changing...' : 'Change'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Clear All Data Modal */}
+      {showClearDataModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-4 modal-fade-in"
+          style={{
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+          }}
+          onClick={() => !isClearingData && setShowClearDataModal(false)}
+        >
+          <div
+            className="relative max-w-sm w-full p-6 rounded-2xl bg-white/10 shadow-xl modal-content-fade-in"
+            style={{
+              boxShadow: '0 10px 40px rgba(0, 0, 0, 0.4)',
+              backdropFilter: 'blur(20px)',
+              WebkitBackdropFilter: 'blur(20px)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-center mb-5">
+              <div className="w-14 h-14 rounded-full bg-yellow-500/20 flex items-center justify-center mx-auto mb-4">
+                <svg className="w-7 h-7 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 7h16M10 11v6m4-6v6M5 7l1 12a2 2 0 002 2h8a2 2 0 002-2l1-12M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-white mb-2">Clear All Data</h3>
+              <p className="text-sm text-yellow-400/90 font-medium mb-2">
+                Fresh Start - This cannot be undone
+              </p>
+              <p className="text-sm text-white/60 leading-relaxed">
+                This will permanently delete:
+              </p>
+              <ul className="text-sm text-white/60 mt-2 space-y-1">
+                <li>• All workout logs and history</li>
+                <li>• All IMU sensor data files</li>
+                <li>• Your workout streak</li>
+              </ul>
+              <p className="text-xs text-white/40 mt-3">
+                Your account and profile settings will be kept.
+              </p>
+            </div>
+            
+            {clearDataResult && (
+              <div className={`mb-4 p-3 rounded-xl text-sm text-center ${clearDataResult.success ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                {clearDataResult.message}
+              </div>
+            )}
+            
+            {!clearDataResult?.success && (
+              <div className="mb-5">
+                <label className="block text-xs font-medium text-white/60 mb-2 text-center">
+                  Type <span className="text-yellow-400 font-semibold">CLEAR</span> to confirm
+                </label>
+                <input
+                  type="text"
+                  value={clearDataConfirmText}
+                  onChange={(e) => setClearDataConfirmText(e.target.value.toUpperCase())}
+                  disabled={isClearingData}
+                  className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/30 focus:outline-none focus:border-yellow-500/50 transition-colors text-center disabled:opacity-50"
+                  placeholder="CLEAR"
+                />
+              </div>
+            )}
+            
+            {!clearDataResult?.success && (
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => {
+                    setShowClearDataModal(false);
+                    setClearDataConfirmText('');
+                    setClearDataResult(null);
+                  }}
+                  disabled={isClearingData}
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/90 font-medium transition-colors border border-white/10 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleClearAllData}
+                  disabled={clearDataConfirmText !== 'CLEAR' || isClearingData}
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-yellow-500 hover:bg-yellow-600 text-black font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isClearingData ? 'Clearing...' : 'Clear All Data'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
