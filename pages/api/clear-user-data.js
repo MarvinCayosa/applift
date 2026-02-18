@@ -107,8 +107,8 @@ async function deleteGCSFolder(userId) {
 
 /**
  * Delete all workout logs from Firestore
- * Structure: userWorkouts/{userId}/{equipmentType}/{workoutDocs}
- * e.g., userWorkouts/knTx.../barbell/..., userWorkouts/knTx.../dumbbell/...
+ * Delete the entire user document: userWorkouts/{userId}
+ * This automatically deletes all subcollections (barbell, dumbbell, etc.)
  */
 async function deleteFirestoreWorkoutLogs(userId) {
   if (!adminDb) {
@@ -119,50 +119,23 @@ async function deleteFirestoreWorkoutLogs(userId) {
   try {
     let totalDeleted = 0;
 
-    // 1. Delete from userWorkouts/{userId}/* - all subcollections (barbell, dumbbell, etc.)
+    // 1. Delete the entire userWorkouts/{userId} document and all subcollections
     const userWorkoutsDocRef = adminDb.collection('userWorkouts').doc(userId);
     
-    // Get all subcollections under this user's document
+    // Get count of subcollections for reporting
     const subcollections = await userWorkoutsDocRef.listCollections();
     console.log(`[ClearData] Found ${subcollections.length} equipment subcollections for user: ${userId}`);
     
+    // Count documents in all subcollections before deletion
     for (const subcollection of subcollections) {
       const snapshot = await subcollection.get();
-      
-      if (!snapshot.empty) {
-        // Firestore batches can only handle 500 operations max
-        const batchSize = 450;
-        let batch = adminDb.batch();
-        let batchCount = 0;
-        
-        for (const doc of snapshot.docs) {
-          batch.delete(doc.ref);
-          batchCount++;
-          
-          if (batchCount >= batchSize) {
-            await batch.commit();
-            batch = adminDb.batch();
-            batchCount = 0;
-          }
-        }
-        
-        // Commit remaining
-        if (batchCount > 0) {
-          await batch.commit();
-        }
-        
-        totalDeleted += snapshot.size;
-        console.log(`[ClearData] Deleted ${snapshot.size} docs from userWorkouts/${userId}/${subcollection.id}`);
-      }
+      totalDeleted += snapshot.size;
+      console.log(`[ClearData] Will delete ${snapshot.size} docs from ${subcollection.id} subcollection`);
     }
     
-    // Also delete the parent document if it exists (virtual doc placeholder)
-    try {
-      await userWorkoutsDocRef.delete();
-      console.log(`[ClearData] Deleted userWorkouts/${userId} parent document`);
-    } catch (e) {
-      // Parent doc may not exist as a real document, that's okay
-    }
+    // Delete the entire user document (this deletes all subcollections automatically)
+    await adminDb.recursiveDelete(userWorkoutsDocRef);
+    console.log(`[ClearData] Deleted entire userWorkouts/${userId} document with all subcollections`);
 
     // 2. Delete legacy workoutLogs collection docs for this user
     const legacyLogsRef = adminDb.collection('workoutLogs');
