@@ -23,6 +23,21 @@ export function useWorkoutSession({
   const workoutStartTime = useRef(0); // Track total workout time including breaks
   const rawDataLog = useRef([]);
   
+  // *** REFS FOR CALLBACKS - AVOIDS STALE CLOSURE ISSUES ***
+  // These refs always hold the latest callback versions
+  const onIMUSampleRef = useRef(onIMUSample);
+  const onRepDetectedRef = useRef(onRepDetected);
+  const onSetCompleteRef = useRef(onSetComplete);
+  const onWorkoutCompleteRef = useRef(onWorkoutComplete);
+  
+  // Update refs on each render to always have latest callbacks
+  useEffect(() => {
+    onIMUSampleRef.current = onIMUSample;
+    onRepDetectedRef.current = onRepDetected;
+    onSetCompleteRef.current = onSetComplete;
+    onWorkoutCompleteRef.current = onWorkoutComplete;
+  });
+  
   // Refs to avoid closure issues in callbacks
   const isRecordingRef = useRef(false);
   const isPausedRef = useRef(false);
@@ -81,16 +96,6 @@ export function useWorkoutSession({
   
   // Track last rep count for detecting new reps
   const lastRepCountRef = useRef(0);
-  
-  // Refs for callbacks to avoid closure issues
-  const onIMUSampleRef = useRef(onIMUSample);
-  const onRepDetectedRef = useRef(onRepDetected);
-  
-  // Keep refs updated
-  useEffect(() => {
-    onIMUSampleRef.current = onIMUSample;
-    onRepDetectedRef.current = onRepDetected;
-  }, [onIMUSample, onRepDetected]);
 
   // Handle IMU data callback
   const handleIMUData = useCallback((data) => {
@@ -321,9 +326,10 @@ export function useWorkoutSession({
           setIsRecording(false);
           setIsPaused(false);
           
-          if (onWorkoutComplete) {
+          // *** USE REF TO AVOID STALE CLOSURE ***
+          if (onWorkoutCompleteRef.current) {
             // Use the updated stats that include the current set and ACTUAL duration
-            onWorkoutComplete({
+            onWorkoutCompleteRef.current({
               workoutStats: {
                 totalReps: updatedTotalReps,
                 allRepDurations: updatedAllRepDurations,
@@ -353,8 +359,9 @@ export function useWorkoutSession({
           }));
           
           startBreak();
-          if (onSetComplete) {
-            onSetComplete(currentSet);
+          // *** USE REF TO AVOID STALE CLOSURE ***
+          if (onSetCompleteRef.current) {
+            onSetCompleteRef.current(currentSet);
           }
         }
       }
