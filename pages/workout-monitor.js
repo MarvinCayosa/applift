@@ -203,6 +203,17 @@ export default function WorkoutMonitor() {
       // Show analyzing screen
       setIsAnalyzing(true);
       
+      // *** FIX: Call handleSetComplete for the LAST set before finishing ***
+      // onSetComplete is NOT called for the last set (only onWorkoutComplete)
+      // So we must manually trigger ML classification for the final set
+      if (isStreaming) {
+        console.log('🏁 Workout complete - triggering ML for final set:', finalStats.completedSets);
+        await handleSetComplete();
+      }
+      
+      // Small delay to let ML classification start
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
       // Finish streaming and determine completion status
       const result = await finishWorkout();
       

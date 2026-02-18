@@ -289,11 +289,16 @@ export function WorkoutLoggingProvider({ children }) {
   /**
    * Wait for all background ML tasks to complete (with timeout)
    */
-  const waitForBackgroundML = useCallback(async (timeoutMs = 5000) => {
+  const waitForBackgroundML = useCallback(async (timeoutMs = 15000) => {
     const tasks = Array.from(backgroundMLTasks.current.values());
-    if (tasks.length === 0) return;
+    if (tasks.length === 0) {
+      console.log('[WorkoutLogging] No background ML tasks to wait for');
+      return;
+    }
     
-    console.log(`[WorkoutLogging] ⏳ Waiting for ${tasks.length} background ML tasks...`);
+    console.log(`[WorkoutLogging] ⏳ Waiting for ${tasks.length} background ML tasks (timeout: ${timeoutMs}ms)...`);
+    
+    const startTime = Date.now();
     
     try {
       // Race between tasks completing and timeout
@@ -301,7 +306,8 @@ export function WorkoutLoggingProvider({ children }) {
         Promise.allSettled(tasks),
         new Promise(resolve => setTimeout(resolve, timeoutMs))
       ]);
-      console.log(`[WorkoutLogging] ✅ Background ML tasks settled`);
+      const elapsed = Date.now() - startTime;
+      console.log(`[WorkoutLogging] ✅ Background ML tasks settled in ${elapsed}ms`);
     } catch (error) {
       console.warn('[WorkoutLogging] Some background ML tasks failed:', error);
     }
@@ -315,8 +321,9 @@ export function WorkoutLoggingProvider({ children }) {
     if (!isStreaming) return null;
 
     try {
-      // Wait for background ML to complete (max 5 seconds)
-      await waitForBackgroundML(5000);
+      // Wait for background ML to complete (max 15 seconds - Cloud Run may need time)
+      console.log('[WorkoutLogging] ⏳ Waiting for all ML tasks to complete before finishing...');
+      await waitForBackgroundML(15000);
       
       const result = await endStreaming(true);
       
