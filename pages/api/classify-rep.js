@@ -287,27 +287,68 @@ function classifyWithRules(features, exercise) {
   };
 }
 
-// Call Cloud Run ML API
-async function classifyWithCloudRun(modelType, features) {
-  const response = await fetch(`${ML_API_URL}/classify`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      exercise_type: modelType,
-      features: features
-    }),
-    // Timeout after 10 seconds
-    signal: AbortSignal.timeout(10000)
-  });
+// Warm up Cloud Run (trigger cold start without waiting for full classify)
+async function warmUpCloudRun() {
+  try {
+    await fetch(`${ML_API_URL}/`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(5000)
+    });
+    console.log('[Classify API] Cloud Run warm-up ping successful');
+  } catch (e) {
+    // Warm-up failures are expected during cold start, ignore
+    console.log('[Classify API] Cloud Run warm-up ping sent (cold start may be in progress)');
+  }
+}
+
+// Call Cloud Run ML API with retry logic for cold starts
+async function classifyWithCloudRun(modelType, features, retries = 2) {
+  let lastError = null;
   
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.detail || `Cloud Run API error: ${response.status}`);
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      console.log(`[Classify API] Attempt ${attempt}/${retries} - calling ${ML_API_URL}/classify`);
+      
+      const response = await fetch(`${ML_API_URL}/classify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          exercise_type: modelType,
+          features: features
+        }),
+        // 25s timeout (Vercel maxDuration is 30s)
+        signal: AbortSignal.timeout(25000)
+      });
+      
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.detail || `Cloud Run API error: ${response.status}`);
+      }
+      
+      const result = await response.json();
+      if (attempt > 1) {
+        console.log(`[Classify API] Succeeded on attempt ${attempt} (cold start recovered)`);
+      }
+      return result;
+      
+    } catch (error) {
+      lastError = error;
+      console.warn(`[Classify API] Attempt ${attempt}/${retries} failed: ${error.name}: ${error.message}`);
+      
+      // If we have retries left and it's a timeout/network error, wait and retry
+      if (attempt < retries && (error.name === 'AbortError' || error.name === 'TimeoutError' || error.message.includes('fetch failed') || error.message.includes('ECONNREFUSED'))) {
+        console.log(`[Classify API] Waiting 2s before retry (Cloud Run may be cold starting)...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        continue;
+      }
+      
+      throw error;
+    }
   }
   
-  return await response.json();
+  throw lastError;
 }
 
 // Main API handler
@@ -353,6 +394,9 @@ export default async function handler(req, res) {
   
   // Try Cloud Run ML API
   console.log(`[Classify API] Calling Cloud Run for ${exercise} (${modelType}) at ${ML_API_URL}`);
+  
+  // Send a warm-up ping first (helps with cold starts)
+  await warmUpCloudRun();
   
   try {
     const classifications = [];
@@ -408,25 +452,28 @@ export default async function handler(req, res) {
     console.error('============================================');
     console.error(`  URL: ${ML_API_URL}/classify`);
     console.error(`  Exercise: ${exercise} (${modelType})`);
-    console.error(`  Error: ${error.message}`);
-    console.error(`  Cause: ${error.cause || 'N/A'}`);
-    if (error.message.includes('fetch failed') || error.message.includes('ECONNREFUSED')) {
-      console.error('  HINT: Cloud Run service may be down or URL is wrong');
-      console.error(`  Check: NEXT_PUBLIC_ML_API_URL=${ML_API_URL}`);
-    } else if (error.message.includes('AbortError') || error.message.includes('timeout')) {
-      console.error('  HINT: Request timed out - Cloud Run may be cold starting');
+    console.error(`  Error Type: ${error.name}`);
+    console.error(`  Error Message: ${error.message}`);
+    console.error(`  Cause: ${error.cause ? JSON.stringify(error.cause) : 'N/A'}`);
+    
+    let hint = 'Check NEXT_PUBLIC_ML_API_URL env var and Cloud Run service status';
+    if (error.name === 'AbortError' || error.name === 'TimeoutError' || error.message.includes('timeout')) {
+      hint = 'Request timed out after 25s - Cloud Run cold start may need more time. Try again (instance should be warm now).';
+    } else if (error.message.includes('fetch failed') || error.message.includes('ECONNREFUSED')) {
+      hint = 'Cloud Run service unreachable. Check URL and deployment status.';
     } else if (error.message.includes('404')) {
-      console.error(`  HINT: Model "${modelType}_RF.pkl" not found on Cloud Run. Did you add the PKL file?`);
+      hint = `Model "${modelType}_RF.pkl" not found on Cloud Run. Deploy the PKL file.`;
     }
+    console.error(`  Hint: ${hint}`);
     console.error('============================================');
     
     return res.status(503).json({
       error: 'Cloud Run ML API is unavailable',
-      details: error.message,
+      details: `${error.name}: ${error.message}`,
       apiUrl: ML_API_URL,
       exercise,
       modelType,
-      hint: 'Check NEXT_PUBLIC_ML_API_URL env var and Cloud Run service status'
+      hint
     });
   }
 }
