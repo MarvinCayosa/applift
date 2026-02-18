@@ -120,6 +120,23 @@ const percentile = (arr, p) => {
   return sorted[lower] * (1 - weight) + (sorted[upper] || sorted[lower]) * weight;
 };
 
+// Sanitize a value to ensure it's a valid finite number
+const sanitizeNumber = (val) => {
+  if (val === undefined || val === null || typeof val !== 'number' || !isFinite(val) || isNaN(val)) {
+    return 0;
+  }
+  return val;
+};
+
+// Sanitize all features to ensure they're valid numbers for FastAPI
+const sanitizeFeatures = (features) => {
+  const sanitized = {};
+  for (const [key, value] of Object.entries(features)) {
+    sanitized[key] = sanitizeNumber(value);
+  }
+  return sanitized;
+};
+
 // Extract features from rep data (matching Python feature extraction)
 function extractFeatures(repData) {
   const samples = repData.samples || repData;
@@ -135,9 +152,12 @@ function extractFeatures(repData) {
                          'accelMag', 'accelX', 'accelY', 'accelZ',
                          'gyroX', 'gyroY', 'gyroZ'];
   
-  // Duration features
-  const timestamps = samples.map(s => s.timestamp_ms || s.timestamp || 0);
-  features['rep_duration_ms'] = timestamps.length > 0 ? timestamps[timestamps.length - 1] - timestamps[0] : 0;
+  // Duration features - ensure we parse timestamps as numbers
+  const timestamps = samples.map(s => {
+    const ts = s.timestamp_ms ?? s.timestamp ?? 0;
+    return typeof ts === 'number' ? ts : parseFloat(ts) || 0;
+  });
+  features['rep_duration_ms'] = timestamps.length > 0 ? sanitizeNumber(timestamps[timestamps.length - 1] - timestamps[0]) : 0;
   features['sample_count'] = samples.length;
   if (timestamps.length > 1) {
     const diffs = timestamps.slice(1).map((t, i) => t - timestamps[i]).filter(d => d > 0);
@@ -219,7 +239,8 @@ function extractFeatures(repData) {
     features[`${col}_peak_value`] = maxVal;
   }
   
-  return features;
+  // Sanitize ALL features to ensure valid numbers for FastAPI
+  return sanitizeFeatures(features);
 }
 
 // Rule-based classification fallback
