@@ -1,0 +1,12 @@
+# FastAPI and web server
+fastapi
+uvicorn[standard]
+
+# ML dependencies
+scikit-learn
+joblib
+numpy
+
+# Additional utilities
+pydantic
+python-multipart

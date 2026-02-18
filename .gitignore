@@ -9,3 +9,17 @@
 lib/firebase-admin-key.json
 *-firebase-adminsdk-*.json
 
+# Python virtual environments (anywhere in project)
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Cloud Run ML API - models are large binary files
+cloud-run-ml-api/models/*.pkl
+cloud-run-ml-api/venv/
+
+# OS files
+.DS_Store
+Thumbs.db

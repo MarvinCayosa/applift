@@ -3,60 +3,71 @@
  * 
  * Handles rep quality classification using ML models or rule-based fallback.
  * 
- * Exercise Model Support:
+ * Exercise Model Support (6 total):
  * - concentration_curls: CONCENTRATION_CURLS_RF.pkl ✓
  * - overhead_extensions: OVERHEAD_EXTENSIONS_RF.pkl ✓
  * - lateral_pulldown: LATERAL_PULLDOWN_RF.pkl ✓
- * - seated_leg_extension: (no model yet - uses rules)
- * - bench_press: (no model yet - uses rules)
- * - back_squat: (no model yet - uses rules)
+ * - leg_extension: LEG_EXTENSION_RF.pkl ✓
+ * - bench_press: BENCH_PRESS_RF.pkl (coming soon)
+ * - back_squats: BACK_SQUATS_RF.pkl (coming soon)
+ * 
+ * To add a new model: just place the .pkl file in cloud-run-ml-api/models/
+ * with the naming pattern: EXERCISE_NAME_RF.pkl
  */
 
 // Exercise name to model file mapping
+// Just add the PKL file and add mapping here - Cloud Run will auto-detect it
 export const EXERCISE_MODEL_MAP = {
   // Dumbbell exercises
   'concentration_curls': 'CONCENTRATION_CURLS_RF.pkl',
   'concentration curls': 'CONCENTRATION_CURLS_RF.pkl',
   'Concentration Curls': 'CONCENTRATION_CURLS_RF.pkl',
+  'bicep_curls': 'CONCENTRATION_CURLS_RF.pkl', // Fallback  
   
   'overhead_extensions': 'OVERHEAD_EXTENSIONS_RF.pkl',
   'overhead_extension': 'OVERHEAD_EXTENSIONS_RF.pkl', 
   'overhead_triceps_extension': 'OVERHEAD_EXTENSIONS_RF.pkl',
   'Overhead Triceps Extension': 'OVERHEAD_EXTENSIONS_RF.pkl',
   
+  // Barbell exercises (models training - will work when PKL added)
+  'bench_press': 'BENCH_PRESS_RF.pkl',
+  'Bench Press': 'BENCH_PRESS_RF.pkl',
+  'flat_bench_barbell_press': 'BENCH_PRESS_RF.pkl',
+  'Flat Bench Barbell Press': 'BENCH_PRESS_RF.pkl',
+  
+  'back_squats': 'BACK_SQUATS_RF.pkl',
+  'back_squat': 'BACK_SQUATS_RF.pkl',
+  'Back Squats': 'BACK_SQUATS_RF.pkl',
+  'Back Squat': 'BACK_SQUATS_RF.pkl',
+  
   // Weight Stack exercises
   'lateral_pulldown': 'LATERAL_PULLDOWN_RF.pkl',
   'lateral pulldown': 'LATERAL_PULLDOWN_RF.pkl',
   'Lateral Pulldown': 'LATERAL_PULLDOWN_RF.pkl',
   
-  // Exercises without models yet (will use fallback)
-  'seated_leg_extension': null,
-  'Seated Leg Extension': null,
-  'bench_press': null,
-  'flat_bench_barbell_press': null,
-  'Flat Bench Barbell Press': null,
-  'back_squat': null,
-  'back_squats': null,
-  'Back Squats': null,
-  'bicep_curls': 'CONCENTRATION_CURLS_RF.pkl', // Use concentration curls as fallback
+  'leg_extension': 'LEG_EXTENSION_RF.pkl',
+  'seated_leg_extension': 'LEG_EXTENSION_RF.pkl',
+  'Seated Leg Extension': 'LEG_EXTENSION_RF.pkl',
+  'Leg Extension': 'LEG_EXTENSION_RF.pkl',
 };
 
 // Quality labels by exercise type
+// Dumbbell: Clean, Uncontrolled Movement, Abrupt Initiation
+// Barbell: Clean, Uncontrolled Movement, Inclination Asymmetry  
+// Weight Stack: Clean, Pulling Too Fast, Releasing Too Fast
 export const QUALITY_LABELS_BY_EXERCISE = {
-  // Dumbbell exercises (Concentration Curls, Overhead Extension)
+  // Dumbbell exercises
   'concentration_curls': ['Clean', 'Uncontrolled Movement', 'Abrupt Initiation'],
   'overhead_extensions': ['Clean', 'Uncontrolled Movement', 'Abrupt Initiation'],
   'bicep_curls': ['Clean', 'Uncontrolled Movement', 'Abrupt Initiation'],
   
-  // Barbell exercises (Bench Press, Back Squat)
+  // Barbell exercises
   'bench_press': ['Clean', 'Uncontrolled Movement', 'Inclination Asymmetry'],
-  'flat_bench_barbell_press': ['Clean', 'Uncontrolled Movement', 'Inclination Asymmetry'],
-  'back_squat': ['Clean', 'Uncontrolled Movement', 'Inclination Asymmetry'],
   'back_squats': ['Clean', 'Uncontrolled Movement', 'Inclination Asymmetry'],
   
-  // Weight Stack exercises (Lateral Pulldown, Seated Leg Extension)
+  // Weight Stack exercises
   'lateral_pulldown': ['Clean', 'Pulling Too Fast', 'Releasing Too Fast'],
-  'seated_leg_extension': ['Clean', 'Pulling Too Fast', 'Releasing Too Fast'],
+  'leg_extension': ['Clean', 'Pulling Too Fast', 'Releasing Too Fast'],
 };
 
 // Default quality labels

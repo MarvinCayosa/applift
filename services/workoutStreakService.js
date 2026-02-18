@@ -32,34 +32,15 @@ export class WorkoutStreakService {
    */
   static async updateWorkoutStreak(userId, workoutDate = new Date()) {
     try {
-      // Try to get streak from userStreaks collection first, then fallback to users collection
+      // Get validated streak data (this will auto-reset expired streaks)
+      let currentStreak = await this.getUserStreakData(userId);
+
+      // Get validated streak data (this will auto-reset expired streaks)
+      let currentStreak = await this.getUserStreakData(userId);
+
+      // Document references for saving updated data
       const streakRef = doc(db, 'userStreaks', userId);
       const userRef = doc(db, 'users', userId);
-      
-      // Try userStreaks first
-      let streakDoc = await getDoc(streakRef);
-      let currentStreak;
-      
-      if (streakDoc.exists()) {
-        currentStreak = streakDoc.data();
-      } else {
-        // Fallback to users collection
-        const userDoc = await getDoc(userRef);
-        if (userDoc.exists()) {
-          currentStreak = userDoc.data().workoutStreak || null;
-        }
-      }
-      
-      // Default values if no streak data found
-      if (!currentStreak) {
-        currentStreak = {
-          currentStreak: 0,
-          longestStreak: 0,
-          lastWorkoutDate: null,
-          totalWorkoutDays: 0,
-          streakStartDate: null
-        };
-      }
 
       const today = new Date(workoutDate);
       today.setHours(0, 0, 0, 0); // Start of day
@@ -87,14 +68,16 @@ export class WorkoutStreakService {
       let streakStartDate = currentStreak.streakStartDate;
 
       if (!lastWorkoutDate) {
-        // First workout ever
+        // First workout ever - start streak at 1
         newStreak = 1;
         streakStartDate = Timestamp.fromDate(today);
       } else if (lastWorkoutDate.getTime() === yesterday.getTime()) {
-        // Consecutive day - continue streak
+        // Consecutive day - user worked out yesterday, now working out today
+        // This continues the streak
         newStreak = currentStreak.currentStreak + 1;
-      } else if (lastWorkoutDate.getTime() < yesterday.getTime()) {
-        // Streak broken - start new streak
+      } else {
+        // Streak broken - there's a gap between last workout and today
+        // Start a fresh streak at 1
         newStreak = 1;
         streakStartDate = Timestamp.fromDate(today);
       }
@@ -175,13 +158,18 @@ export class WorkoutStreakService {
           ? new Date(streakData.lastWorkoutDate.seconds * 1000)
           : new Date(streakData.lastWorkoutDate);
         const today = new Date();
+        
+        // Normalize both dates to start of day for proper calendar day comparison
         today.setHours(0, 0, 0, 0);
         lastWorkout.setHours(0, 0, 0, 0);
         
-        // Calculate calendar days difference (not time difference)
-        const daysDiff = Math.round((today - lastWorkout) / (1000 * 60 * 60 * 24));
+        // Calculate calendar days difference using more precise method
+        const oneDay = 1000 * 60 * 60 * 24;
+        const daysDiff = Math.floor((today.getTime() - lastWorkout.getTime()) / oneDay);
         
-        // If more than 1 day has passed, reset current streak
+        // If more than 1 calendar day has passed without a workout, reset current streak
+        // Example: Last workout Monday, today is Wednesday (daysDiff = 2) → streak broken
+        // Example: Last workout Monday, today is Tuesday (daysDiff = 1) → streak still active
         if (daysDiff > 1) {
           const lostStreak = streakData.currentStreak; // Save the streak that was lost
           const resetStreakData = {
@@ -262,6 +250,7 @@ export class WorkoutStreakService {
       const lastWorkout = new Date(streakData.lastWorkoutDate.seconds * 1000);
       const today = new Date();
       
+      // Normalize both dates to start of day for calendar day comparison  
       lastWorkout.setHours(0, 0, 0, 0);
       today.setHours(0, 0, 0, 0);
       
