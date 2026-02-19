@@ -69,11 +69,9 @@ export function useWorkoutAnalysis() {
 
   /**
    * Get existing analysis without re-analyzing
-   * If analysis is stale (old version), automatically triggers reanalysis
    * @param {string} workoutId
-   * @param {string} gcsPath - Optional GCS path for reanalysis
    */
-  const getAnalysis = useCallback(async (workoutId, gcsPath = null) => {
+  const getAnalysis = useCallback(async (workoutId) => {
     if (!user?.uid) {
       setError('User not authenticated');
       return null;
@@ -103,37 +101,6 @@ export function useWorkoutAnalysis() {
       }
 
       const result = await response.json();
-      
-      // Check if analysis is stale and needs reanalysis
-      if (result._needsReanalysis) {
-        console.log(`[useWorkoutAnalysis] Stale analysis (v${result._cachedVersion} → v${result._currentVersion}), reanalyzing...`);
-        
-        // Trigger reanalysis via POST
-        const reanalyzeResponse = await fetch('/api/analyze-workout', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            workoutId,
-            gcsPath,
-            forceReanalyze: true
-          })
-        });
-        
-        if (reanalyzeResponse.ok) {
-          const freshResult = await reanalyzeResponse.json();
-          setAnalysis(freshResult);
-          return freshResult;
-        } else {
-          // Fall back to stale data if reanalysis fails
-          console.warn('[useWorkoutAnalysis] Reanalysis failed, using stale data');
-          setAnalysis(result);
-          return result;
-        }
-      }
-      
       setAnalysis(result);
       return result;
 
@@ -271,9 +238,6 @@ export function transformAnalysisForUI(analysis) {
     
     // ML Classification summary
     mlClassification: mlClassification || null,
-    
-    // Analysis version for cache invalidation
-    _analysisVersion: analysis._analysisVersion || 0,
     
     // Raw analysis for debugging
     rawAnalysis: analysis

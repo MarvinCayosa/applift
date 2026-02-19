@@ -106,17 +106,11 @@ export default function WorkoutFinished() {
       try {
         const cached = sessionStorage.getItem(`analysis_${workoutId}`);
         if (cached) {
+          console.log('✅ Loaded cached analysis for workoutId:', workoutId);
           const parsed = JSON.parse(cached);
-          const CURRENT_VERSION = 4;
-          if (parsed._analysisVersion && parsed._analysisVersion >= CURRENT_VERSION) {
-            console.log('✅ Loaded valid cached analysis (v' + parsed._analysisVersion + ') for workoutId:', workoutId);
-            setAnalysisData(parsed);
-            hasTriggeredAnalysis.current = true; // Prevent re-analysis
-            setIsAutoSaving(false); // Mark as not processing
-          } else {
-            console.log('🗑️ Discarding stale cached analysis (v' + (parsed._analysisVersion || 0) + ' < v' + CURRENT_VERSION + ') — will re-analyze');
-            sessionStorage.removeItem(`analysis_${workoutId}`);
-          }
+          setAnalysisData(parsed);
+          hasTriggeredAnalysis.current = true; // Prevent re-analysis
+          setIsAutoSaving(false); // Mark as not processing
         }
       } catch (err) {
         console.warn('Failed to load cached analysis:', err);
@@ -155,6 +149,10 @@ export default function WorkoutFinished() {
             // Merge phase timing data from analysis
             liftingTime: analysisRep?.liftingTime ?? localRep.liftingTime ?? 0,
             loweringTime: analysisRep?.loweringTime ?? localRep.loweringTime ?? 0,
+            // Merge real velocity (m/s from accelerometer integration) and ROM from analysis
+            peakVelocity: analysisRep?.peakVelocity ?? localRep.peakVelocity,
+            rom: analysisRep?.rom ?? localRep.rom,
+            chartData: analysisRep?.chartData?.length > 0 ? analysisRep.chartData : localRep.chartData,
           };
         });
       } else if (analysisSet.repsData && analysisSet.repsData.length > 0) {
@@ -186,7 +184,7 @@ export default function WorkoutFinished() {
     
     // First, try to get existing analysis from Firestore
     try {
-      const existingAnalysis = await getAnalysis(wkId, path);
+      const existingAnalysis = await getAnalysis(wkId);
       if (existingAnalysis) {
         console.log('✅ Found existing analysis in Firestore, skipping re-analysis');
         return;
@@ -481,7 +479,7 @@ export default function WorkoutFinished() {
           selectedSet={selectedSet}
         />
 
-        {/* Fatigue + Velocity Carousel — swipe between Fatigue Analysis and Velocity Chart */}
+        {/* Fatigue + Velocity — swipeable carousel */}
         <FatigueVelocityCarousel
           setsData={mergedSetsData}
           chartData={analysisData?.chartData?.length > 0 ? analysisData.chartData : parsedChartData}

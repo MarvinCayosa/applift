@@ -1,33 +1,47 @@
 /**
  * FatigueVelocityCarousel Component
  * 
- * Combined swipeable carousel with two slides:
- *   Slide 1: Fatigue Analysis (2-column: gauge left, indicators right)
- *   Slide 2: Velocity Loss Chart (bar chart with threshold line)
+ * Swipeable 2-slide carousel combining Fatigue Analysis and Velocity Loss.
+ * Uses native CSS scroll-snap (same pattern as ExerciseInfoPanel carousel).
  * 
- * Based on how PUSH Band, Gymaware, and Tendo Unit display VBT metrics:
- * - Peak velocity per rep via accelerometer integration (not gyro)
- * - Velocity loss threshold (industry standard: 10%)
- * - Fatigue composite score from 4 indicators
+ * Slide 1: Fatigue — circular ring gauge + 3 indicator cards (2-column)
+ * Slide 2: Velocity — bar chart showing peak velocity per rep with drop %
+ * 
+ * White dot indicators at bottom for navigation feedback.
  */
 
 import { useMemo, useState, useRef, useEffect } from 'react';
 
-export default function FatigueVelocityCarousel({ 
-  setsData, 
-  chartData, 
-  fatigueScore: propsFatigueScore, 
+export default function FatigueVelocityCarousel({
+  setsData,
+  chartData,
+  fatigueScore: propsFatigueScore,
   fatigueLevel: propsFatigueLevel,
   analysisData,
   selectedSet = 'all',
   thresholdPercent = 10
 }) {
   const [activeSlide, setActiveSlide] = useState(0);
-  const scrollRef = useRef(null);
+  const carouselRef = useRef(null);
+  const totalSlides = 2;
 
-  // ============================================================================
-  // FATIGUE METRICS (Slide 1)
-  // ============================================================================
+  // ── Scroll tracking (same pattern as ExerciseInfoPanel) ─────────────
+  useEffect(() => {
+    const container = carouselRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const scrollLeft = container.scrollLeft;
+      const slideWidth = container.offsetWidth;
+      const newIndex = Math.round(scrollLeft / slideWidth);
+      setActiveSlide(Math.min(newIndex, totalSlides - 1));
+    };
+
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // ── Fatigue Metrics ─────────────────────────────────────────────────
   const fatigueMetrics = useMemo(() => {
     const filteredSets = selectedSet === 'all'
       ? (setsData || [])
@@ -58,25 +72,22 @@ export default function FatigueVelocityCarousel({
     }
 
     const third = Math.max(1, Math.floor(totalReps / 3));
-    const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+    const mean = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
 
-    // Velocity drop
-    const avgVFirst = avg(velocities.slice(0, third));
-    const avgVLast = avg(velocities.slice(-third));
-    const velocityDrop = avgVFirst > 0 ? ((avgVFirst - avgVLast) / avgVFirst) * 100 : 0;
+    const avgVelFirst = mean(velocities.slice(0, third));
+    const avgVelLast = mean(velocities.slice(-third));
+    const velocityDrop = avgVelFirst > 0 ? ((avgVelFirst - avgVelLast) / avgVelFirst) * 100 : 0;
 
-    // Duration increase
-    const avgDFirst = avg(durations.slice(0, third));
-    const avgDLast = avg(durations.slice(-third));
-    const durationIncrease = avgDFirst > 0 ? ((avgDLast - avgDFirst) / avgDFirst) * 100 : 0;
+    const avgDurFirst = mean(durations.slice(0, third));
+    const avgDurLast = mean(durations.slice(-third));
+    const durationIncrease = avgDurFirst > 0 ? ((avgDurLast - avgDurFirst) / avgDurFirst) * 100 : 0;
 
-    // Smoothness drop
-    const avgSFirst = avg(smoothnessScores.slice(0, third));
-    const avgSLast = avg(smoothnessScores.slice(-third));
-    const smoothnessDrop = avgSFirst > 0 ? ((avgSFirst - avgSLast) / avgSFirst) * 100 : 0;
+    const avgSmoothFirst = mean(smoothnessScores.slice(0, third));
+    const avgSmoothLast = mean(smoothnessScores.slice(-third));
+    const smoothnessDrop = avgSmoothFirst > 0 ? ((avgSmoothFirst - avgSmoothLast) / avgSmoothFirst) * 100 : 0;
 
     let fatigueScore = selectedSet === 'all' ? propsFatigueScore : null;
-    if (fatigueScore === undefined || fatigueScore === null) {
+    if (fatigueScore == null) {
       const D = Math.max(0, velocityDrop) / 100;
       const T = Math.max(0, durationIncrease) / 100;
       const J = Math.max(0, smoothnessDrop) / 100;
@@ -93,15 +104,9 @@ export default function FatigueVelocityCarousel({
     }
 
     const indicators = [
-      { label: 'Velocity Drop', value: Math.max(0, velocityDrop).toFixed(1), unit: '%',
-        status: velocityDrop < 10 ? 'good' : velocityDrop < 20 ? 'warn' : 'bad',
-        desc: 'Peak speed reduction' },
-      { label: 'Rep Slowdown', value: Math.max(0, durationIncrease).toFixed(1), unit: '%',
-        status: durationIncrease < 15 ? 'good' : durationIncrease < 30 ? 'warn' : 'bad',
-        desc: 'Duration increase' },
-      { label: 'Control Loss', value: Math.max(0, smoothnessDrop).toFixed(1), unit: '%',
-        status: smoothnessDrop < 10 ? 'good' : smoothnessDrop < 25 ? 'warn' : 'bad',
-        desc: 'Quality degradation' }
+      { label: 'Velocity', value: Math.max(0, velocityDrop).toFixed(1), unit: '%', status: velocityDrop < 10 ? 'good' : velocityDrop < 20 ? 'warn' : 'bad' },
+      { label: 'Slowdown', value: Math.max(0, durationIncrease).toFixed(1), unit: '%', status: durationIncrease < 15 ? 'good' : durationIncrease < 30 ? 'warn' : 'bad' },
+      { label: 'Control', value: Math.max(0, smoothnessDrop).toFixed(1), unit: '%', status: smoothnessDrop < 10 ? 'good' : smoothnessDrop < 25 ? 'warn' : 'bad' }
     ];
 
     return {
@@ -112,9 +117,7 @@ export default function FatigueVelocityCarousel({
     };
   }, [setsData, propsFatigueScore, propsFatigueLevel, selectedSet]);
 
-  // ============================================================================
-  // VELOCITY METRICS (Slide 2)
-  // ============================================================================
+  // ── Velocity Metrics ────────────────────────────────────────────────
   const velocityMetrics = useMemo(() => {
     const filteredSets = selectedSet === 'all'
       ? (setsData || [])
@@ -124,390 +127,238 @@ export default function FatigueVelocityCarousel({
     filteredSets.forEach(set => {
       if (set.repsData && Array.isArray(set.repsData)) {
         set.repsData.forEach((rep, idx) => {
-          let velocity = parseFloat(rep.peakVelocity) || 0;
-
-          // Fallback: estimate from rep duration if no velocity
-          if (velocity === 0 && rep.time) {
-            const t = parseFloat(rep.time);
-            if (t > 0) velocity = Math.max(0.1, Math.min(1.5, 2.5 / t));
-          }
-
+          const velocity = parseFloat(rep.peakVelocity) || 0;
           velocities.push({
             repNumber: rep.repNumber || idx + 1,
             setNumber: set.setNumber,
-            velocity: Math.round(velocity * 100) / 100,
-            duration: parseFloat(rep.time) || 0
+            velocity: Math.round(velocity * 100) / 100
           });
         });
       }
     });
 
     if (velocities.length === 0) {
-      return { velocities: [], baselineVelocity: 0, thresholdVelocity: 0, velocityLoss: 0, effectiveReps: 0, totalReps: 0 };
+      return { velocities: [], baselineVelocity: 0, velocityDrop: 0, maxVelocity: 0, effectiveReps: 0, totalReps: 0 };
     }
 
     const baselineSampleSize = Math.min(2, velocities.length);
-    const baselineVelocity = velocities.slice(0, baselineSampleSize)
-      .reduce((s, v) => s + v.velocity, 0) / baselineSampleSize;
-    const thresholdVelocity = baselineVelocity * (1 - thresholdPercent / 100);
+    const baselineVelocity = velocities.slice(0, baselineSampleSize).reduce((s, v) => s + v.velocity, 0) / baselineSampleSize;
+    const lastVelocity = velocities[velocities.length - 1]?.velocity || 0;
+    const velocityDrop = baselineVelocity > 0 ? ((baselineVelocity - lastVelocity) / baselineVelocity) * 100 : 0;
+    const maxVelocity = Math.max(...velocities.map(v => v.velocity), 0.5);
 
-    let fatigueOnsetRep = -1;
-    const enriched = velocities.map((v, idx) => {
-      const isEffective = v.velocity >= thresholdVelocity;
-      if (fatigueOnsetRep === -1 && !isEffective && idx > 0) fatigueOnsetRep = idx;
-      const lossPercent = baselineVelocity > 0
-        ? ((baselineVelocity - v.velocity) / baselineVelocity) * 100 : 0;
-      return { ...v, isEffective, velocityLossPercent: Math.round(lossPercent * 10) / 10 };
+    // Enrich with drop info
+    const enriched = velocities.map(v => {
+      const dropFromBaseline = baselineVelocity > 0 ? ((baselineVelocity - v.velocity) / baselineVelocity) * 100 : 0;
+      return { ...v, dropPercent: Math.round(dropFromBaseline * 10) / 10, isEffective: dropFromBaseline < thresholdPercent };
     });
-
-    const effectiveReps = enriched.filter(v => v.isEffective).length;
-    const lastV = velocities[velocities.length - 1]?.velocity || 0;
-    const velocityLoss = baselineVelocity > 0
-      ? ((baselineVelocity - lastV) / baselineVelocity) * 100 : 0;
 
     return {
       velocities: enriched,
       baselineVelocity: Math.round(baselineVelocity * 100) / 100,
-      thresholdVelocity: Math.round(thresholdVelocity * 100) / 100,
-      velocityLoss: Math.round(velocityLoss * 10) / 10,
-      effectiveReps,
+      velocityDrop: Math.round(velocityDrop * 10) / 10,
+      maxVelocity,
+      effectiveReps: enriched.filter(v => v.isEffective).length,
       totalReps: velocities.length
     };
   }, [setsData, selectedSet, thresholdPercent]);
 
-  // ============================================================================
-  // SCROLL HANDLING (like EquipmentDistributionCard)
-  // ============================================================================
-  useEffect(() => {
-    const container = scrollRef.current;
-    if (!container) return;
-
-    const handleScroll = () => {
-      const scrollLeft = container.scrollLeft;
-      const cardWidth = container.clientWidth;
-      const newIndex = Math.round(scrollLeft / cardWidth);
-      setActiveSlide(newIndex);
-    };
-
-    container.addEventListener('scroll', handleScroll);
-    return () => container.removeEventListener('scroll', handleScroll);
-  }, []);
-
-  const scrollToSlide = (index) => {
-    const container = scrollRef.current;
-    if (!container) return;
-    const child = container.children?.[index];
-    if (child) {
-      container.scrollTo({ left: child.offsetLeft, behavior: 'smooth' });
-    }
+  // ── Fatigue Colors ──────────────────────────────────────────────────
+  const getFatigueColor = (level) => {
+    const l = level?.toLowerCase();
+    if (l === 'minimal' || l === 'low') return { ring: '#22c55e', text: 'text-green-400', bg: 'bg-green-500/15' };
+    if (l === 'moderate') return { ring: '#eab308', text: 'text-yellow-400', bg: 'bg-yellow-500/15' };
+    if (l === 'high') return { ring: '#f97316', text: 'text-orange-400', bg: 'bg-orange-500/15' };
+    return { ring: '#ef4444', text: 'text-red-400', bg: 'bg-red-500/15' };
   };
 
-  // ============================================================================
-  // HELPERS
-  // ============================================================================
-  const getLevelColors = (level) => {
-    const n = level?.toLowerCase();
-    switch (n) {
-      case 'minimal': case 'low': return { text: 'text-green-400', bg: 'bg-green-500' };
-      case 'moderate': return { text: 'text-yellow-400', bg: 'bg-yellow-500' };
-      case 'high': return { text: 'text-orange-400', bg: 'bg-orange-500' };
-      case 'severe': return { text: 'text-red-400', bg: 'bg-red-500' };
-      default: return { text: 'text-gray-400', bg: 'bg-gray-500' };
-    }
+  const fatigueColor = getFatigueColor(fatigueMetrics.fatigueLevel);
+
+  const getStatusColor = (status) => {
+    if (status === 'good') return { dot: 'bg-green-400', text: 'text-green-400', bg: 'bg-green-500/10' };
+    if (status === 'warn') return { dot: 'bg-yellow-400', text: 'text-yellow-400', bg: 'bg-yellow-500/10' };
+    return { dot: 'bg-red-400', text: 'text-red-400', bg: 'bg-red-500/10' };
   };
 
-  const getStatusBg = (status) => {
-    switch (status) {
-      case 'good': return 'bg-green-500/15';
-      case 'warn': return 'bg-yellow-500/15';
-      case 'bad': return 'bg-red-500/15';
-      default: return 'bg-white/5';
-    }
-  };
+  // ── Ring gauge math ─────────────────────────────────────────────────
+  const ringRadius = 40;
+  const ringCircumference = 2 * Math.PI * ringRadius;
+  const ringProgress = Math.min(1, fatigueMetrics.fatigueScore / 100);
 
-  const getStatusIcon = (status) => {
-    switch (status) {
-      case 'good': return '✓';
-      case 'warn': return '!';
-      case 'bad': return '↓';
-      default: return '•';
-    }
-  };
-
-  const getStatusIconColor = (status) => {
-    switch (status) {
-      case 'good': return 'text-green-400';
-      case 'warn': return 'text-yellow-400';
-      case 'bad': return 'text-red-400';
-      default: return 'text-gray-400';
-    }
-  };
-
-  const colors = getLevelColors(fatigueMetrics.fatigueLevel);
-  const gaugeAngle = Math.min(180, (fatigueMetrics.fatigueScore / 100) * 180);
-
-  // Velocity chart dimensions
-  const cW = 300, cH = 160;
-  const pad = { top: 20, right: 30, bottom: 28, left: 36 };
-  const pW = cW - pad.left - pad.right, pH = cH - pad.top - pad.bottom;
-
-  const vels = velocityMetrics.velocities;
-  const maxV = Math.max(1.4, ...vels.map(v => v.velocity), velocityMetrics.baselineVelocity * 1.15);
-  const minV = Math.min(0.2, ...vels.map(v => v.velocity * 0.9));
-  const yRange = maxV - minV || 1;
-
-  const getY = (v) => pad.top + pH - ((v - minV) / yRange) * pH;
-
-  // Y-axis ticks
-  const yTicks = useMemo(() => {
-    const ticks = [];
-    const step = 0.2;
-    for (let v = Math.ceil(minV / step) * step; v <= maxV; v += step) {
-      ticks.push(Math.round(v * 10) / 10);
-    }
-    return ticks;
-  }, [minV, maxV]);
-
-  const barGap = 3;
-  const barW = vels.length > 0 ? Math.max(10, (pW - barGap * (vels.length + 1)) / vels.length) : 20;
-  const thresholdY = getY(velocityMetrics.thresholdVelocity);
+  // ── Velocity bar chart constants ────────────────────────────────────
+  const barChartHeight = 160;
+  const barPadding = { top: 8, bottom: 24, left: 4, right: 4 };
+  const plotH = barChartHeight - barPadding.top - barPadding.bottom;
 
   return (
-    <div className="rounded-2xl bg-white/5 overflow-hidden">
-      {/* Swipeable container */}
-      <div
-        ref={scrollRef}
-        className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide scroll-smooth"
-        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-      >
-        {/* ================= SLIDE 1: FATIGUE (2-column layout) ================= */}
-        <div className="w-full flex-shrink-0 snap-center p-4" style={{ minWidth: '100%' }}>
-          {/* Badge - top right */}
-          <div className="flex justify-end mb-2">
-            <div className={`px-2.5 py-1 rounded-full text-[11px] font-semibold ${colors.bg} text-white`}>
-              {fatigueMetrics.fatigueLevel}
-            </div>
-          </div>
+    <div className="rounded-3xl bg-white/5 backdrop-blur-sm overflow-hidden content-fade-up-2">
+      {/* Header */}
+      <div className="px-5 pt-5 pb-3">
+        <h3 className="text-base font-semibold text-white">
+          {activeSlide === 0 ? 'Fatigue Analysis' : 'Velocity Loss'}
+        </h3>
+      </div>
 
-          {/* 2-Column Layout */}
+      {/* Carousel */}
+      <div
+        ref={carouselRef}
+        className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide scroll-smooth"
+        style={{ scrollSnapType: 'x mandatory' }}
+      >
+        {/* ═══════ Slide 1: Fatigue Analysis ═══════ */}
+        <div className="w-full shrink-0 snap-center snap-always px-5 pb-2" style={{ minWidth: '100%', scrollSnapAlign: 'center' }}>
+          {/* 2-column: Ring gauge | Indicators */}
           <div className="flex gap-3">
-            {/* LEFT: Gauge + Score */}
-            <div className="flex-1 flex flex-col items-center justify-center">
-              {/* Semi-circular Gauge */}
-              <div className="relative w-full max-w-[140px] h-[80px] mb-1">
-                <svg viewBox="0 0 140 85" className="w-full h-full">
-                  {/* Background arc */}
-                  <path 
-                    d="M 15 75 A 55 55 0 0 1 125 75" 
-                    fill="none" 
-                    stroke="#374151" 
-                    strokeWidth="10" 
-                    strokeLinecap="round" 
-                  />
-                  {/* Gradient arc */}
-                  <path 
-                    d="M 15 75 A 55 55 0 0 1 125 75" 
-                    fill="none" 
-                    stroke="url(#fatigueGrad)" 
-                    strokeWidth="10" 
+            {/* Left: Circular ring gauge */}
+            <div className={`flex-shrink-0 rounded-2xl ${fatigueColor.bg} flex flex-col items-center justify-center`} style={{ width: '130px', height: '148px' }}>
+              <div className="relative" style={{ width: '96px', height: '96px' }}>
+                <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
+                  {/* Track */}
+                  <circle cx="50" cy="50" r={ringRadius} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="7" />
+                  {/* Progress */}
+                  <circle
+                    cx="50" cy="50" r={ringRadius}
+                    fill="none"
+                    stroke={fatigueColor.ring}
+                    strokeWidth="7"
                     strokeLinecap="round"
-                    strokeDasharray={`${(gaugeAngle / 180) * 173} 173`}
+                    strokeDasharray={ringCircumference}
+                    strokeDashoffset={ringCircumference * (1 - ringProgress)}
                     className="transition-all duration-700"
                   />
-                  <defs>
-                    <linearGradient id="fatigueGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                      <stop offset="0%" stopColor="#22c55e" />
-                      <stop offset="40%" stopColor="#eab308" />
-                      <stop offset="70%" stopColor="#f97316" />
-                      <stop offset="100%" stopColor="#ef4444" />
-                    </linearGradient>
-                  </defs>
-                  {/* Needle indicator */}
-                  <circle 
-                    cx={70 + 50 * Math.cos((180 - gaugeAngle) * Math.PI / 180)}
-                    cy={75 - 50 * Math.sin((180 - gaugeAngle) * Math.PI / 180)}
-                    r="5" 
-                    fill="white" 
-                    className="drop-shadow-lg transition-all duration-700"
-                  />
-                  {/* Scale labels */}
-                  <text x="12" y="82" fill="#6b7280" fontSize="9">0</text>
-                  <text x="122" y="82" fill="#6b7280" fontSize="9">100</text>
                 </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <span className={`text-2xl font-bold ${fatigueColor.text}`}>{Math.round(fatigueMetrics.fatigueScore)}</span>
+                  <span className="text-[9px] text-gray-500 -mt-0.5">/100</span>
+                </div>
               </div>
-              
-              {/* Score */}
-              <p className="text-[10px] text-gray-500 mb-0.5">Fatigue Score</p>
-              <div className="flex items-baseline gap-1">
-                <span className={`text-3xl font-bold ${colors.text}`}>{fatigueMetrics.fatigueScore}</span>
-                <span className="text-sm text-gray-500">/100</span>
-              </div>
-              <p className="text-[10px] text-gray-600">{fatigueMetrics.totalReps} reps analyzed</p>
+              <span className={`text-[10px] font-semibold mt-1 ${fatigueColor.text}`}>{fatigueMetrics.fatigueLevel}</span>
             </div>
 
-            {/* RIGHT: 3 Indicator Boxes (stacked vertically) */}
-            {fatigueMetrics.indicators.length > 0 && (
-              <div className="flex flex-col gap-2 w-[130px]">
-                {fatigueMetrics.indicators.map((ind, i) => (
-                  <div key={i} className={`rounded-xl p-2.5 ${getStatusBg(ind.status)}`}>
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="text-[9px] text-gray-400 font-medium">{ind.label}</span>
-                      <span className={`text-[10px] font-bold ${getStatusIconColor(ind.status)}`}>
-                        {getStatusIcon(ind.status)}
-                      </span>
+            {/* Right: 3 indicator boxes stacked */}
+            <div className="flex-1 flex flex-col gap-2">
+              {fatigueMetrics.indicators.map((ind, idx) => {
+                const sc = getStatusColor(ind.status);
+                return (
+                  <div key={idx} className={`flex-1 rounded-xl ${sc.bg} px-3 py-2 flex items-center justify-between`}>
+                    <div className="flex items-center gap-2">
+                      <div className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />
+                      <span className="text-[11px] text-gray-300 font-medium">{ind.label}</span>
                     </div>
                     <div className="flex items-baseline gap-0.5">
-                      <span className="text-lg font-bold text-white">{ind.value}</span>
-                      <span className="text-[10px] text-gray-500">{ind.unit}</span>
+                      <span className={`text-sm font-bold ${sc.text}`}>{ind.value}</span>
+                      <span className="text-[9px] text-gray-500">{ind.unit}</span>
                     </div>
-                    <p className="text-[8px] text-gray-600">{ind.desc}</p>
                   </div>
-                ))}
-              </div>
-            )}
+                );
+              })}
+            </div>
           </div>
 
-          {/* Fatigue insight */}
-          <div className="mt-3 px-3 py-2 bg-white/5 rounded-xl">
-            <p className="text-[11px] text-center leading-relaxed">
-              {fatigueMetrics.fatigueLevel === 'Severe' || fatigueMetrics.fatigueLevel === 'High' ? (
-                <span className="text-orange-300">Notable fatigue detected. Good for hypertrophy, watch form on final reps.</span>
-              ) : fatigueMetrics.fatigueLevel === 'Moderate' ? (
-                <span className="text-yellow-300">Moderate fatigue — optimal for strength gains while maintaining quality.</span>
-              ) : (
-                <span className="text-green-400">Excellent fatigue resistance! Stable velocity and control throughout.</span>
-              )}
+          {/* Insight */}
+          <div className="mt-3 px-3 py-2 bg-white/[0.03] rounded-xl">
+            <p className="text-[11px] text-gray-400 text-center leading-relaxed">
+              {fatigueMetrics.fatigueLevel === 'Severe' || fatigueMetrics.fatigueLevel === 'High'
+                ? 'High fatigue — great for hypertrophy, watch form on final reps.'
+                : fatigueMetrics.fatigueLevel === 'Moderate'
+                ? 'Moderate fatigue — balanced load for strength gains.'
+                : 'Low fatigue — stable output, optimal for power training.'}
             </p>
           </div>
         </div>
 
-        {/* ================= SLIDE 2: VELOCITY ================= */}
-        <div className="w-full flex-shrink-0 snap-center p-4" style={{ minWidth: '100%' }}>
-          {/* Badge - top right */}
-          <div className="flex justify-end mb-2">
-            <div className={`px-2.5 py-1 rounded-full text-[11px] font-semibold ${
-              velocityMetrics.velocityLoss < 10 ? 'bg-green-600' :
-              velocityMetrics.velocityLoss < 20 ? 'bg-yellow-500' :
-              velocityMetrics.velocityLoss < 30 ? 'bg-orange-500' : 'bg-red-500'
-            } text-white`}>
-              {velocityMetrics.velocityLoss > 0 ? `-${velocityMetrics.velocityLoss}%` : 'Stable'}
-            </div>
-          </div>
-
-          {/* Key stats */}
-          <div className="grid grid-cols-3 gap-1.5 mb-3">
-            <div className="bg-black/30 rounded-xl p-2 text-center">
-              <p className="text-[9px] text-gray-400 mb-0.5">Peak Velocity</p>
-              <p className="text-lg font-bold text-cyan-400">{velocityMetrics.baselineVelocity}</p>
-              <p className="text-[9px] text-gray-600">m/s</p>
-            </div>
-            <div className="bg-black/30 rounded-xl p-2 text-center">
-              <p className="text-[9px] text-gray-400 mb-0.5">Effective Reps</p>
-              <p className="text-lg font-bold text-cyan-400">{velocityMetrics.effectiveReps}</p>
-              <p className="text-[9px] text-gray-600">of {velocityMetrics.totalReps}</p>
-            </div>
-            <div className="bg-black/30 rounded-xl p-2 text-center">
-              <p className="text-[9px] text-gray-400 mb-0.5">Threshold</p>
-              <p className="text-lg font-bold text-cyan-400">{thresholdPercent}%</p>
-              <p className="text-[9px] text-gray-600">velocity loss</p>
-            </div>
-          </div>
-
-          {/* Bar chart */}
-          {vels.length > 0 ? (
-            <div className="bg-black/40 rounded-xl" style={{ height: '140px' }}>
-              <svg className="w-full h-full" viewBox={`0 0 ${cW} ${cH}`} preserveAspectRatio="xMidYMid meet">
-                {/* Y grid + labels */}
-                {yTicks.map(tick => {
-                  const y = getY(tick);
-                  return (
-                    <g key={tick}>
-                      <line x1={pad.left} y1={y} x2={cW - pad.right} y2={y} stroke="#374151" strokeWidth="0.8" strokeDasharray="3,3" opacity="0.5" />
-                      <text x={pad.left - 5} y={y + 3} fill="#6b7280" fontSize="8" textAnchor="end">{tick.toFixed(1)}</text>
-                    </g>
-                  );
-                })}
-
-                {/* Y-axis label */}
-                <text x={8} y={cH / 2} fill="#6b7280" fontSize="7" textAnchor="middle" transform={`rotate(-90, 8, ${cH / 2})`}>Velocity (m/s)</text>
-
-                {/* Threshold line */}
-                <line x1={pad.left} y1={thresholdY} x2={cW - pad.right} y2={thresholdY} stroke="#22d3ee" strokeWidth="1.5" strokeDasharray="5,3" />
-                <text x={cW - pad.right + 2} y={thresholdY + 3} fill="#22d3ee" fontSize="8" fontWeight="bold">-{thresholdPercent}%</text>
-
-                {/* Bars */}
-                {vels.map((d, i) => {
-                  const bH = Math.max(2, ((d.velocity - minV) / yRange) * pH);
-                  const x = pad.left + barGap + i * (barW + barGap);
-                  const y = getY(d.velocity);
-                  return (
-                    <g key={i}>
-                      <rect x={x} y={y} width={barW} height={bH} fill={d.isEffective ? '#22d3ee' : '#64748b'}
-                        opacity={d.isEffective ? 1 : 0.65} rx="2" />
-                      <text x={x + barW / 2} y={cH - pad.bottom + 10} fill="#6b7280" fontSize="7" textAnchor="middle">{d.repNumber}</text>
-                    </g>
-                  );
-                })}
-
-                {/* X-axis label */}
-                <text x={cW / 2} y={cH - 4} fill="#6b7280" fontSize="7" textAnchor="middle">Reps</text>
-              </svg>
+        {/* ═══════ Slide 2: Velocity Loss ═══════ */}
+        <div className="w-full shrink-0 snap-center snap-always px-5 pb-2" style={{ minWidth: '100%', scrollSnapAlign: 'center' }}>
+          {velocityMetrics.velocities.length === 0 ? (
+            <div className="flex items-center justify-center rounded-2xl bg-white/[0.03]" style={{ height: `${barChartHeight + 60}px` }}>
+              <p className="text-sm text-gray-500">No velocity data</p>
             </div>
           ) : (
-            <div className="bg-black/30 rounded-xl p-6 flex items-center justify-center" style={{ height: '140px' }}>
-              <p className="text-gray-500 text-sm">No velocity data available</p>
-            </div>
+            <>
+              {/* Stats row */}
+              <div className="flex gap-2 mb-3">
+                <div className="flex-1 rounded-xl bg-white/[0.04] px-3 py-2.5 text-center">
+                  <p className="text-[10px] text-gray-500 mb-0.5">Peak</p>
+                  <p className="text-lg font-bold text-cyan-400">{velocityMetrics.baselineVelocity}<span className="text-[10px] text-gray-500 ml-0.5">m/s</span></p>
+                </div>
+                <div className="flex-1 rounded-xl bg-white/[0.04] px-3 py-2.5 text-center">
+                  <p className="text-[10px] text-gray-500 mb-0.5">Drop</p>
+                  <p className={`text-lg font-bold ${velocityMetrics.velocityDrop < 10 ? 'text-green-400' : velocityMetrics.velocityDrop < 25 ? 'text-yellow-400' : 'text-red-400'}`}>
+                    {velocityMetrics.velocityDrop > 0 ? `-${velocityMetrics.velocityDrop}` : '0'}<span className="text-[10px] text-gray-500 ml-0.5">%</span>
+                  </p>
+                </div>
+                <div className="flex-1 rounded-xl bg-white/[0.04] px-3 py-2.5 text-center">
+                  <p className="text-[10px] text-gray-500 mb-0.5">Effective</p>
+                  <p className="text-lg font-bold text-white">{velocityMetrics.effectiveReps}<span className="text-[10px] text-gray-500 ml-0.5">/{velocityMetrics.totalReps}</span></p>
+                </div>
+              </div>
+
+              {/* Bar Chart — no axis labels, clean */}
+              <div className="relative rounded-2xl bg-white/[0.03] overflow-hidden" style={{ height: `${barChartHeight}px` }}>
+                <svg className="w-full h-full" viewBox={`0 0 320 ${barChartHeight}`} preserveAspectRatio="xMidYMid meet">
+                  {/* Subtle horizontal grid */}
+                  {[0.25, 0.5, 0.75].map(frac => {
+                    const y = barPadding.top + plotH * (1 - frac);
+                    return <line key={frac} x1="0" y1={y} x2="320" y2={y} stroke="rgba(255,255,255,0.04)" strokeWidth="1" />;
+                  })}
+
+                  {/* Bars */}
+                  {velocityMetrics.velocities.map((data, idx) => {
+                    const count = velocityMetrics.velocities.length;
+                    const gap = Math.max(3, Math.min(6, 80 / count));
+                    const totalGaps = gap * (count + 1);
+                    const barW = Math.max(14, (320 - barPadding.left - barPadding.right - totalGaps) / count);
+                    const x = barPadding.left + gap + idx * (barW + gap);
+                    const heightFrac = velocityMetrics.maxVelocity > 0 ? data.velocity / velocityMetrics.maxVelocity : 0;
+                    const barH = Math.max(4, heightFrac * plotH);
+                    const y = barPadding.top + plotH - barH;
+
+                    const isEffective = data.isEffective;
+                    const barColor = isEffective ? '#22d3ee' : '#475569';
+                    const barOpacity = isEffective ? 0.9 : 0.5;
+
+                    return (
+                      <g key={idx}>
+                        {/* Bar with rounded top */}
+                        <rect x={x} y={y} width={barW} height={barH} fill={barColor} opacity={barOpacity} rx="4" ry="4" />
+                        {/* Velocity value on top of bar */}
+                        <text x={x + barW / 2} y={y - 4} fill={isEffective ? '#22d3ee' : '#64748b'} fontSize="8" fontWeight="600" textAnchor="middle">
+                          {data.velocity.toFixed(2)}
+                        </text>
+                        {/* Rep number at bottom */}
+                        <text x={x + barW / 2} y={barChartHeight - 6} fill="#4b5563" fontSize="8" textAnchor="middle">
+                          {data.repNumber}
+                        </text>
+                      </g>
+                    );
+                  })}
+                </svg>
+
+                {/* Legend overlay bottom-right */}
+                <div className="absolute bottom-1.5 right-2.5 flex items-center gap-3">
+                  <div className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-sm bg-cyan-400 opacity-90" />
+                    <span className="text-[8px] text-gray-500">Effective</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-sm bg-slate-600 opacity-50" />
+                    <span className="text-[8px] text-gray-500">Fatigued</span>
+                  </div>
+                </div>
+              </div>
+            </>
           )}
-
-          {/* Legend */}
-          <div className="flex items-center justify-center gap-4 mt-2 text-[9px]">
-            <div className="flex items-center gap-1">
-              <div className="w-2.5 h-2.5 rounded-sm bg-cyan-400" />
-              <span className="text-gray-500">Effective</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="w-2.5 h-2.5 rounded-sm bg-slate-500 opacity-65" />
-              <span className="text-gray-500">Fatigued</span>
-            </div>
-          </div>
-
-          {/* Velocity insight */}
-          <div className="mt-2 px-3 py-2 bg-white/5 rounded-xl">
-            <p className="text-[11px] text-center leading-relaxed">
-              {velocityMetrics.velocityLoss < 10 ? (
-                <span className="text-cyan-300">
-                  Excellent velocity maintenance! {velocityMetrics.effectiveReps}/{velocityMetrics.totalReps} reps in the effective zone.
-                </span>
-              ) : velocityMetrics.velocityLoss < 20 ? (
-                <span className="text-yellow-300">
-                  Good. Velocity dropped {velocityMetrics.velocityLoss}%. {velocityMetrics.effectiveReps} effective reps for strength.
-                </span>
-              ) : velocityMetrics.velocityLoss < 30 ? (
-                <span className="text-orange-300">
-                  Moderate fatigue ({velocityMetrics.velocityLoss}% loss). Good for hypertrophy training.
-                </span>
-              ) : (
-                <span className="text-red-300">
-                  High fatigue ({velocityMetrics.velocityLoss}% loss). Consider reducing weight for power training.
-                </span>
-              )}
-            </p>
-          </div>
         </div>
       </div>
 
-      {/* Carousel Indicators (white, at bottom, like other carousels) */}
-      <div className="flex justify-center gap-1.5 pb-3">
-        {[0, 1].map((index) => (
-          <button
-            key={index}
-            onClick={() => scrollToSlide(index)}
-            className={`${
-              index === activeSlide 
-                ? 'bg-white w-4 h-1.5' 
-                : 'bg-white/30 w-1.5 h-1.5'
-            } rounded-full transition-all duration-300`}
-            aria-label={`Go to slide ${index + 1}`}
+      {/* Dot indicators */}
+      <div className="flex items-center justify-center gap-1.5 pb-4 pt-2">
+        {Array.from({ length: totalSlides }).map((_, i) => (
+          <div
+            key={i}
+            className={`rounded-full transition-all duration-300 ${
+              activeSlide === i ? 'w-5 h-1.5 bg-white' : 'w-1.5 h-1.5 bg-white/25'
+            }`}
           />
         ))}
       </div>

@@ -422,8 +422,12 @@ export default function RepInsightCard({ repData, repNumber }) {
                     points={`
                       ${chartData.map((value, index) => {
                         const x = (index / (chartData.length - 1)) * 100;
-                        const normalizedValue = Math.max(0, Math.min(1, Math.abs(value) / 15));
-                        const y = 100 - (normalizedValue * 80 + 10);
+                        // Normalize using actual min-max of the data for best visual spread
+                        const minVal = Math.min(...chartData);
+                        const maxVal = Math.max(...chartData);
+                        const range = maxVal - minVal || 1;
+                        const normalizedValue = (Math.abs(value) - Math.abs(minVal)) / range;
+                        const y = 100 - (Math.max(0, Math.min(1, normalizedValue)) * 80 + 10);
                         return `${x},${y}`;
                       }).join(' ')}
                       100,100 0,100
@@ -433,9 +437,12 @@ export default function RepInsightCard({ repData, repNumber }) {
                   
                   {chartData.map((value, index) => {
                     if (index === 0) return null;
+                    const minVal = Math.min(...chartData);
+                    const maxVal = Math.max(...chartData);
+                    const range = maxVal - minVal || 1;
                     const prevValue = chartData[index - 1];
-                    const prevNorm = Math.max(0, Math.min(1, Math.abs(prevValue) / 15));
-                    const currNorm = Math.max(0, Math.min(1, Math.abs(value) / 15));
+                    const prevNorm = Math.max(0, Math.min(1, (Math.abs(prevValue) - Math.abs(minVal)) / range));
+                    const currNorm = Math.max(0, Math.min(1, (Math.abs(value) - Math.abs(minVal)) / range));
                     const avgNorm = (prevNorm + currNorm) / 2;
                     
                     let color;
@@ -457,10 +464,13 @@ export default function RepInsightCard({ repData, repNumber }) {
                   })}
                   
                   {(() => {
+                    const minVal = Math.min(...chartData);
+                    const maxVal = Math.max(...chartData);
+                    const range = maxVal - minVal || 1;
                     const maxIndex = chartData.reduce((maxI, val, i, arr) => Math.abs(val) > Math.abs(arr[maxI]) ? i : maxI, 0);
                     const maxValue = chartData[maxIndex];
                     const cx = (maxIndex / (chartData.length - 1)) * 100;
-                    const normalizedValue = Math.max(0, Math.min(1, Math.abs(maxValue) / 15));
+                    const normalizedValue = Math.max(0, Math.min(1, (Math.abs(maxValue) - Math.abs(minVal)) / range));
                     const cy = 100 - (normalizedValue * 80 + 10);
                     return <circle cx={cx} cy={cy} r="4" fill="#22c55e" stroke="white" strokeWidth="1.5" />;
                   })()}
