@@ -4,6 +4,91 @@ import { useIMUData } from './useIMUData';
 
 const MAX_CHART_POINTS = 100; // Last 5 seconds at 20Hz
 
+/**
+ * Compute eccentric/concentric phase timings from IMU samples using primary movement axis.
+ * Matches the algorithm in main_csv.py:
+ * 1. Find which accel axis (X/Y/Z) has the highest range of motion
+ * 2. Find the most prominent peak (positive or negative) on that axis
+ * 3. Concentric (lifting) = time before peak, Eccentric (lowering) = time after peak
+ *
+ * @param {Array} samples - IMU sample objects with accelX, accelY, accelZ, relativeTime
+ * @returns {{ liftingTime: number, loweringTime: number }}
+ */
+function computeLocalPhaseTimings(samples) {
+  if (!samples || samples.length < 3) {
+    return { liftingTime: 0, loweringTime: 0 };
+  }
+
+  const accelX = samples.map(s => s.accelX || 0);
+  const accelY = samples.map(s => s.accelY || 0);
+  const accelZ = samples.map(s => s.accelZ || 0);
+
+  // Step 1: Determine primary movement axis (highest range)
+  const xRange = Math.max(...accelX) - Math.min(...accelX);
+  const yRange = Math.max(...accelY) - Math.min(...accelY);
+  const zRange = Math.max(...accelZ) - Math.min(...accelZ);
+
+  let primarySignal;
+  if (xRange >= yRange && xRange >= zRange) {
+    primarySignal = accelX;
+  } else if (yRange >= xRange && yRange >= zRange) {
+    primarySignal = accelY;
+  } else {
+    primarySignal = accelZ;
+  }
+
+  // Step 2: Find the most prominent peak (by absolute value)
+  let bestIdx = 0;
+  let bestAbs = 0;
+
+  for (let i = 1; i < primarySignal.length - 1; i++) {
+    const val = primarySignal[i];
+    const prev = primarySignal[i - 1];
+    const next = primarySignal[i + 1];
+    // Check if it's a local peak (positive) or valley (negative)
+    const isPeak = (val > prev && val > next) || (val < prev && val < next);
+    if (isPeak && Math.abs(val) > bestAbs) {
+      bestAbs = Math.abs(val);
+      bestIdx = i;
+    }
+  }
+
+  // Fallback: use index of max absolute value
+  if (bestAbs === 0) {
+    const absVals = primarySignal.map(Math.abs);
+    bestIdx = absVals.indexOf(Math.max(...absVals));
+  }
+
+  // Guard edges
+  if (bestIdx <= 0) bestIdx = 1;
+  if (bestIdx >= primarySignal.length - 1) bestIdx = primarySignal.length - 2;
+
+  // Step 3: Calculate phase durations
+  // Try to use timestamps from samples
+  const timestamps = samples.map(s => s.relativeTime ?? s.timestamp_ms ?? s.timestamp ?? 0);
+  const hasValidTimestamps = timestamps.some(t => t > 0) && (timestamps[timestamps.length - 1] - timestamps[0]) > 0;
+
+  let liftingTime, loweringTime;
+
+  if (hasValidTimestamps) {
+    const startTime = timestamps[0];
+    const peakTime = timestamps[bestIdx];
+    const endTime = timestamps[timestamps.length - 1];
+    liftingTime = (peakTime - startTime) / 1000;
+    loweringTime = (endTime - peakTime) / 1000;
+  } else {
+    // Estimate from sample count (~50ms per sample at 20Hz)
+    const totalDuration = primarySignal.length * 0.05;
+    liftingTime = (bestIdx / primarySignal.length) * totalDuration;
+    loweringTime = ((primarySignal.length - bestIdx) / primarySignal.length) * totalDuration;
+  }
+
+  return {
+    liftingTime: Math.max(0, liftingTime),
+    loweringTime: Math.max(0, loweringTime)
+  };
+}
+
 export function useWorkoutSession({ 
   connected, 
   recommendedReps = 5, 
@@ -278,6 +363,10 @@ export function useWorkoutSession({
           // Use filteredMagnitude for proper charting (smooth curve)
           const repChartData = repSamples.map(s => s.filteredMagnitude || s.accelMag || 0);
           
+          // *** Compute phase timings locally using primary movement axis ***
+          // (matching main_csv.py algorithm)
+          const phaseTimings = computeLocalPhaseTimings(repSamples);
+          
           return {
             repNumber: rep.repNumber,
             time: rep.duration,
@@ -285,6 +374,8 @@ export function useWorkoutSession({
             peakVelocity: rep.peakVelocity || rep.peakAcceleration / 2,
             isClean: rep.duration >= 2.0 && rep.duration <= 4.0,
             chartData: repChartData,
+            liftingTime: phaseTimings.liftingTime,
+            loweringTime: phaseTimings.loweringTime,
             // Include raw samples for ML if needed
             samples: repSamples
           };

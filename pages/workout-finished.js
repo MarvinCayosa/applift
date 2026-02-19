@@ -382,7 +382,7 @@ export default function WorkoutFinished() {
             : parsedChartData.map(d => Math.abs(d.filtered || d))}
           timeData={analysisData?.timeData?.length > 0 ? analysisData.timeData : parsedTimeData}
           totalCalories={analysisData?.calories || parseInt(calories) || 0}
-          totalWorkoutTime={analysisData?.totalTime || parseInt(totalTime) || 0}
+          totalWorkoutTime={parseInt(totalTime) || analysisData?.activeTime || 0}
           setsData={mergedSetsData}
           totalReps={parseInt(totalReps) || 0}
           onSeeMore={() => {
@@ -465,12 +465,13 @@ export default function WorkoutFinished() {
           selectedSet={selectedSet}
         />
 
-        {/* Movement Phases - Eccentric vs Concentric */}
+        {/* Movement Phases - Eccentric vs Concentric (averages across all reps) */}
         <LiftPhases 
           avgConcentric={analysisData?.avgConcentric}
           avgEccentric={analysisData?.avgEccentric}
           concentricPercent={analysisData?.concentricPercent}
           eccentricPercent={analysisData?.eccentricPercent}
+          setsData={mergedSetsData}
         />
 
         {analysisError && (

@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+import json
 from sklearn.preprocessing import StandardScaler
 from scipy.signal import find_peaks
 import warnings
@@ -44,10 +45,11 @@ def select_csv_file():
     
     # Open file dialog
     file_path = filedialog.askopenfilename(
-        title="Select CSV Dataset for Analysis",
+        title="Select Dataset for Analysis (CSV or JSON)",
         initialdir=initial_dir,
         filetypes=[
             ("CSV files", "*.csv"),
+            ("JSON files", "*.json"),
             ("All files", "*.*")
         ]
     )
@@ -76,7 +78,7 @@ def select_from_datasets_ui():
     header.pack(pady=10)
     
     # Instructions
-    instructions = tk.Label(root, text="Select a CSV file from the tree below or browse for a file:",
+    instructions = tk.Label(root, text="Select a CSV or JSON file from the tree below or browse for a file:",
                            font=('Arial', 10), bg='#f0f0f0', fg='#666')
     instructions.pack(pady=5)
     
@@ -109,9 +111,10 @@ def select_from_datasets_ui():
                     # Folder - add with folder icon
                     node = tree.insert(parent, 'end', text=f"📁 {item}", open=False, values=(item_path,))
                     populate_tree(node, item_path)
-                elif item.endswith('.csv'):
-                    # CSV file - add with file icon
-                    tree.insert(parent, 'end', text=f"📄 {item}", values=(item_path,))
+                elif item.endswith(('.csv', '.json')):
+                    # CSV/JSON file - add with file icon
+                    icon = "📄" if item.endswith('.csv') else "📋"
+                    tree.insert(parent, 'end', text=f"{icon} {item}", values=(item_path,))
         except PermissionError:
             pass
     
@@ -138,7 +141,7 @@ def select_from_datasets_ui():
             values = item.get('values', [])
             if values:
                 path = values[0]
-                if path.endswith('.csv'):
+                if path.endswith(('.csv', '.json')):
                     selected_file[0] = path
                     filename = os.path.basename(path)
                     selected_label.config(text=f"Selected: {filename}", fg='#28a745')
@@ -151,7 +154,7 @@ def select_from_datasets_ui():
             values = item.get('values', [])
             if values:
                 path = values[0]
-                if path.endswith('.csv'):
+                if path.endswith(('.csv', '.json')):
                     selected_file[0] = path
                     root.destroy()
     
@@ -165,11 +168,13 @@ def select_from_datasets_ui():
     def browse_file():
         """Open file browser"""
         file_path = filedialog.askopenfilename(
-            title="Select CSV Dataset",
-            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
+            title="Select Dataset (CSV or JSON)",
+            filetypes=[("CSV files", "*.csv"), ("JSON files", "*.json"), ("All files", "*.*")]
         )
         if file_path:
             selected_file[0] = file_path
+            filename = os.path.basename(file_path)
+            selected_label.config(text=f"Selected: {filename}", fg='#28a745')
             root.destroy()
     
     def confirm_selection():
@@ -177,7 +182,7 @@ def select_from_datasets_ui():
         if selected_file[0]:
             root.destroy()
         else:
-            selected_label.config(text="⚠️ Please select a CSV file first!", fg='red')
+            selected_label.config(text="⚠️ Please select a CSV or JSON file first!", fg='red')
     
     def cancel():
         """Cancel and exit"""
@@ -209,31 +214,150 @@ def select_from_datasets_ui():
     
     return selected_file[0]
 
+# ==================== JSON LOADING FUNCTION ====================
+def load_json_data(json_file_path):
+    """
+    Load JSON workout data and convert it to DataFrame format compatible with CSV processing
+    
+    Parameters:
+    json_file_path: Path to the JSON workout data file
+    
+    Returns:
+    pd.DataFrame: Flattened sensor data with same structure as CSV data
+    """
+    print(f"📋 Loading JSON data from: {json_file_path}")
+    
+    with open(json_file_path, 'r') as f:
+        workout_data = json.load(f)
+    
+    # Extract metadata
+    exercise = workout_data.get('exercise', 'Unknown Exercise')
+    equipment = workout_data.get('equipment', 'Unknown Equipment')
+    weight = workout_data.get('weight', 'Unknown')
+    weight_unit = workout_data.get('weightUnit', '')
+    
+    print(f"📊 Workout Info: {exercise} with {equipment}")
+    print(f"🏋️ Weight: {weight} {weight_unit}")
+    
+    # Flatten all samples from all sets and reps into a single DataFrame
+    all_samples = []
+    global_timestamp_offset = 0
+    global_rep_counter = 1  # Global rep counter across all sets
+    
+    for set_data in workout_data.get('sets', []):
+        set_number = set_data.get('setNumber', 1)
+        print(f"  📦 Processing Set {set_number}...")
+        
+        for rep_data in set_data.get('reps', []):
+            rep_number_in_set = rep_data.get('repNumber', 1)  # Rep number within the set
+            samples = rep_data.get('samples', [])
+            
+            print(f"    🔄 Rep {rep_number_in_set} (Global Rep {global_rep_counter}): {len(samples)} samples")
+            
+            # Process each sample and add to the global list
+            for sample in samples:
+                # Create a copy of the sample to avoid modifying original
+                processed_sample = sample.copy()
+                
+                # Ensure we have global continuous timestamps
+                processed_sample['timestamp_ms'] = sample['timestamp_ms'] + global_timestamp_offset
+                
+                # Add metadata with both set and global rep tracking
+                processed_sample['set'] = set_number
+                processed_sample['rep_in_set'] = rep_number_in_set  # Rep number within the set
+                processed_sample['rep'] = global_rep_counter  # Global unique rep number
+                processed_sample['exercise'] = exercise
+                processed_sample['equipment'] = equipment
+                processed_sample['weight'] = weight
+                
+                all_samples.append(processed_sample)
+            
+            # Update global timestamp offset for next rep
+            if samples:
+                # Add a small gap between reps (100ms) to maintain separation
+                last_timestamp = samples[-1]['timestamp_ms']
+                global_timestamp_offset += last_timestamp + 100
+                
+            # Increment global rep counter
+            global_rep_counter += 1
+    
+    # Convert to DataFrame
+    df = pd.DataFrame(all_samples)
+    
+    if len(df) == 0:
+        raise ValueError("No sample data found in JSON file")
+    
+    print(f"✅ Loaded {len(df)} total samples from JSON")
+    print(f"📈 Sets: {df['set'].nunique()}, Total Reps: {df['rep'].nunique()}")
+    print(f"🕐 Time range: {df['timestamp_ms'].min():.0f}ms - {df['timestamp_ms'].max():.0f}ms")
+    
+    # Show breakdown by set
+    for set_num in sorted(df['set'].unique()):
+        set_data = df[df['set'] == set_num]
+        unique_reps_in_set = set_data['rep_in_set'].nunique() if 'rep_in_set' in df.columns else set_data['rep'].nunique()
+        print(f"  📦 Set {set_num}: {unique_reps_in_set} reps, {len(set_data)} samples")
+    
+    return df
+
 # ==================== 1. LOAD DATA ====================
 print("=" * 60)
-print("LOADING DATA FROM CSV")
+print("LOADING DATA FROM FILE")
 print("=" * 60)
 
 # Show file selection UI
 print("\n📂 Opening file selection dialog...")
-csv_file = select_from_datasets_ui()
+data_file = select_from_datasets_ui()
 
-if csv_file is None:
+if data_file is None:
     print("\n❌ No file selected. Exiting.")
     exit()
 
-print(f"\n✓ Selected file: {csv_file}")
-df = pd.read_csv(csv_file)
+print(f"\n✓ Selected file: {data_file}")
+
+# Detect file type and load accordingly
+file_extension = os.path.splitext(data_file)[1].lower()
+print(f"📄 File type detected: {file_extension}")
+
+if file_extension == '.csv':
+    print("🔄 Loading CSV file...")
+    df = pd.read_csv(data_file)
+elif file_extension == '.json':
+    print("🔄 Loading JSON file...")
+    df = load_json_data(data_file)
+else:
+    raise ValueError(f"Unsupported file type: {file_extension}. Please select a CSV or JSON file.")
+
+# Ensure we have the required columns
+required_columns = ['timestamp_ms', 'rep', 'accelMag', 'filteredMag']
+missing_columns = [col for col in required_columns if col not in df.columns]
+if missing_columns:
+    raise ValueError(f"Missing required columns: {missing_columns}")
+
+print(f"✅ Data loaded successfully!")
 
 # Use the existing timestamp_ms as is (it's already continuous across reps)
 # Just create a reference for plotting - no modification needed
 df['cumulative_timestamp_ms'] = df['timestamp_ms']
 
-print(f"\nCSV File: {csv_file}")
+print(f"\nData File: {data_file}")
 print(f"Data shape: {df.shape}")
 print(f"\nColumns: {df.columns.tolist()}")
 print(f"\nFirst few rows:\n{df.head()}")
-print(f"\nRep counts:\n{df.groupby('rep').size()}")
+print(f"\nRep counts (global): {df.groupby('rep').size()}")
+
+# Show set and rep breakdown if we have set information
+if 'set' in df.columns:
+    print(f"\nSet breakdown:")
+    set_rep_summary = df.groupby(['set', 'rep_in_set' if 'rep_in_set' in df.columns else 'rep']).size().reset_index(name='samples')
+    for set_num in sorted(df['set'].unique()):
+        set_data = set_rep_summary[set_rep_summary['set'] == set_num]
+        rep_count = len(set_data)
+        total_samples = set_data['samples'].sum()
+        print(f"  Set {set_num}: {rep_count} reps, {total_samples} total samples")
+        for _, row in set_data.iterrows():
+            rep_col = 'rep_in_set' if 'rep_in_set' in df.columns else 'rep'
+            global_rep = df[(df['set'] == set_num) & (df[rep_col] == row[rep_col])]['rep'].iloc[0]
+            print(f"    Rep {int(row[rep_col])} (Global Rep {global_rep}): {row['samples']} samples")
 
 # ==================== 2. GRAPH REPS WITH SEGMENTATION ====================
 print("\n" + "=" * 60)
@@ -241,13 +365,13 @@ print("GRAPHING REPS WITH SEGMENTATION")
 print("=" * 60)
 
 fig, axes = plt.subplots(3, 1, figsize=(15, 10))
-fig.suptitle('Sensor Data Segmented by Rep - CSV Data', fontsize=16, fontweight='bold')
+fig.suptitle('Sensor Data Segmented by Sets and Reps', fontsize=16, fontweight='bold')
 
-# Get sorted unique reps
+# Get sorted unique reps and sets
 sorted_reps = sorted(df['rep'].unique())
+sorted_sets = sorted(df['set'].unique())
 
 # Calculate rep boundaries that are continuous (no visual gaps)
-# Each rep's visual end = next rep's start (or data end for last rep)
 rep_boundaries = {}
 for i, rep_num in enumerate(sorted_reps):
     rep_data = df[df['rep'] == rep_num]
@@ -263,6 +387,17 @@ for i, rep_num in enumerate(sorted_reps):
         end_time = rep_data['cumulative_timestamp_ms'].max()
     
     rep_boundaries[rep_num] = (start_time, end_time)
+
+# Calculate set boundaries for visualization
+set_boundaries = {}
+set_colors = ['lightblue', 'lightgreen', 'lightcoral', 'lightyellow', 'lightpink', 'lightgray']
+for i, set_num in enumerate(sorted_sets):
+    set_data = df[df['set'] == set_num]
+    start_time = set_data['cumulative_timestamp_ms'].min()
+    end_time = set_data['cumulative_timestamp_ms'].max()
+    set_boundaries[set_num] = (start_time, end_time)
+
+print(f"  📊 Found {len(sorted_sets)} sets with {len(sorted_reps)} total reps")
 
 # *** FIND TURNING POINTS (valleys and peaks) for visualization ***
 from scipy.signal import find_peaks, savgol_filter
@@ -290,9 +425,24 @@ print(f"  Found {len(peaks)} peaks and {len(valleys)} valleys")
 
 # Plot acceleration magnitude with turning points
 axes[0].plot(df['cumulative_timestamp_ms'], df['accelMag'], linewidth=1, alpha=0.7, label='Accel Mag')
+
+# Add set boundaries as colored background regions
+for i, set_num in enumerate(sorted_sets):
+    start_time, end_time = set_boundaries[set_num]
+    color = set_colors[i % len(set_colors)]
+    axes[0].axvspan(start_time, end_time, alpha=0.15, color=color, label=f'Set {set_num}')
+    
+    # Add thick vertical lines at set starts (except first set)
+    if i > 0:
+        axes[0].axvline(x=start_time, color='black', linestyle='-', linewidth=3, alpha=0.8)
+
+# Add rep boundaries as light vertical lines
 for rep_num in sorted_reps:
     start_time, end_time = rep_boundaries[rep_num]
-    axes[0].axvspan(start_time, end_time, alpha=0.2, label=f'Rep {rep_num}')
+    rep_set = df[df['rep'] == rep_num]['set'].iloc[0]
+    rep_in_set = df[df['rep'] == rep_num]['rep_in_set'].iloc[0] if 'rep_in_set' in df.columns else rep_num
+    axes[0].axvline(x=start_time, color='gray', linestyle='--', alpha=0.5, linewidth=1)
+
 # Add peaks and valleys
 axes[0].scatter(peak_times, df['accelMag'].values[peaks], color='green', s=80, marker='^', 
                 zorder=5, label='Peaks', edgecolors='darkgreen', linewidths=1)
@@ -300,45 +450,73 @@ axes[0].scatter(valley_times, df['accelMag'].values[valleys], color='red', s=80,
                 zorder=5, label='Valleys', edgecolors='darkred', linewidths=1)
 axes[0].set_xlabel('Time (ms)')
 axes[0].set_ylabel('Acceleration Magnitude')
-axes[0].set_title('Acceleration Magnitude by Rep (with Turning Points)')
-axes[0].legend(loc='upper right', ncol=4)
+axes[0].set_title('Acceleration Magnitude by Sets and Reps (with Turning Points)')
+axes[0].legend(loc='upper right', ncol=3, fontsize=8)
 axes[0].grid(True, alpha=0.3)
 
 # Plot filtered magnitude with turning points
 axes[1].plot(df['cumulative_timestamp_ms'], df['filteredMag'], linewidth=1, alpha=0.7, color='orange', label='Filtered Mag')
+
+# Add set boundaries as colored background regions
+for i, set_num in enumerate(sorted_sets):
+    start_time, end_time = set_boundaries[set_num]
+    color = set_colors[i % len(set_colors)]
+    axes[1].axvspan(start_time, end_time, alpha=0.15, color=color)
+    
+    # Add thick vertical lines at set starts (except first set)
+    if i > 0:
+        axes[1].axvline(x=start_time, color='black', linestyle='-', linewidth=3, alpha=0.8)
+
+# Add rep boundaries as light vertical lines
 for rep_num in sorted_reps:
     start_time, end_time = rep_boundaries[rep_num]
-    axes[1].axvspan(start_time, end_time, alpha=0.2)
+    axes[1].axvline(x=start_time, color='gray', linestyle='--', alpha=0.5, linewidth=1)
+
 # Add peaks and valleys (using filtered signal values)
 axes[1].scatter(peak_times, peak_values, color='green', s=80, marker='^', 
                 zorder=5, label='Peaks', edgecolors='darkgreen', linewidths=1)
 axes[1].scatter(valley_times, valley_values, color='red', s=80, marker='v', 
                 zorder=5, label='Valleys', edgecolors='darkred', linewidths=1)
+
 # Add vertical lines at valley positions to show rep boundaries
 for vt in valley_times:
     axes[1].axvline(x=vt, color='red', linestyle='--', alpha=0.5, linewidth=1)
+    
 axes[1].set_xlabel('Time (ms)')
 axes[1].set_ylabel('Filtered Magnitude')
-axes[1].set_title('Filtered Magnitude by Rep (with Turning Points)')
-axes[1].legend(loc='upper right')
+axes[1].set_title('Filtered Magnitude by Sets and Reps (with Turning Points)')
+axes[1].legend(loc='upper right', fontsize=8)
 axes[1].grid(True, alpha=0.3)
 
 # Plot gyroscope data
 axes[2].plot(df['cumulative_timestamp_ms'], df['gyroX'], label='Gyro X', alpha=0.7)
 axes[2].plot(df['cumulative_timestamp_ms'], df['gyroY'], label='Gyro Y', alpha=0.7)
 axes[2].plot(df['cumulative_timestamp_ms'], df['gyroZ'], label='Gyro Z', alpha=0.7)
+
+# Add set boundaries as colored background regions
+for i, set_num in enumerate(sorted_sets):
+    start_time, end_time = set_boundaries[set_num]
+    color = set_colors[i % len(set_colors)]
+    axes[2].axvspan(start_time, end_time, alpha=0.15, color=color)
+    
+    # Add thick vertical lines at set starts (except first set)
+    if i > 0:
+        axes[2].axvline(x=start_time, color='black', linestyle='-', linewidth=3, alpha=0.8, label='Set Boundary' if i == 1 else "")
+
+# Add rep boundaries as light vertical lines
 for rep_num in sorted_reps:
     start_time, end_time = rep_boundaries[rep_num]
-    axes[2].axvspan(start_time, end_time, alpha=0.2)
+    axes[2].axvline(x=start_time, color='gray', linestyle='--', alpha=0.5, linewidth=1, label='Rep Boundary' if rep_num == sorted_reps[1] else "")
+
 axes[2].set_xlabel('Time (ms)')
 axes[2].set_ylabel('Angular Velocity')
-axes[2].set_title('Gyroscope Data by Rep')
-axes[2].legend()
+axes[2].set_title('Gyroscope Data by Sets and Reps')
+axes[2].legend(fontsize=8)
 axes[2].grid(True, alpha=0.3)
 
 plt.tight_layout()
-plt.savefig(VIZ_DIR / 'csv_segmentation_visualization.png', dpi=300, bbox_inches='tight')
-print(f"✓ Segmentation graph saved to '{VIZ_DIR / 'csv_segmentation_visualization.png'}'")
+plt.savefig(VIZ_DIR / 'segmentation_visualization.png', dpi=300, bbox_inches='tight')
+print(f"✓ Segmentation graph saved to '{VIZ_DIR / 'segmentation_visualization.png'}'")
 plt.show()
 
 # ==================== 3. FEATURE EXTRACTION ====================
@@ -673,14 +851,23 @@ for rep_num in df['rep'].unique():
     rep_data = df[df['rep'] == rep_num]
     features = extract_features_per_rep(rep_data)
     features['rep'] = int(rep_num)
+    
+    # Add set information if available
+    if 'set' in rep_data.columns:
+        features['set'] = int(rep_data['set'].iloc[0])
+    if 'rep_in_set' in rep_data.columns:
+        features['rep_in_set'] = int(rep_data['rep_in_set'].iloc[0])
+        
     feature_list.append(features)
 
 # Create feature dataframe
 features_df = pd.DataFrame(feature_list)
 
-# Reorder columns to put 'rep' first
-cols = ['rep'] + [col for col in features_df.columns if col != 'rep']
-features_df = features_df[cols]
+# Reorder columns to put 'set', 'rep', and 'rep_in_set' first
+priority_cols = ['set', 'rep', 'rep_in_set']
+first_cols = [col for col in priority_cols if col in features_df.columns]
+remaining_cols = [col for col in features_df.columns if col not in first_cols]
+features_df = features_df[first_cols + remaining_cols]
 
 print(f"\n✓ Extracted {len(features_df.columns) - 1} features per rep")
 print(f"✓ Total reps: {len(features_df)}")
@@ -689,8 +876,8 @@ print(f"\nFeatures extracted:\n{features_df.columns.tolist()}")
 print(f"\nFeature DataFrame (1 row per rep):\n{features_df}")
 
 # Save features to CSV
-features_df.to_csv('data/csv_extracted_features.csv', index=False)
-print("\n✓ Features saved to 'data/csv_extracted_features.csv'")
+features_df.to_csv('data/extracted_features.csv', index=False)
+print("\n✓ Features saved to 'data/extracted_features.csv'")
 
 # ==================== 3b. FATIGUE & VELOCITY LOSS ANALYSIS ====================
 print("\n" + "=" * 60)
@@ -762,8 +949,8 @@ print(f"  - Fatigue Index (composite metric)")
 print(f"  - Performance Quality Score (0-100)")
 
 # Save updated features with fatigue metrics
-features_df.to_csv('data/csv_extracted_features.csv', index=False)
-print("\n✓ Updated features with fatigue metrics saved to 'data/csv_extracted_features.csv'")
+features_df.to_csv('data/extracted_features.csv', index=False)
+print("\n✓ Updated features with fatigue metrics saved to 'data/extracted_features.csv'")
 
 # ==================== 4. PREPARE FOR MACHINE LEARNING ====================
 print("\n" + "=" * 60)
@@ -772,7 +959,7 @@ print("=" * 60)
 
 # Separate features from labels (drop rep identifier and non-numeric columns)
 # Exclude string columns that can't be standardized
-non_numeric_cols = ['rep', 'primary_movement_axis', 'peak_type']
+non_numeric_cols = ['rep', 'set', 'rep_in_set', 'primary_movement_axis', 'peak_type']
 cols_to_drop = [col for col in non_numeric_cols if col in features_df.columns]
 X = features_df.drop(cols_to_drop, axis=1)
 y = features_df['rep']
@@ -792,8 +979,8 @@ print(f"Shape: {X_standardized_df.shape}")
 print(f"\nStandardized Data:\n{X_standardized_df}")
 
 # Save standardized data
-X_standardized_df.to_csv('data/csv_standardized_features.csv', index=False)
-print("\n✓ Standardized features saved to 'data/csv_standardized_features.csv'")
+X_standardized_df.to_csv('data/standardized_features.csv', index=False)
+print("\n✓ Standardized features saved to 'data/standardized_features.csv'")
 
 # ==================== 5. VISUALIZATIONS ====================
 print("\n" + "=" * 60)
@@ -802,7 +989,7 @@ print("=" * 60)
 
 # Visualization 1: Feature Comparison Across Reps
 fig, axes = plt.subplots(4, 2, figsize=(16, 20))
-fig.suptitle('Feature Comparison Across Reps - CSV Data', fontsize=16, fontweight='bold')
+fig.suptitle('Feature Comparison Across Reps', fontsize=16, fontweight='bold')
 
 # LDLJ comparison
 ldlj_cols = [col for col in features_df.columns if 'ldlj' in col]
@@ -898,7 +1085,7 @@ ax_fatigue.legend(lines, labels, loc='upper left')
 ax_fatigue.grid(True, alpha=0.3)
 
 plt.tight_layout()
-plt.savefig(VIZ_DIR / 'csv_feature_comparison.png', dpi=300, bbox_inches='tight')
+plt.savefig(VIZ_DIR / 'feature_comparison.png', dpi=300, bbox_inches='tight')
 print(f"✓ Feature comparison saved to '{VIZ_DIR}'")
 plt.show()
 
@@ -907,15 +1094,15 @@ fig, ax = plt.subplots(figsize=(14, 12))
 correlation_matrix = X.corr()
 sns.heatmap(correlation_matrix, annot=False, cmap='coolwarm', center=0, 
             square=True, linewidths=0.5, cbar_kws={"shrink": 0.8}, ax=ax)
-ax.set_title('Feature Correlation Heatmap - CSV Data', fontsize=16, fontweight='bold', pad=20)
+ax.set_title('Feature Correlation Heatmap', fontsize=16, fontweight='bold', pad=20)
 plt.tight_layout()
-plt.savefig(VIZ_DIR / 'csv_correlation_heatmap.png', dpi=300, bbox_inches='tight')
+plt.savefig(VIZ_DIR / 'correlation_heatmap.png', dpi=300, bbox_inches='tight')
 print(f"✓ Correlation heatmap saved to '{VIZ_DIR}'")
 plt.show()
 
 # Visualization 3: Distribution of Standardized Features
 fig, axes = plt.subplots(3, 3, figsize=(16, 12))
-fig.suptitle('Distribution of Key Standardized Features - CSV Data', fontsize=16, fontweight='bold')
+fig.suptitle('Distribution of Key Standardized Features', fontsize=16, fontweight='bold')
 axes = axes.flatten()
 
 key_features = ['ldlj_accelMag', 'rom_roll', 'rom_pitch', 'accel_mean', 
@@ -933,7 +1120,7 @@ for idx, feature in enumerate(key_features):
         axes[idx].set_xticks([])
 
 plt.tight_layout()
-plt.savefig(VIZ_DIR / 'csv_feature_distributions.png', dpi=300, bbox_inches='tight')
+plt.savefig(VIZ_DIR / 'feature_distributions.png', dpi=300, bbox_inches='tight')
 print(f"✓ Feature distributions saved to '{VIZ_DIR}'")
 plt.show()
 
@@ -959,7 +1146,7 @@ colors = plt.cm.RdYlGn(quality_score / 100)
 bars = ax.bar(range(len(rep_labels)), quality_score, color=colors, edgecolor='black', linewidth=1.5)
 ax.set_xlabel('Rep', fontsize=12, fontweight='bold')
 ax.set_ylabel('Quality Score (0-100)', fontsize=12, fontweight='bold')
-ax.set_title('Rep Quality Comparison - CSV Data\n(Based on Smoothness Score & Duration Consistency)', 
+ax.set_title('Rep Quality Comparison\n(Based on Smoothness Score & Duration Consistency)', 
              fontsize=14, fontweight='bold')
 ax.set_xticks(range(len(rep_labels)))
 ax.set_xticklabels(rep_labels, rotation=45)
@@ -977,13 +1164,13 @@ for bar, score in zip(bars, quality_score):
             f'{score:.3f}', ha='center', va='bottom', fontweight='bold')
 
 plt.tight_layout()
-plt.savefig(VIZ_DIR / 'csv_rep_quality_comparison.png', dpi=300, bbox_inches='tight')
+plt.savefig(VIZ_DIR / 'rep_quality_comparison.png', dpi=300, bbox_inches='tight')
 print(f"✓ Rep quality comparison saved to '{VIZ_DIR}'")
 plt.show()
 
 # Visualization 5: Fatigue & Velocity Loss Analysis
 fig, axes = plt.subplots(3, 2, figsize=(16, 16))
-fig.suptitle('Fatigue, Velocity Loss & Movement Quality Analysis - CSV Data', fontsize=16, fontweight='bold')
+fig.suptitle('Fatigue, Velocity Loss & Movement Quality Analysis', fontsize=16, fontweight='bold')
 
 x_idx = range(len(features_df))
 x_labels = features_df['rep'].values
@@ -1090,7 +1277,7 @@ for bar, quality in zip(bars, features_df['performance_quality']):
                     f'{quality:.1f}', ha='center', va='bottom', fontweight='bold')
 
 plt.tight_layout()
-plt.savefig(VIZ_DIR / 'csv_fatigue_velocity_analysis.png', dpi=300, bbox_inches='tight')
+plt.savefig(VIZ_DIR / 'fatigue_velocity_analysis.png', dpi=300, bbox_inches='tight')
 print(f"✓ Fatigue & velocity loss analysis saved to '{VIZ_DIR}'")
 plt.show()
 
@@ -1098,17 +1285,32 @@ plt.show()
 print("\n" + "=" * 60)
 print("SUMMARY")
 print("=" * 60)
-print(f"✓ CSV File: {csv_file}")
+print(f"✓ Data File: {data_file}")
 print(f"✓ Loaded data: {df.shape[0]} samples, {df.shape[1]} columns")
-print(f"✓ Number of reps: {len(features_df)}")
-print(f"✓ Features extracted per rep: {len(features_df.columns) - 1}")
+
+# Show set and rep breakdown in summary
+if 'set' in features_df.columns:
+    num_sets = features_df['set'].nunique()
+    num_reps = len(features_df)
+    print(f"✓ Number of sets: {num_sets}")
+    print(f"✓ Total reps across all sets: {num_reps}")
+    
+    # Show reps per set
+    set_rep_counts = features_df.groupby('set').size()
+    for set_num, rep_count in set_rep_counts.items():
+        print(f"  Set {set_num}: {rep_count} reps")
+else:
+    print(f"✓ Number of reps: {len(features_df)}")
+
+print(f"✓ Features extracted per rep: {len(features_df.columns) - len([col for col in ['set', 'rep', 'rep_in_set'] if col in features_df.columns])}")
 print(f"✓ Final dataset: {features_df.shape[0]} rows (1 per rep), {features_df.shape[1]} columns")
 
 print("\n" + "=" * 60)
 print("RANGE OF MOTION (ROM) IN DEGREES - PER REP")
 print("=" * 60)
 for idx, row in features_df.iterrows():
-    print(f"\nRep {int(row['rep'])}:")
+    set_info = f" (Set {int(row['set'])}, Rep {int(row['rep_in_set'])})" if 'set' in row and 'rep_in_set' in row else ""
+    print(f"\nRep {int(row['rep'])}{set_info}:")
     print(f"  Roll ROM:  {row['rom_roll']:.2f}°")
     print(f"  Pitch ROM: {row['rom_pitch']:.2f}°")
     print(f"  Yaw ROM:   {row['rom_yaw']:.2f}°")
@@ -1124,7 +1326,8 @@ print("-" * 60)
 for idx, row in features_df.iterrows():
     primary_axis_info = f" [Primary: {row.get('primary_movement_axis', 'N/A')} axis]" if 'primary_movement_axis' in row else ""
     peak_type_info = f" [{row.get('peak_type', 'N/A')} peak]" if 'peak_type' in row else ""
-    print(f"\nRep {int(row['rep'])}:{primary_axis_info}{peak_type_info}")
+    set_info = f" (Set {int(row['set'])}, Rep {int(row['rep_in_set'])})" if 'set' in row and 'rep_in_set' in row else ""
+    print(f"\nRep {int(row['rep'])}{set_info}:{primary_axis_info}{peak_type_info}")
     print(f"  Total Duration:      {row['duration_sec']:.3f}s ({row['duration_ms']:.0f}ms)")
     print(f"  Concentric (before): {row['concentric_duration_sec']:.3f}s ({row['concentric_duration_ms']:.0f}ms) - {row['concentric_percentage']:.1f}%")
     print(f"  Eccentric (after):   {row['eccentric_duration_sec']:.3f}s ({row['eccentric_duration_ms']:.0f}ms) - {row['eccentric_percentage']:.1f}%")
@@ -1140,7 +1343,8 @@ print("-" * 60)
 for idx, row in features_df.iterrows():
     is_baseline = row['rep'] == features_df['rep'].iloc[0]
     baseline_marker = " ⭐ BASELINE" if is_baseline else ""
-    print(f"\nRep {int(row['rep'])}{baseline_marker}:")
+    set_info = f" (Set {int(row['set'])}, Rep {int(row['rep_in_set'])})" if 'set' in row and 'rep_in_set' in row else ""
+    print(f"\nRep {int(row['rep'])}{set_info}{baseline_marker}:")
     print(f"  Peak Velocity:           {row['peak_velocity']:.2f}")
     print(f"  Mean Concentric Velocity: {row['mean_concentric_velocity']:.2f}")
     print(f"  Velocity Loss (vs 1st):  {row['velocity_loss_percent']:.2f}%")
@@ -1171,14 +1375,14 @@ for idx, row in features_df.iterrows():
             print(f"  {warning}")
 
 print(f"\n✓ Files created:")
-print(f"  - csv_extracted_features.csv (raw features)")
-print(f"  - csv_standardized_features.csv (standardized for ML)")
-print(f"  - csv_segmentation_visualization.png")
-print(f"  - csv_feature_comparison.png")
-print(f"  - csv_correlation_heatmap.png")
-print(f"  - csv_feature_distributions.png")
-print(f"  - csv_rep_quality_comparison.png")
-print(f"  - csv_fatigue_velocity_analysis.png")
+print(f"  - extracted_features.csv (raw features)")
+print(f"  - standardized_features.csv (standardized for ML)")
+print(f"  - segmentation_visualization.png")
+print(f"  - feature_comparison.png")
+print(f"  - correlation_heatmap.png")
+print(f"  - feature_distributions.png")
+print(f"  - rep_quality_comparison.png")
+print(f"  - fatigue_velocity_analysis.png")
 
 print("\n" + "=" * 60)
 print("KEY INSIGHTS")

@@ -1,31 +1,57 @@
 import { useRouter } from 'next/router';
+import { useMemo } from 'react';
 
 export default function LiftPhases({ 
   avgConcentric: propsConcentric, 
   avgEccentric: propsEccentric,
   concentricPercent: propsConcentricPercent,
-  eccentricPercent: propsEccentricPercent
+  eccentricPercent: propsEccentricPercent,
+  setsData  // Fallback: compute averages from per-rep phase data
 }) {
   const router = useRouter();
-  const { avgConcentric: queryConcentric, avgEccentric: queryEccentric, totalReps } = router.query;
+  const { avgConcentric: queryConcentric, avgEccentric: queryEccentric } = router.query;
 
-  // Use props if available, otherwise fall back to query params
-  const concentric = propsConcentric ?? (parseFloat(queryConcentric) || 0);
-  const eccentric = propsEccentric ?? (parseFloat(queryEccentric) || 0);
+  // Compute average phase timings from setsData if props aren't provided
+  const computedFromSets = useMemo(() => {
+    if (!setsData || setsData.length === 0) return null;
+    let totalLifting = 0;
+    let totalLowering = 0;
+    let count = 0;
+    setsData.forEach(set => {
+      (set.repsData || []).forEach(rep => {
+        const lt = rep.liftingTime || 0;
+        const lo = rep.loweringTime || 0;
+        if (lt + lo > 0) {
+          totalLifting += lt;
+          totalLowering += lo;
+          count++;
+        }
+      });
+    });
+    if (count === 0) return null;
+    const avgLift = totalLifting / count;
+    const avgLower = totalLowering / count;
+    const total = avgLift + avgLower;
+    return {
+      concentric: avgLift,
+      eccentric: avgLower,
+      concentricPercent: total > 0 ? (avgLift / total) * 100 : 50,
+      eccentricPercent: total > 0 ? (avgLower / total) * 100 : 50
+    };
+  }, [setsData]);
+
+  // Priority: props > computed from setsData > query params > 0
+  const concentric = propsConcentric ?? computedFromSets?.concentric ?? (parseFloat(queryConcentric) || 0);
+  const eccentric = propsEccentric ?? computedFromSets?.eccentric ?? (parseFloat(queryEccentric) || 0);
   const total = concentric + eccentric || 1;
-  const reps = parseInt(totalReps) || 0;
 
-  // Calculate percentages (use props if available, ensure 1 decimal place)
-  const rawConcentricPercent = propsConcentricPercent ?? ((concentric / total) * 100);
-  const rawEccentricPercent = propsEccentricPercent ?? ((eccentric / total) * 100);
+  // Calculate percentages
+  const rawConcentricPercent = propsConcentricPercent ?? computedFromSets?.concentricPercent ?? ((concentric / total) * 100);
+  const rawEccentricPercent = propsEccentricPercent ?? computedFromSets?.eccentricPercent ?? ((eccentric / total) * 100);
   
   // Format to 1 decimal place
   const concentricPercent = parseFloat(rawConcentricPercent).toFixed(1);
   const eccentricPercent = parseFloat(rawEccentricPercent).toFixed(1);
-
-  // Calculate delta/change metrics (placeholder - can be enhanced with historical data)
-  const concentricDelta = Math.round(concentric * 10); // Example calculation
-  const eccentricDelta = Math.round(eccentric * 8); // Example calculation
 
   return (
     <div className="rounded-3xl bg-white/5 backdrop-blur-sm p-5 shadow-xl content-fade-up-3">

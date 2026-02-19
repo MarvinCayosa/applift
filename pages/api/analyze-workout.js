@@ -615,81 +615,94 @@ function computeSmoothnessMetrics(accelX, accelY, accelZ, timestamps, filteredMa
   };
 }
 
-function computePhaseTimings(signal, timestamps) {
-  if (!signal || signal.length < 3) return { liftingTime: 0, loweringTime: 0 };
-  
-  // Check if timestamps are valid (not all zeros)
-  const hasValidTimestamps = timestamps && timestamps.length === signal.length 
-    && timestamps.some(t => t > 0) 
+/**
+ * Compute eccentric/concentric phase timings using PRIMARY MOVEMENT AXIS.
+ * 
+ * Algorithm (matching main_csv.py):
+ * 1. Determine which individual axis (X, Y, Z) has the highest range of motion
+ * 2. Find all peaks (positive + negative) on that primary axis
+ * 3. The most prominent peak = the transition point (turning point of the rep)
+ * 4. Concentric (lifting) = time BEFORE the transition peak
+ * 5. Eccentric (lowering) = time AFTER the transition peak
+ *
+ * Previous approach using filteredMag was flawed because magnitude is always positive
+ * and obscures the actual movement direction, causing min/max to land at signal edges.
+ */
+function computePhaseTimingsFromPrimaryAxis(accelX, accelY, accelZ, timestamps) {
+  if (!accelX || accelX.length < 3) {
+    return { liftingTime: 0, loweringTime: 0, primaryAxis: 'unknown', peakTimePercent: 50 };
+  }
+
+  const hasValidTimestamps = timestamps && timestamps.length === accelX.length
+    && timestamps.some(t => t > 0)
     && (timestamps[timestamps.length - 1] - timestamps[0]) > 0;
-  
-  // Find valley (minimum) and peak (maximum) indices
-  let valleyIdx = 0;
-  let peakIdx = 0;
-  let minVal = signal[0];
-  let maxVal = signal[0];
-  
-  for (let i = 0; i < signal.length; i++) {
-    if (signal[i] < minVal) {
-      minVal = signal[i];
-      valleyIdx = i;
-    }
-    if (signal[i] > maxVal) {
-      maxVal = signal[i];
-      peakIdx = i;
-    }
-  }
-  
-  // If peak and valley are at same position, no phase split possible
-  if (peakIdx === valleyIdx) return { liftingTime: 0, loweringTime: 0 };
-  
-  let liftingTime = 0;
-  let loweringTime = 0;
-  
-  if (hasValidTimestamps) {
-    // Use actual timestamps for accurate timing
-    if (valleyIdx < peakIdx) {
-      for (let i = 1; i < signal.length; i++) {
-        const dt = (timestamps[i] - timestamps[i - 1]) / 1000;
-        if (dt <= 0) continue;
-        if (i <= peakIdx) {
-          liftingTime += dt;
-        } else {
-          loweringTime += dt;
-        }
-      }
-    } else {
-      for (let i = 1; i < signal.length; i++) {
-        const dt = (timestamps[i] - timestamps[i - 1]) / 1000;
-        if (dt <= 0) continue;
-        if (i <= valleyIdx) {
-          loweringTime += dt;
-        } else {
-          liftingTime += dt;
-        }
-      }
-    }
+
+  // Step 1: Determine primary movement axis (highest range of motion)
+  const xRange = Math.max(...accelX) - Math.min(...accelX);
+  const yRange = Math.max(...accelY) - Math.min(...accelY);
+  const zRange = Math.max(...accelZ) - Math.min(...accelZ);
+
+  let primarySignal, primaryAxis;
+  if (xRange >= yRange && xRange >= zRange) {
+    primarySignal = accelX;
+    primaryAxis = 'X';
+  } else if (yRange >= xRange && yRange >= zRange) {
+    primarySignal = accelY;
+    primaryAxis = 'Y';
   } else {
-    // No valid timestamps — estimate from sample count (~20ms per sample at 50Hz)
-    const totalDuration = signal.length * 0.02;
-    if (valleyIdx < peakIdx) {
-      liftingTime = (peakIdx / signal.length) * totalDuration;
-      loweringTime = ((signal.length - peakIdx) / signal.length) * totalDuration;
-    } else {
-      loweringTime = (valleyIdx / signal.length) * totalDuration;
-      liftingTime = ((signal.length - valleyIdx) / signal.length) * totalDuration;
-    }
+    primarySignal = accelZ;
+    primaryAxis = 'Z';
   }
-  
-  console.log('[Phase Timing]', {
-    signalLength: signal.length,
-    hasValidTimestamps,
-    valleyIdx, peakIdx,
-    minVal: minVal.toFixed(2), maxVal: maxVal.toFixed(2),
-    liftingTime: liftingTime.toFixed(3), loweringTime: loweringTime.toFixed(3)
-  });
-  
-  return { liftingTime, loweringTime };
+
+  // Step 2: Find peaks on primary axis (positive and negative)
+  const { peaks: positivePeaks } = findPeaks(primarySignal, 0.05);
+  const invertedSignal = primarySignal.map(v => -v);
+  const { peaks: negativePeaks } = findPeaks(invertedSignal, 0.05);
+
+  // Combine all peaks
+  const allPeaks = [
+    ...positivePeaks.map(p => ({ index: p.index, absValue: Math.abs(primarySignal[p.index]) })),
+    ...negativePeaks.map(p => ({ index: p.index, absValue: Math.abs(primarySignal[p.index]) }))
+  ];
+
+  // Step 3: Find the most prominent peak (transition point)
+  let transitionIdx;
+  if (allPeaks.length > 0) {
+    const mainPeak = allPeaks.reduce((best, p) => p.absValue > best.absValue ? p : best, allPeaks[0]);
+    transitionIdx = mainPeak.index;
+  } else {
+    // Fallback: use index of maximum absolute value
+    const absValues = primarySignal.map(Math.abs);
+    transitionIdx = absValues.indexOf(Math.max(...absValues));
+  }
+
+  // Guard: if transition is at very edge, nudge slightly inward
+  if (transitionIdx <= 0) transitionIdx = 1;
+  if (transitionIdx >= primarySignal.length - 1) transitionIdx = primarySignal.length - 2;
+
+  // Step 4: Calculate phase timings
+  let liftingTime = 0;  // Concentric = before peak
+  let loweringTime = 0; // Eccentric = after peak
+
+  if (hasValidTimestamps) {
+    const startTime = timestamps[0];
+    const peakTime = timestamps[transitionIdx];
+    const endTime = timestamps[timestamps.length - 1];
+    liftingTime = (peakTime - startTime) / 1000;
+    loweringTime = (endTime - peakTime) / 1000;
+  } else {
+    // Estimate from sample count (~50ms per sample at 20Hz)
+    const totalDuration = primarySignal.length * 0.05;
+    liftingTime = (transitionIdx / primarySignal.length) * totalDuration;
+    loweringTime = ((primarySignal.length - transitionIdx) / primarySignal.length) * totalDuration;
+  }
+
+  liftingTime = Math.max(0, liftingTime);
+  loweringTime = Math.max(0, loweringTime);
+
+  const peakTimePercent = (transitionIdx / primarySignal.length) * 100;
+
+  return { liftingTime, loweringTime, primaryAxis, peakTimePercent };
 }
 
 function computeRepMetrics(repData) {
@@ -744,8 +757,9 @@ function computeRepMetrics(repData) {
     shakiness = Math.sqrt(mean(angularAccel.map(a => a * a)));
   }
   
-  // Phase timings
-  const { liftingTime, loweringTime } = computePhaseTimings(filteredMag, timestamps);
+  // Phase timings — use primary movement axis method (matching main_csv.py)
+  const { liftingTime, loweringTime, primaryAxis: phaseAxis, peakTimePercent } = 
+    computePhaseTimingsFromPrimaryAxis(accelX, accelY, accelZ, timestamps);
   
   // Peak acceleration
   const peakAcceleration = Math.max(...samples.map(s => 

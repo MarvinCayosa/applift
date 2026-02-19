@@ -164,14 +164,17 @@ export function transformAnalysisForUI(analysis) {
 
   // Calculate totals
   const totalReps = summary?.totalReps || 0;
-  const totalTime = Math.round((summary?.totalDurationMs || 0) / 1000);
-  const calories = Math.round(totalTime * 0.15 * totalReps); // Rough estimate
+  // Note: totalDurationMs from API is sum of rep durations only (not wall-clock time).
+  // The real wall-clock workout time comes from the workout monitor's totalTime query param.
+  // We store this as activeTime for reference, but don't use it as totalTime.
+  const activeTime = Math.round((summary?.totalDurationMs || 0) / 1000);
+  const calories = Math.round(activeTime * 0.15 * totalReps); // Rough estimate
 
   return {
     // Summary data
     totalSets: summary?.totalSets || 0,
     totalReps,
-    totalTime,
+    activeTime, // Sum of rep durations (not wall-clock time)
     calories,
     
     // Phase timing

@@ -255,10 +255,23 @@ export default function WorkoutMonitor() {
       
       console.log('[WorkoutComplete] Merged set data with classifications:', mergedSetData);
       
-      // Calculate avg concentric/eccentric
-      const avgRepDuration = finalStats.allRepDurations.length > 0
-        ? finalStats.allRepDurations.reduce((a, b) => a + b, 0) / finalStats.allRepDurations.length
-        : 0;
+      // Calculate real avg concentric/eccentric from per-rep phase data
+      let totalLiftingTime = 0;
+      let totalLoweringTime = 0;
+      let phaseRepCount = 0;
+      mergedSetData.forEach(set => {
+        (set.repsData || []).forEach(rep => {
+          const lt = rep.liftingTime || 0;
+          const lo = rep.loweringTime || 0;
+          if (lt + lo > 0) {
+            totalLiftingTime += lt;
+            totalLoweringTime += lo;
+            phaseRepCount++;
+          }
+        });
+      });
+      const avgConcentricVal = phaseRepCount > 0 ? (totalLiftingTime / phaseRepCount) : 0;
+      const avgEccentricVal = phaseRepCount > 0 ? (totalLoweringTime / phaseRepCount) : 0;
       
       // Store workout results in sessionStorage for workout-finished page
       if (typeof window !== 'undefined') {
@@ -267,8 +280,8 @@ export default function WorkoutMonitor() {
           totalReps: finalStats.totalReps,
           totalTime: finalStats.totalTime,
           calories: Math.round(finalStats.totalReps * 5),
-          avgConcentric: (avgRepDuration * 0.4).toFixed(1),
-          avgEccentric: (avgRepDuration * 0.6).toFixed(1),
+          avgConcentric: avgConcentricVal.toFixed(1),
+          avgEccentric: avgEccentricVal.toFixed(1),
           setData: mergedSetData, // Use merged data with classifications
           // Include streaming result status
           status: result?.status || 'completed',
@@ -288,8 +301,8 @@ export default function WorkoutMonitor() {
           totalReps: finalStats.totalReps,
           calories: Math.round(finalStats.totalReps * 5),
           totalTime: finalStats.totalTime,
-          avgConcentric: (avgRepDuration * 0.4).toFixed(1),
-          avgEccentric: (avgRepDuration * 0.6).toFixed(1),
+          avgConcentric: avgConcentricVal.toFixed(1),
+          avgEccentric: avgEccentricVal.toFixed(1),
           chartData: JSON.stringify(chartData.filteredAccelData),
           timeData: JSON.stringify(chartData.timeData),
           setsData: JSON.stringify(mergedSetData), // Use merged data with classifications
