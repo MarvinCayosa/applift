@@ -55,10 +55,13 @@ export function useWorkoutStreak() {
     }
 
     try {
+      console.log('[useWorkoutStreak] Recording workout for user:', user.uid, 'Date:', workoutDate || 'now');
       const updatedData = await WorkoutStreakService.updateWorkoutStreak(user.uid, workoutDate);
+      console.log('[useWorkoutStreak] Streak updated:', updatedData);
       setStreakData(updatedData);
       return updatedData;
     } catch (err) {
+      console.error('[useWorkoutStreak] Error recording workout:', err);
       setError(err.message);
       throw err;
     }

@@ -69,9 +69,11 @@ export function useWorkoutAnalysis() {
 
   /**
    * Get existing analysis without re-analyzing
+   * If analysis is stale (old version), automatically triggers reanalysis
    * @param {string} workoutId
+   * @param {string} gcsPath - Optional GCS path for reanalysis
    */
-  const getAnalysis = useCallback(async (workoutId) => {
+  const getAnalysis = useCallback(async (workoutId, gcsPath = null) => {
     if (!user?.uid) {
       setError('User not authenticated');
       return null;
@@ -101,6 +103,37 @@ export function useWorkoutAnalysis() {
       }
 
       const result = await response.json();
+      
+      // Check if analysis is stale and needs reanalysis
+      if (result._needsReanalysis) {
+        console.log(`[useWorkoutAnalysis] Stale analysis (v${result._cachedVersion} → v${result._currentVersion}), reanalyzing...`);
+        
+        // Trigger reanalysis via POST
+        const reanalyzeResponse = await fetch('/api/analyze-workout', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            workoutId,
+            gcsPath,
+            forceReanalyze: true
+          })
+        });
+        
+        if (reanalyzeResponse.ok) {
+          const freshResult = await reanalyzeResponse.json();
+          setAnalysis(freshResult);
+          return freshResult;
+        } else {
+          // Fall back to stale data if reanalysis fails
+          console.warn('[useWorkoutAnalysis] Reanalysis failed, using stale data');
+          setAnalysis(result);
+          return result;
+        }
+      }
+      
       setAnalysis(result);
       return result;
 
@@ -139,24 +172,36 @@ export function transformAnalysisForUI(analysis) {
 
   const { summary, fatigue, consistency, setsAnalysis, repMetrics, insights, mlClassification } = analysis;
 
+  // Calculate baseline velocity from first rep for velocity loss calculations
+  const firstRepVelocity = repMetrics?.[0]?.peakVelocity || repMetrics?.[0]?.gyroPeak || 0;
+
   // Transform sets data for WorkoutSummaryCard and RepByRepCard
   const setsData = setsAnalysis?.map(set => ({
     setNumber: set.setNumber,
     reps: set.repsCount,
     classification: set.classification || null,
-    repsData: set.repMetrics?.map(rep => ({
-      repNumber: rep.repNumber,
-      time: (rep.durationMs / 1000).toFixed(1),
-      rom: Math.round(rep.romDegrees || rep.rom),
-      peakVelocity: rep.peakVelocity?.toFixed(2) || '0',
-      chartData: rep.chartData || [],
-      liftingTime: rep.liftingTime || 0,
-      loweringTime: rep.loweringTime || 0,
-      smoothnessScore: rep.smoothnessScore || 50,
-      quality: rep.smoothnessScore >= 80 ? 'clean' : 'uncontrolled',
-      // Include ML classification for each rep
-      classification: rep.classification || null
-    })) || []
+    repsData: set.repMetrics?.map((rep, idx) => {
+      const velocity = rep.peakVelocity || rep.gyroPeak || 0;
+      const velocityLossPercent = firstRepVelocity > 0 
+        ? ((firstRepVelocity - velocity) / firstRepVelocity) * 100 
+        : 0;
+      
+      return {
+        repNumber: rep.repNumber,
+        time: (rep.durationMs / 1000).toFixed(1),
+        rom: Math.round(rep.romDegrees || rep.rom),
+        peakVelocity: velocity?.toFixed ? velocity.toFixed(2) : String(velocity || '0'),
+        velocityLossPercent: Math.round(velocityLossPercent * 10) / 10,
+        isEffective: velocityLossPercent < 10, // Industry standard threshold
+        chartData: rep.chartData || [],
+        liftingTime: rep.liftingTime || 0,
+        loweringTime: rep.loweringTime || 0,
+        smoothnessScore: rep.smoothnessScore || 50,
+        quality: rep.smoothnessScore >= 80 ? 'clean' : 'uncontrolled',
+        // Include ML classification for each rep
+        classification: rep.classification || null
+      };
+    }) || []
   })) || [];
 
   // Transform chart data (combined from all reps)
@@ -219,8 +264,16 @@ export function transformAnalysisForUI(analysis) {
     avgROM: summary?.avgROMDegrees || 0,
     avgSmoothness: summary?.avgSmoothness || 50,
     
+    // Velocity metrics for VBT analysis
+    baselineVelocity: firstRepVelocity,
+    velocityLoss: fatigue?.D_omega ? fatigue.D_omega * 100 : 0, // Overall velocity loss %
+    effectiveReps: setsData.flatMap(s => s.repsData).filter(r => r.isEffective).length,
+    
     // ML Classification summary
     mlClassification: mlClassification || null,
+    
+    // Analysis version for cache invalidation
+    _analysisVersion: analysis._analysisVersion || 0,
     
     // Raw analysis for debugging
     rawAnalysis: analysis

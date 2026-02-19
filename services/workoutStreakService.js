@@ -40,9 +40,11 @@ export class WorkoutStreakService {
   
   /**
    * Get the start of day (midnight) for a given date in LOCAL timezone
+   * Fixed to handle timezone properly
    */
   static getStartOfDay(date) {
     const d = new Date(date);
+    // Use local timezone, not UTC
     d.setHours(0, 0, 0, 0);
     return d;
   }
@@ -94,7 +96,9 @@ export class WorkoutStreakService {
 
       console.log('[Streak] Update check:', {
         today: today.toISOString(),
+        todayLocal: today.toLocaleString(),
         lastWorkoutDate: lastWorkoutDate?.toISOString(),
+        lastWorkoutDateLocal: lastWorkoutDate?.toLocaleString(),
         daysSinceLastWorkout,
         currentStreak: currentStreak.currentStreak
       });

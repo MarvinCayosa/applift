@@ -462,6 +462,7 @@ export default function SelectedWorkout() {
   const [customSets, setCustomSets] = useState(null);
   const [customReps, setCustomReps] = useState(null);
   const [customWeightUnit, setCustomWeightUnit] = useState('kg');
+  const [customRestTime, setCustomRestTime] = useState(30); // Rest time in seconds
   const [customSetError, setCustomSetError] = useState('');
   const [errorVisible, setErrorVisible] = useState(false);
   const [isPillExpanded, setIsPillExpanded] = useState(false);
@@ -619,6 +620,9 @@ export default function SelectedWorkout() {
             customSets={customSets}
             customReps={customReps}
             customWeightUnit={customWeightUnit}
+            restMinutes={Math.floor(customRestTime / 60)}
+            restSeconds={customRestTime % 60}
+            onRestTimeChange={setCustomRestTime}
             onCustomFieldClick={handleCustomFieldClick}
             onActiveIndexChange={handleCarouselIndexChange}
           />
@@ -743,6 +747,7 @@ export default function SelectedWorkout() {
                     weight: finalWeight,
                     weightUnit: finalWeightUnit,
                     setType: setType,
+                    restTime: isCustomSet ? customRestTime : 30,
                   }
                 });
               } catch (error) {

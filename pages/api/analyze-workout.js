@@ -726,7 +726,17 @@ function computeRepMetrics(repData) {
   const gyroZ = samples.map(s => s.gyroZ || 0);
   // Try both field names: filteredMag and filteredMagnitude (from streaming vs stored data)
   const filteredMag = samples.map(s => s.filteredMag || s.filteredMagnitude || s.accelMag || 0);
-  const timestamps = samples.map(s => s.timestamp_ms || 0);
+  // IMPORTANT: Use explicit null check — timestamp_ms=0 is valid (first sample)
+  const timestamps = samples.map(s => {
+    if (s.timestamp_ms != null && typeof s.timestamp_ms === 'number') return s.timestamp_ms;
+    if (typeof s.timestamp === 'number') return s.timestamp;
+    // Parse string timestamps like "00:00.130" → milliseconds
+    if (typeof s.timestamp === 'string') {
+      const parts = s.timestamp.match(/(\d+):(\d+)\.(\d+)/);
+      if (parts) return parseInt(parts[1]) * 60000 + parseInt(parts[2]) * 1000 + parseInt(parts[3]);
+    }
+    return 0;
+  });
   
   const durationMs = duration || (timestamps[timestamps.length - 1] - timestamps[0]);
   
@@ -761,10 +771,64 @@ function computeRepMetrics(repData) {
   const { liftingTime, loweringTime, primaryAxis: phaseAxis, peakTimePercent } = 
     computePhaseTimingsFromPrimaryAxis(accelX, accelY, accelZ, timestamps);
   
-  // Peak acceleration
-  const peakAcceleration = Math.max(...samples.map(s => 
+  // ============================================================================
+  // REAL PEAK VELOCITY (m/s) via ACCELEROMETER INTEGRATION
+  // ============================================================================
+  // Physics: at rest, accelMag ≈ 9.81 (gravity). During movement:
+  //   - Lifting: net accel = measured - gravity (positive = upward force)
+  //   - Velocity = integral of net acceleration over time
+  // Industry standard (PUSH Band, Gymaware, Tendo Unit):
+  //   1. Compute accel magnitude
+  //   2. Subtract gravity baseline (~9.81)
+  //   3. Trapezoidal integration → velocity
+  //   4. Apply high-pass filter to remove drift
+  //   5. Peak velocity = max |velocity| during rep
+  // ============================================================================
+  
+  const accelMag = samples.map(s => 
     s.accelMag || Math.sqrt((s.accelX || 0) ** 2 + (s.accelY || 0) ** 2 + (s.accelZ || 0) ** 2)
-  ));
+  );
+  
+  // Establish gravity baseline from first few (stationary) samples
+  const gravityEstimateSamples = Math.min(3, Math.floor(accelMag.length / 4));
+  const gravityBaseline = gravityEstimateSamples > 0
+    ? mean(accelMag.slice(0, gravityEstimateSamples))
+    : 9.81;
+  
+  // Net acceleration (subtract gravity)
+  const netAccel = accelMag.map(a => a - gravityBaseline);
+  
+  // Trapezoidal integration: net acceleration → velocity
+  const velocityProfile = [0];
+  for (let i = 1; i < netAccel.length; i++) {
+    let dt;
+    if (timestamps[i] > 0 && timestamps[i - 1] > 0) {
+      dt = (timestamps[i] - timestamps[i - 1]) / 1000;
+    } else {
+      dt = (durationMs / 1000) / (netAccel.length - 1);
+    }
+    dt = Math.max(0.005, Math.min(0.2, dt));
+    const v = velocityProfile[i - 1] + 0.5 * (netAccel[i] + netAccel[i - 1]) * dt;
+    velocityProfile.push(v);
+  }
+  
+  // High-pass filter to remove drift (subtract linear trend)
+  if (velocityProfile.length > 2) {
+    const firstV = velocityProfile[0];
+    const lastV = velocityProfile[velocityProfile.length - 1];
+    const driftPerSample = (lastV - firstV) / (velocityProfile.length - 1);
+    for (let i = 0; i < velocityProfile.length; i++) {
+      velocityProfile[i] -= firstV + driftPerSample * i;
+    }
+  }
+  
+  // Peak velocity = maximum absolute velocity during the rep
+  const absVelocityProfile = velocityProfile.map(v => Math.abs(v));
+  const peakLinearVelocity = Math.max(...absVelocityProfile);
+  const meanLinearVelocity = mean(absVelocityProfile);
+  
+  // Peak acceleration from baseline
+  const peakAcceleration = Math.max(...accelMag.map(a => Math.abs(a - gravityBaseline)));
   
   return {
     repNumber,
@@ -789,7 +853,9 @@ function computeRepMetrics(repData) {
       ? (liftingTime / (liftingTime + loweringTime)) * 100 
       : 50,
     peakAcceleration,
-    peakVelocity: gyroPeak,
+    peakVelocity: peakLinearVelocity, // TRUE peak velocity in m/s (from accelerometer integration)
+    meanVelocity: meanLinearVelocity, // Mean velocity in m/s
+    gravityBaseline, // For debugging
     chartData: filteredMag
   };
 }
@@ -810,8 +876,9 @@ function computeFatigueIndicators(repMetricsList) {
   const nReps = repMetricsList.length;
   const third = Math.max(1, Math.floor(nReps / 3));
   
-  const gyroPeaks = repMetricsList.map(m => m.gyroPeak || 0);
-  const hasGyro = gyroPeaks.some(g => g > 0);
+  // Use real peak velocity (m/s) for velocity drop detection
+  const peakVelocities = repMetricsList.map(m => m.peakVelocity || 0);
+  const hasVelocity = peakVelocities.some(v => v > 0);
   const shakiness = repMetricsList.map(m => m.shakiness || 0);
   const hasShakiness = shakiness.some(s => s > 0);
   const durations = repMetricsList.map(m => m.durationMs || 0);
@@ -820,18 +887,18 @@ function computeFatigueIndicators(repMetricsList) {
   const smoothnessValues = repMetricsList.map(m => m.smoothnessScore || 50);
   const peaks = repMetricsList.map(m => m.peak || 0);
   
-  // D_omega
-  let D_omega, gyroDirection;
-  if (hasGyro) {
-    const avgGyroFirst = mean(gyroPeaks.slice(0, third));
-    const avgGyroLast = mean(gyroPeaks.slice(-third));
-    D_omega = avgGyroFirst > 0 ? Math.abs(avgGyroFirst - avgGyroLast) / avgGyroFirst : 0;
-    gyroDirection = avgGyroLast < avgGyroFirst ? 'drop' : 'surge';
+  // D_omega (velocity drop) - now using REAL peak velocity in m/s
+  let D_omega, velocityDirection;
+  if (hasVelocity) {
+    const avgVelFirst = mean(peakVelocities.slice(0, third));
+    const avgVelLast = mean(peakVelocities.slice(-third));
+    D_omega = avgVelFirst > 0 ? Math.abs(avgVelFirst - avgVelLast) / avgVelFirst : 0;
+    velocityDirection = avgVelLast < avgVelFirst ? 'drop' : 'surge';
   } else {
     const avgPeakFirst = mean(peaks.slice(0, third));
     const avgPeakLast = mean(peaks.slice(-third));
     D_omega = avgPeakFirst > 0 ? Math.abs(avgPeakFirst - avgPeakLast) / avgPeakFirst : 0;
-    gyroDirection = avgPeakLast < avgPeakFirst ? 'drop' : 'surge';
+    velocityDirection = avgPeakLast < avgPeakFirst ? 'drop' : 'surge';
   }
   
   // I_T
@@ -916,7 +983,7 @@ function computeFatigueIndicators(repMetricsList) {
     I_T: Math.round(I_T * 10000) / 10000,
     I_J: Math.round(I_J * 10000) / 10000,
     I_S: Math.round(I_S * 10000) / 10000,
-    gyroDirection,
+    velocityDirection,
     consistencyScore: Math.round(consistencyScore * 10) / 10,
     performanceReport: {
       sessionQuality: fatigueScore < 10 ? 'Excellent' :
@@ -1021,8 +1088,9 @@ function analyzeWorkout(workoutData) {
   const allChartData = allRepMetrics.map(m => m.chartData || []).filter(c => c.length > 0);
   const overallConsistency = computeRepConsistency(allChartData);
   
-  const avgConcentric = mean(allRepMetrics.map(m => m.liftingTime || 0));
-  const avgEccentric = mean(allRepMetrics.map(m => m.loweringTime || 0));
+  // Fixed: Swap liftingTime and loweringTime since they're backwards in the algorithm
+  const avgConcentric = mean(allRepMetrics.map(m => m.loweringTime || 0)); // Use loweringTime for concentric (actual lifting)
+  const avgEccentric = mean(allRepMetrics.map(m => m.liftingTime || 0));   // Use liftingTime for eccentric (actual lowering)
   const avgROMDegrees = mean(allRepMetrics.map(m => m.romDegrees || 0));
   const avgSmoothness = mean(allRepMetrics.map(m => m.smoothnessScore || 50));
   const avgDuration = mean(allRepMetrics.map(m => m.durationMs || 0));
@@ -1070,6 +1138,9 @@ function analyzeWorkout(workoutData) {
 // API HANDLER
 // ============================================================================
 
+// Analysis pipeline version - bump when velocity/fatigue calculation changes
+const ANALYSIS_VERSION = 4; // v4 = real accelerometer-integrated velocity (m/s) instead of gyro (rad/s)
+
 export default async function handler(req, res) {
   // Initialize services
   initFirebase();
@@ -1108,6 +1179,18 @@ export default async function handler(req, res) {
           return res.status(404).json({ error: 'Analysis not found' });
         }
         
+        // Check if analysis is stale (old version)
+        const isStale = !analysis._analysisVersion || analysis._analysisVersion < ANALYSIS_VERSION;
+        if (isStale) {
+          // Return with flag indicating reanalysis is needed
+          return res.status(200).json({
+            ...analysis,
+            _needsReanalysis: true,
+            _currentVersion: ANALYSIS_VERSION,
+            _cachedVersion: analysis._analysisVersion || 0
+          });
+        }
+        
         return res.status(200).json(analysis);
       }
       
@@ -1130,7 +1213,18 @@ export default async function handler(req, res) {
               .get();
               
             if (analyticsDoc.exists) {
-              return res.status(200).json(analyticsDoc.data());
+              const analysis = analyticsDoc.data();
+              // Check if analysis is stale (old version)
+              const isStale = !analysis._analysisVersion || analysis._analysisVersion < ANALYSIS_VERSION;
+              if (isStale) {
+                return res.status(200).json({
+                  ...analysis,
+                  _needsReanalysis: true,
+                  _currentVersion: ANALYSIS_VERSION,
+                  _cachedVersion: analysis._analysisVersion || 0
+                });
+              }
+              return res.status(200).json(analysis);
             }
           }
         }
@@ -1144,7 +1238,6 @@ export default async function handler(req, res) {
     } else if (req.method === 'POST') {
       // Analyze workout
       const { workoutId, gcsPath, forceReanalyze = false } = req.body;
-      const ANALYSIS_VERSION = 3; // Bump this when analysis pipeline changes significantly
       
       if (!workoutId && !gcsPath) {
         return res.status(400).json({ error: 'workoutId or gcsPath is required' });

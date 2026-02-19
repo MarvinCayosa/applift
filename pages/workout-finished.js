@@ -1,7 +1,7 @@
 import { useRouter } from 'next/router';
 import { useEffect, useState, useRef, useMemo } from 'react';
 import WorkoutSummaryCard from '../components/workoutFinished/WorkoutSummaryCard';
-import WorkoutEffort from '../components/workoutFinished/WorkoutEffortNew';
+import FatigueVelocityCarousel from '../components/workoutFinished/FatigueVelocityCarousel';
 import LiftPhases from '../components/workoutFinished/LiftPhases';
 import ConsistencyScore from '../components/workoutFinished/ConsistencyScore';
 import ClassificationDistribution from '../components/workoutFinished/ClassificationDistribution';
@@ -106,11 +106,17 @@ export default function WorkoutFinished() {
       try {
         const cached = sessionStorage.getItem(`analysis_${workoutId}`);
         if (cached) {
-          console.log('✅ Loaded cached analysis for workoutId:', workoutId);
           const parsed = JSON.parse(cached);
-          setAnalysisData(parsed);
-          hasTriggeredAnalysis.current = true; // Prevent re-analysis
-          setIsAutoSaving(false); // Mark as not processing
+          const CURRENT_VERSION = 4;
+          if (parsed._analysisVersion && parsed._analysisVersion >= CURRENT_VERSION) {
+            console.log('✅ Loaded valid cached analysis (v' + parsed._analysisVersion + ') for workoutId:', workoutId);
+            setAnalysisData(parsed);
+            hasTriggeredAnalysis.current = true; // Prevent re-analysis
+            setIsAutoSaving(false); // Mark as not processing
+          } else {
+            console.log('🗑️ Discarding stale cached analysis (v' + (parsed._analysisVersion || 0) + ' < v' + CURRENT_VERSION + ') — will re-analyze');
+            sessionStorage.removeItem(`analysis_${workoutId}`);
+          }
         }
       } catch (err) {
         console.warn('Failed to load cached analysis:', err);
@@ -180,7 +186,7 @@ export default function WorkoutFinished() {
     
     // First, try to get existing analysis from Firestore
     try {
-      const existingAnalysis = await getAnalysis(wkId);
+      const existingAnalysis = await getAnalysis(wkId, path);
       if (existingAnalysis) {
         console.log('✅ Found existing analysis in Firestore, skipping re-analysis');
         return;
@@ -214,6 +220,20 @@ export default function WorkoutFinished() {
         if (workoutId || gcsPath) {
           await triggerAnalysis(workoutId, gcsPath);
         }
+        
+        // FIX: ALWAYS update streak even if log was already completed elsewhere
+        // This ensures streak is recorded regardless of how the workout was saved
+        try {
+          console.log('[WorkoutFinished] Recording streak (no active log flow)...');
+          const streakResult = await recordWorkout(new Date());
+          console.log('[WorkoutFinished] Streak updated successfully (no active log):', streakResult);
+          setTimeout(() => {
+            window.dispatchEvent(new Event('streak-updated'));
+          }, 100);
+        } catch (streakError) {
+          console.error('[WorkoutFinished] Failed to update streak (no active log):', streakError);
+        }
+        
         return;
       }
       
@@ -255,10 +275,16 @@ export default function WorkoutFinished() {
           
           // Update workout streak
           try {
-            await recordWorkout(new Date());
-            console.log('[WorkoutFinished] Streak updated successfully');
+            console.log('[WorkoutFinished] About to record workout for streak...');
+            const streakResult = await recordWorkout(new Date());
+            console.log('[WorkoutFinished] Streak updated successfully:', streakResult);
+            
+            // Force a small delay and refresh to ensure UI updates
+            setTimeout(() => {
+              window.dispatchEvent(new Event('streak-updated'));
+            }, 100);
           } catch (streakError) {
-            console.warn('[WorkoutFinished] Failed to update streak:', streakError);
+            console.error('[WorkoutFinished] Failed to update streak:', streakError);
           }
         } else {
           console.warn('⚠️ Failed to auto-complete workout log');
@@ -366,7 +392,7 @@ export default function WorkoutFinished() {
           
           {/* Workout completed message - centered */}
           <h2 className="text-xl font-bold text-white flex-1 text-center">
-            Workout completed!
+            Workout Completed!
           </h2>
           
           {/* Spacer to balance the layout */}
@@ -455,14 +481,15 @@ export default function WorkoutFinished() {
           selectedSet={selectedSet}
         />
 
-        {/* Workout Effort - Fatigue analysis */}
-        <WorkoutEffort 
+        {/* Fatigue + Velocity Carousel — swipe between Fatigue Analysis and Velocity Chart */}
+        <FatigueVelocityCarousel
           setsData={mergedSetsData}
           chartData={analysisData?.chartData?.length > 0 ? analysisData.chartData : parsedChartData}
           fatigueScore={analysisData?.fatigueScore}
           fatigueLevel={analysisData?.fatigueLevel}
           analysisData={analysisData}
           selectedSet={selectedSet}
+          thresholdPercent={10}
         />
 
         {/* Movement Phases - Eccentric vs Concentric (averages across all reps) */}
@@ -535,10 +562,16 @@ export default function WorkoutFinished() {
                 
                 // Update workout streak
                 try {
-                  await recordWorkout(new Date());
-                  console.log('[WorkoutFinished] Streak updated successfully');
+                  console.log('[WorkoutFinished] About to record workout for streak (manual save)...');
+                  const streakResult = await recordWorkout(new Date());
+                  console.log('[WorkoutFinished] Streak updated successfully (manual save):', streakResult);
+                  
+                  // Force a small delay and refresh to ensure UI updates
+                  setTimeout(() => {
+                    window.dispatchEvent(new Event('streak-updated'));
+                  }, 100);
                 } catch (streakError) {
-                  console.warn('[WorkoutFinished] Failed to update streak:', streakError);
+                  console.error('[WorkoutFinished] Failed to update streak (manual save):', streakError);
                 }
               }
               

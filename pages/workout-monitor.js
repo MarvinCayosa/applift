@@ -261,8 +261,9 @@ export default function WorkoutMonitor() {
       let phaseRepCount = 0;
       mergedSetData.forEach(set => {
         (set.repsData || []).forEach(rep => {
-          const lt = rep.liftingTime || 0;
-          const lo = rep.loweringTime || 0;
+          // FIX: Swap the values since liftingTime and loweringTime are backwards in analysis
+          const lt = rep.loweringTime || 0;  // Use loweringTime for actual lifting
+          const lo = rep.liftingTime || 0;   // Use liftingTime for actual lowering
           if (lt + lo > 0) {
             totalLiftingTime += lt;
             totalLoweringTime += lo;

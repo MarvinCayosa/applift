@@ -1014,7 +1014,17 @@ export default function Settings() {
 
           {/* Profile Card */}
           <section className="content-fade-up-2">
-            <div className="rounded-2xl bg-white/10  overflow-hidden">
+            <div 
+              className="rounded-2xl overflow-hidden transition-all duration-500 ease-in-out"
+              style={{
+                background: isEditingProfile 
+                  ? 'rgba(255, 255, 255, 0.1)' 
+                  : profileColor 
+                    ? `${PROFILE_COLORS.find(c => c.value === profileColor)?.gradient || 'rgba(255, 255, 255, 0.1)'}` 
+                    : 'rgba(255, 255, 255, 0.1)',
+                color: isEditingProfile ? 'white' : 'inherit'
+              }}
+            >
               {/* Profile Header */}
               <div className="p-5 flex items-center gap-4 border-b border-white/10">
                 {/* Avatar */}

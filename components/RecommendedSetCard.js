@@ -1,5 +1,6 @@
 
 import { useState, useEffect, useRef } from 'react';
+import RestTimerModal from './RestTimerModal';
 
 // Helper to lighten a hex color
 function lightenColor(hex, amount = 0.2) {
@@ -31,6 +32,10 @@ export default function RecommendedSetCard({
   customSets = null,
   customReps = null,
   customWeightUnit = 'kg',
+  // Rest timer values
+  restMinutes = 0,
+  restSeconds = 30,
+  onRestTimeChange = () => {},
   // Callback to open modal
   onCustomFieldClick = () => {},
   // Callback when carousel slide changes
@@ -50,6 +55,12 @@ export default function RecommendedSetCard({
 
   const [activeIndex, setActiveIndex] = useState(0);
   const carouselRef = useRef(null);
+  const [showTimerModal, setShowTimerModal] = useState(false);
+  const [localRestMinutes, setLocalRestMinutes] = useState(restMinutes);
+  const [localRestSeconds, setLocalRestSeconds] = useState(restSeconds);
+
+  // Format rest time for display
+  const restTimeDisplay = `${localRestMinutes}:${localRestSeconds.toString().padStart(2, '0')}`;
 
   useEffect(() => {
     const carousel = carouselRef.current;
@@ -160,14 +171,16 @@ export default function RecommendedSetCard({
                   }}
                 />
 
-                {/* Refresh button - fixed position */}
-                <button
-                  type="button"
-                  className="absolute top-4 right-4 w-10 h-10 rounded-xl flex items-center justify-center hover:bg-white/10 transition-colors z-10"
-                  aria-label="Refresh"
-                >
-                  <img src="/images/icons/refresh.png" alt="Refresh" className="w-5 h-5" />
-                </button>
+                {/* Top right button - Refresh for recommended only */}
+                {card.type !== 'custom' && (
+                  <button
+                    type="button"
+                    className="absolute top-4 right-4 w-10 h-10 rounded-xl flex items-center justify-center hover:bg-white/10 transition-colors z-10"
+                    aria-label="Refresh"
+                  >
+                    <img src="/images/icons/refresh.png" alt="Refresh" className="w-5 h-5" />
+                  </button>
+                )}
 
                 {/* Content overlay */}
                 <div className="absolute inset-0 flex flex-col justify-between p-3">
@@ -180,6 +193,24 @@ export default function RecommendedSetCard({
 
                   {/* Bottom content area */}
                   <div className="space-y-2">
+                    {/* Rest Timer - Above stats (only for custom) */}
+                    {card.type === 'custom' && (
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setShowTimerModal(true)}
+                          className="flex items-center gap-2 px-4 py-1.5 rounded-lg bg-black/50 backdrop-blur-sm border border-white/10 hover:bg-white/10 transition-colors"
+                          aria-label="Set rest timer"
+                        >
+                          <svg className="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="10" strokeWidth="2" />
+                            <polyline points="12,6 12,12 16,14" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                          <span className="text-sm font-semibold text-violet-400">Rest: {restTimeDisplay}</span>
+                        </button>
+                      </div>
+                    )}
+
                     {/* Stats - Weight, Sets, Reps - Compact dark background */}
                     <div className="rounded-2xl px-3 py-2 w-full mx-auto shadow-lg shadow-black/40 border border-black/20 bg-black/50">
                       <div className="flex justify-between items-center">
@@ -350,14 +381,16 @@ export default function RecommendedSetCard({
                   }}
                 />
 
-                {/* Refresh button - fixed position */}
-                <button
-                  type="button"
-                  className="absolute top-4 right-4 w-10 h-10 rounded-xl flex items-center justify-center hover:bg-white/10 transition-colors z-10"
-                  aria-label="Refresh"
-                >
-                  <img src="/images/icons/refresh.png" alt="Refresh" className="w-5 h-5" />
-                </button>
+                {/* Top right button - Refresh for recommended only */}
+                {card.type !== 'custom' && (
+                  <button
+                    type="button"
+                    className="absolute top-4 right-4 w-10 h-10 rounded-xl flex items-center justify-center hover:bg-white/10 transition-colors z-10"
+                    aria-label="Refresh"
+                  >
+                    <img src="/images/icons/refresh.png" alt="Refresh" className="w-5 h-5" />
+                  </button>
+                )}
 
                 {/* Content overlay */}
                 <div className="absolute inset-0 flex flex-col justify-between p-5">
@@ -370,6 +403,24 @@ export default function RecommendedSetCard({
 
                   {/* Bottom content area */}
                   <div className="space-y-3">
+                    {/* Rest Timer - Above stats (only for custom) */}
+                    {card.type === 'custom' && (
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setShowTimerModal(true)}
+                          className="flex items-center gap-2 px-5 py-2 rounded-lg bg-black/50 backdrop-blur-sm border border-white/10 hover:bg-white/10 transition-colors"
+                          aria-label="Set rest timer"
+                        >
+                          <svg className="w-5 h-5 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="10" strokeWidth="2" />
+                            <polyline points="12,6 12,12 16,14" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                          <span className="text-base font-semibold text-violet-400">Rest: {restTimeDisplay}</span>
+                        </button>
+                      </div>
+                    )}
+
                     {/* Stats - Weight, Sets, Reps - Compact dark background */}
                     <div className="rounded-3xl px-4 py-4 w-full mx-auto shadow-lg shadow-black/40 border border-black/20 bg-black/50">
                       <div className="flex justify-between items-center">
@@ -512,6 +563,19 @@ export default function RecommendedSetCard({
           />
         ))}
       </div>
+
+      {/* Rest Timer Modal */}
+      <RestTimerModal
+        isOpen={showTimerModal}
+        onClose={() => setShowTimerModal(false)}
+        onSave={({ minutes, seconds, totalSeconds }) => {
+          setLocalRestMinutes(minutes);
+          setLocalRestSeconds(seconds);
+          onRestTimeChange(totalSeconds);
+        }}
+        initialMinutes={localRestMinutes}
+        initialSeconds={localRestSeconds}
+      />
     </div>
   );
 }

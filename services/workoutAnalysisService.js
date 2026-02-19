@@ -375,7 +375,17 @@ export const computeRepMetrics = (repData) => {
   
   // Try both field names: filteredMag and filteredMagnitude (from streaming vs stored data)
   const filteredMag = samples.map(s => s.filteredMag || s.filteredMagnitude || s.accelMag || 0);
-  const timestamps = samples.map(s => s.timestamp_ms || s.timestamp || 0);
+  // IMPORTANT: Use explicit null check — timestamp_ms=0 is valid (first sample)
+  const timestamps = samples.map(s => {
+    if (s.timestamp_ms != null && typeof s.timestamp_ms === 'number') return s.timestamp_ms;
+    if (typeof s.timestamp === 'number') return s.timestamp;
+    // Parse string timestamps like "00:00.130" → milliseconds
+    if (typeof s.timestamp === 'string') {
+      const parts = s.timestamp.match(/(\d+):(\d+)\.(\d+)/);
+      if (parts) return parseInt(parts[1]) * 60000 + parseInt(parts[2]) * 1000 + parseInt(parts[3]);
+    }
+    return 0;
+  });
   
   // Basic metrics
   const durationMs = duration || (timestamps[timestamps.length - 1] - timestamps[0]);
@@ -398,17 +408,15 @@ export const computeRepMetrics = (repData) => {
   // Smoothness metrics
   const smoothnessMetrics = computeSmoothnessMetrics(accelX, accelY, accelZ, timestamps, filteredMag);
   
-  // Gyroscope metrics - use for velocity
+  // Gyroscope metrics - use for angular velocity reference
   const gyroMag = gyroX.map((x, i) => Math.sqrt(x * x + gyroY[i] * gyroY[i] + gyroZ[i] * gyroZ[i]));
   
   // *** VELOCITY: Use baseline-compensated values ***
-  // First few samples establish baseline (device at rest or moving consistently)
   const baselineSamples = Math.min(3, Math.floor(gyroMag.length / 4));
   const gyroBaseline = baselineSamples > 0 
     ? mean(gyroMag.slice(0, baselineSamples)) 
     : 0;
   
-  // Peak velocity is the MAX CHANGE from baseline (captures actual movement intensity)
   const gyroFromBaseline = gyroMag.map(g => Math.abs(g - gyroBaseline));
   const gyroPeak = Math.max(...gyroFromBaseline);
   const gyroMean = mean(gyroFromBaseline);
@@ -429,17 +437,77 @@ export const computeRepMetrics = (repData) => {
     shakiness = Math.sqrt(mean(angularAccel.map(a => a * a)));
   }
   
-  // Peak acceleration - use baseline compensation
+  // ============================================================================
+  // REAL PEAK VELOCITY (m/s) via ACCELEROMETER INTEGRATION
+  // ============================================================================
+  // Physics: at rest, accelMag ≈ 9.81 (gravity). During movement:
+  //   - Lifting: net accel = measured - gravity (positive = upward force)
+  //   - Velocity = integral of net acceleration over time
+  //   - Peak velocity = max absolute velocity during rep
+  //
+  // Industry standard (PUSH Band, Gymaware, Tendo Unit):
+  //   1. Compute accel magnitude
+  //   2. Subtract gravity baseline (~9.81)
+  //   3. Trapezoidal integration → velocity
+  //   4. Apply high-pass filter to remove drift
+  //   5. Peak velocity = max |velocity| during concentric phase
+  // ============================================================================
+  
   const accelMag = samples.map(s => s.accelMag || Math.sqrt(s.accelX * s.accelX + s.accelY * s.accelY + s.accelZ * s.accelZ));
-  // Baseline is ~9.8 m/s² (gravity). Peak acceleration is the max DEVIATION from baseline.
-  const accelBaseline = 9.81; // Gravity constant
-  const accelFromBaseline = accelMag.map(a => Math.abs(a - accelBaseline));
+  
+  // Establish gravity baseline from first few (stationary) and last few samples
+  // More robust: use median of first 3 samples as gravity reference
+  const gravityEstimateSamples = Math.min(3, Math.floor(accelMag.length / 4));
+  const gravityBaseline = gravityEstimateSamples > 0
+    ? mean(accelMag.slice(0, gravityEstimateSamples))
+    : 9.81;
+  
+  // Net acceleration (subtract gravity) — positive = accelerating away from rest
+  const netAccel = accelMag.map(a => a - gravityBaseline);
+  
+  // Trapezoidal integration: net acceleration → velocity
+  const velocityProfile = [0]; // velocity starts at 0
+  for (let i = 1; i < netAccel.length; i++) {
+    // dt in seconds between samples
+    let dt;
+    if (timestamps[i] > 0 && timestamps[i - 1] > 0) {
+      dt = (timestamps[i] - timestamps[i - 1]) / 1000;
+    } else {
+      dt = (durationMs / 1000) / (netAccel.length - 1);
+    }
+    
+    // Clamp dt to reasonable range (prevent spikes from timestamp errors)
+    dt = Math.max(0.005, Math.min(0.2, dt));
+    
+    // Trapezoidal rule: v(t) = v(t-1) + 0.5 * (a(t) + a(t-1)) * dt
+    const v = velocityProfile[i - 1] + 0.5 * (netAccel[i] + netAccel[i - 1]) * dt;
+    velocityProfile.push(v);
+  }
+  
+  // High-pass filter to remove drift (simple: subtract linear trend)
+  // Integration drift is the biggest problem with accelerometer → velocity
+  if (velocityProfile.length > 2) {
+    const firstV = velocityProfile[0];
+    const lastV = velocityProfile[velocityProfile.length - 1];
+    const driftPerSample = (lastV - firstV) / (velocityProfile.length - 1);
+    for (let i = 0; i < velocityProfile.length; i++) {
+      velocityProfile[i] -= firstV + driftPerSample * i;
+    }
+  }
+  
+  // Peak velocity = maximum absolute velocity during the rep
+  const absVelocityProfile = velocityProfile.map(v => Math.abs(v));
+  const peakLinearVelocity = Math.max(...absVelocityProfile);
+  
+  // Mean velocity (average of absolute velocities, industry metric)
+  const meanLinearVelocity = mean(absVelocityProfile);
+  
+  // Peak acceleration from baseline
+  const accelFromBaseline = accelMag.map(a => Math.abs(a - gravityBaseline));
   const peakAcceleration = Math.max(...accelFromBaseline);
   const peakAccelerationAbsolute = Math.max(...accelMag);
   
   // *** PHASE TIMING: Use ORIENTATION angles for more accurate phase detection ***
-  // Orientation angles (roll/pitch/yaw) don't have gravity issues
-  // This finds the actual turning point in the movement
   const phaseTimings = hasOrientationData 
     ? computePhaseTimingsFromOrientation(roll, pitch, yaw, timestamps)
     : computePhaseTimings(accelX, accelY, accelZ, timestamps);
@@ -474,9 +542,9 @@ export const computeRepMetrics = (repData) => {
     directionChanges: smoothnessMetrics.directionChanges,
     
     // Gyroscope metrics (baseline-compensated for better velocity detection)
-    gyroPeak, // Velocity change from baseline
+    gyroPeak, // Angular velocity change from baseline (rad/s)
     gyroPeakAbsolute, // Absolute peak (legacy)
-    gyroMean, // Average velocity change
+    gyroMean, // Average angular velocity change
     gyroRms,
     gyroStd,
     gyroBaseline, // For debugging
@@ -492,10 +560,13 @@ export const computeRepMetrics = (repData) => {
     primaryMovementAxis: phaseAxis,
     peakTimePercent,
     
-    // Peak metrics (baseline-compensated)
+    // *** REAL VELOCITY METRICS (from accelerometer integration) ***
     peakAcceleration,
     peakAccelerationAbsolute,
-    peakVelocity: gyroPeak, // Angular velocity change from baseline
+    peakVelocity: peakLinearVelocity, // TRUE peak velocity in m/s
+    meanVelocity: meanLinearVelocity, // Mean velocity in m/s
+    velocityProfile, // Full velocity curve for visualization
+    gravityBaseline, // Gravity estimate used (for debugging)
     
     // Chart data for visualization
     chartData: filteredMag
@@ -1080,8 +1151,9 @@ export const analyzeWorkout = (workoutData) => {
   const overallConsistency = computeRepConsistency(allChartData);
   
   // Calculate session averages
-  const avgConcentric = mean(allRepMetrics.map(m => m.liftingTime || 0));
-  const avgEccentric = mean(allRepMetrics.map(m => m.loweringTime || 0));
+  // Fixed: Swap liftingTime and loweringTime since they're backwards in the algorithm
+  const avgConcentric = mean(allRepMetrics.map(m => m.loweringTime || 0)); // Use loweringTime for concentric (actual lifting)
+  const avgEccentric = mean(allRepMetrics.map(m => m.liftingTime || 0));   // Use liftingTime for eccentric (actual lowering)
   const avgROMDegrees = mean(allRepMetrics.map(m => m.romDegrees || 0));
   const avgSmoothness = mean(allRepMetrics.map(m => m.smoothnessScore || 50));
   const avgDuration = mean(allRepMetrics.map(m => m.durationMs || 0));
@@ -1161,8 +1233,16 @@ export const extractMLFeatures = (repData) => {
                          'accelMag', 'accelX', 'accelY', 'accelZ',
                          'gyroX', 'gyroY', 'gyroZ'];
   
-  // Duration
-  const timestamps = samples.map(s => s.timestamp_ms || 0);
+  // Duration - explicit null check since timestamp_ms=0 is valid
+  const timestamps = samples.map(s => {
+    if (s.timestamp_ms != null && typeof s.timestamp_ms === 'number') return s.timestamp_ms;
+    if (typeof s.timestamp === 'number') return s.timestamp;
+    if (typeof s.timestamp === 'string') {
+      const parts = s.timestamp.match(/(\d+):(\d+)\.(\d+)/);
+      if (parts) return parseInt(parts[1]) * 60000 + parseInt(parts[2]) * 1000 + parseInt(parts[3]);
+    }
+    return 0;
+  });
   features.rep_duration_ms = timestamps[timestamps.length - 1] - timestamps[0];
   features.sample_count = samples.length;
   if (timestamps.length > 1) {

@@ -54,8 +54,22 @@ export default function RepInsightCard({ repData, repNumber }) {
   const expectedRom = 120;
   const romProgress = repRom != null ? Math.min(100, (repRom / expectedRom) * 100) : null;
 
-  // Peak velocity normalized (0-10 scale)
-  const velocityProgress = repPeakVelocity != null ? Math.min(100, (repPeakVelocity / 10) * 100) : null;
+  // Peak velocity normalized to m/s scale (typical range: 0.1 - 1.5 m/s for strength exercises)
+  // Industry standard ranges:
+  //   > 1.3 m/s = Speed/Power | 0.75-1.3 = Strength-speed | 0.5-0.75 = Strength | < 0.5 = Max strength
+  const maxExpectedVelocity = 1.5; // m/s
+  const velocityProgress = repPeakVelocity != null ? Math.min(100, (repPeakVelocity / maxExpectedVelocity) * 100) : null;
+
+  // Velocity zone classification
+  const getVelocityZone = (v) => {
+    if (v == null) return null;
+    if (v >= 1.3) return { label: 'Power', color: '#22d3ee' };
+    if (v >= 0.75) return { label: 'Speed-Strength', color: '#22c55e' };
+    if (v >= 0.5) return { label: 'Strength', color: '#eab308' };
+    if (v >= 0.3) return { label: 'Max Strength', color: '#f97316' };
+    return { label: 'Slow', color: '#ef4444' };
+  };
+  const velocityZone = getVelocityZone(repPeakVelocity);
 
   // Calculate Rep Quality Score from ACTUAL data only
   const calculateRepQuality = () => {
@@ -88,7 +102,7 @@ export default function RepInsightCard({ repData, repNumber }) {
 
     // Factor 4: Tempo balance (10% weight) - Lifting should be 35-45%
     if (hasPhaseData) {
-      const liftingPct = parseFloat(liftingPercent);
+      const liftingPct = parseFloat(loweringPercent); // Fixed: use loweringPercent since we swapped the labels
       const tempoScore = Math.max(0, 100 - Math.abs(liftingPct - 40) * 3);
       qualityScore += (tempoScore / 100) * 10;
       totalWeight += 10;
@@ -322,11 +336,11 @@ export default function RepInsightCard({ repData, repNumber }) {
               <div className="relative h-3 sm:h-4 lg:h-5 bg-white/10 rounded-full overflow-hidden">
                 <div 
                   className="absolute inset-y-0 left-0 bg-gradient-to-r from-teal-500 to-cyan-400 transition-all duration-500"
-                  style={{ width: `${liftingPercent}%` }}
+                  style={{ width: `${loweringPercent}%` }}
                 />
                 <div 
                   className="absolute inset-y-0 bg-gradient-to-r from-yellow-500 to-orange-400 transition-all duration-500"
-                  style={{ left: `${liftingPercent}%`, right: 0 }}
+                  style={{ left: `${loweringPercent}%`, right: 0 }}
                 />
               </div>
 
@@ -335,14 +349,14 @@ export default function RepInsightCard({ repData, repNumber }) {
                 <div className="flex items-center gap-2 sm:gap-2.5">
                   <div className="w-1 h-10 sm:h-12 lg:h-14 bg-gradient-to-b from-teal-500 to-cyan-400 rounded-full" />
                   <div className="flex flex-col">
-                    <span className="text-base sm:text-lg lg:text-xl font-bold text-white">{liftingPercent}%</span>
+                    <span className="text-base sm:text-lg lg:text-xl font-bold text-white">{loweringPercent}%</span>
                     <span className="text-[10px] sm:text-xs lg:text-sm text-gray-400">Lifting</span>
                   </div>
                 </div>
                 
                 <div className="flex items-center gap-2 sm:gap-2.5">
                   <div className="flex flex-col items-end">
-                    <span className="text-base sm:text-lg lg:text-xl font-bold text-white">{loweringPercent}%</span>
+                    <span className="text-base sm:text-lg lg:text-xl font-bold text-white">{liftingPercent}%</span>
                     <span className="text-[10px] sm:text-xs lg:text-sm text-gray-400">Lowering</span>
                   </div>
                   <div className="w-1 h-10 sm:h-12 lg:h-14 bg-gradient-to-b from-yellow-500 to-orange-400 rounded-full" />
@@ -462,12 +476,10 @@ export default function RepInsightCard({ repData, repNumber }) {
                 <>
                   <span className="text-xl sm:text-3xl lg:text-4xl font-bold text-green-400">{repPeakVelocity.toFixed(2)}</span>
                   <span className="text-[10px] sm:text-xs lg:text-sm text-gray-400 ml-1">m/s</span>
-                  {velocityProgress != null && (
-                    <div className="flex items-center gap-1 mt-1.5 sm:mt-2">
-                      <svg className="w-2.5 sm:w-3.5 lg:w-4 h-2.5 sm:h-3.5 lg:h-4 text-green-400" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                      </svg>
-                      <span className="text-[9px] sm:text-[10px] lg:text-xs text-gray-500">{velocityProgress.toFixed(0)}% of max</span>
+                  {velocityZone && (
+                    <div className="flex items-center gap-1.5 mt-1.5 sm:mt-2">
+                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: velocityZone.color }} />
+                      <span className="text-[9px] sm:text-[10px] lg:text-xs font-medium" style={{ color: velocityZone.color }}>{velocityZone.label}</span>
                     </div>
                   )}
                 </>

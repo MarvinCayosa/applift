@@ -1,7 +1,28 @@
+import { useState } from 'react';
+import RestTimerModal from './RestTimerModal';
+
 export default function CustomSetCard({ 
   workout, 
   image,
+  // Custom values from parent
+  customWeight = null,
+  customSets = null,
+  customReps = null,
+  customWeightUnit = 'kg',
+  // Rest timer values
+  restMinutes = 0,
+  restSeconds = 30,
+  onRestTimeChange = () => {},
+  // Callback to open custom field modal
+  onCustomFieldClick = () => {},
 }) {
+  const [showTimerModal, setShowTimerModal] = useState(false);
+  const [localRestMinutes, setLocalRestMinutes] = useState(restMinutes);
+  const [localRestSeconds, setLocalRestSeconds] = useState(restSeconds);
+
+  // Format rest time for display
+  const restTimeDisplay = `${localRestMinutes}:${localRestSeconds.toString().padStart(2, '0')}`;
+
   return (
     <div 
       className="shrink-0 snap-center"
@@ -46,42 +67,92 @@ export default function CustomSetCard({
 
             {/* Content overlay */}
             <div className="absolute inset-0 flex flex-col justify-between p-5">
-              {/* Title and swap icon */}
+              {/* Title and timer button */}
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-bold text-white">
                   Custom Set
                 </h2>
                 <button
                   type="button"
+                  onClick={() => setShowTimerModal(true)}
                   className="w-10 h-10 rounded-xl flex items-center justify-center hover:bg-white/10 transition-colors"
-                  aria-label="Refresh"
+                  aria-label="Set rest timer"
                 >
-                  <img src="/images/icons/refresh.png" alt="Refresh" className="w-5 h-5" />
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10" strokeWidth="2" />
+                    <polyline points="12,6 12,12 16,14" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Rest Timer Display - Above stats */}
+              <div className="flex justify-center mb-2">
+                <button
+                  type="button"
+                  onClick={() => setShowTimerModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-full bg-black/40 backdrop-blur-sm border border-white/10 hover:bg-white/10 transition-colors"
+                >
+                  <svg className="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10" strokeWidth="2" />
+                    <polyline points="12,6 12,12 16,14" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  <span className="text-sm font-semibold text-violet-400">Rest: {restTimeDisplay}</span>
                 </button>
               </div>
 
               {/* Stats - Weight, Sets, Reps */}
               <div className="flex justify-start gap-3">
-                <div className="rounded-2xl px-4 py-3 min-w-[90px]">
+                <button
+                  type="button"
+                  onClick={() => onCustomFieldClick('weight')}
+                  className="rounded-2xl px-4 py-3 min-w-[90px] hover:bg-white/10 transition-colors"
+                >
                   <p className="text-[11px] text-white/70 mb-1">Weight</p>
                   <div className="flex items-baseline gap-1">
-                    <p className="text-4xl font-bold text-white leading-none">__</p>
-                    <p className="text-xs text-white/70 leading-none">kg</p>
+                    <p className="text-4xl font-bold text-white leading-none">
+                      {customWeight || '__'}
+                    </p>
+                    <p className="text-xs text-white/70 leading-none">{customWeightUnit}</p>
                   </div>
-                </div>
-                <div className="rounded-2xl px-4 py-3 min-w-[70px] text-center">
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onCustomFieldClick('sets')}
+                  className="rounded-2xl px-4 py-3 min-w-[70px] text-center hover:bg-white/10 transition-colors"
+                >
                   <p className="text-[11px] text-white/70 mb-1">Sets</p>
-                  <p className="text-4xl font-bold text-white leading-none">_</p>
-                </div>
-                <div className="rounded-2xl px-4 py-3 min-w-[70px] text-center">
+                  <p className="text-4xl font-bold text-white leading-none">
+                    {customSets || '_'}
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onCustomFieldClick('reps')}
+                  className="rounded-2xl px-4 py-3 min-w-[70px] text-center hover:bg-white/10 transition-colors"
+                >
                   <p className="text-[11px] text-white/70 mb-1">Reps</p>
-                  <p className="text-4xl font-bold text-white leading-none">_</p>
-                </div>
+                  <p className="text-4xl font-bold text-white leading-none">
+                    {customReps || '_'}
+                  </p>
+                </button>
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Rest Timer Modal */}
+      <RestTimerModal
+        isOpen={showTimerModal}
+        onClose={() => setShowTimerModal(false)}
+        onSave={({ minutes, seconds, totalSeconds }) => {
+          setLocalRestMinutes(minutes);
+          setLocalRestSeconds(seconds);
+          onRestTimeChange(totalSeconds);
+        }}
+        initialMinutes={localRestMinutes}
+        initialSeconds={localRestSeconds}
+      />
     </div>
   );
 }

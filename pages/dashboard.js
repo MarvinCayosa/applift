@@ -11,7 +11,7 @@ import LoadTrendIndicator from '../components/LoadTrendIndicator';
 import MovementQuality from '../components/MovementQuality';
 import EquipmentDistributionCard from '../components/EquipmentDistributionCard';
 import PlaceholderCard from '../components/PlaceholderCard';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useUserProfile } from '../utils/userProfileStore';
 import { useWorkoutStreak } from '../utils/useWorkoutStreak';
 import { useAuth } from '../context/AuthContext';
@@ -49,6 +49,41 @@ export default function Dashboard() {
   const { profile } = useUserProfile();
   const { user, userProfile, signOut, loading, isAuthenticated } = useAuth();
   const { streakData, loading: streakLoading, error: streakError, refreshStreakData } = useWorkoutStreak();
+
+  // Refresh streak data when dashboard becomes visible
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && user?.uid) {
+        console.log('[Dashboard] Refreshing streak data on visibility change');
+        refreshStreakData();
+      }
+    };
+
+    const handleFocus = () => {
+      if (user?.uid) {
+        console.log('[Dashboard] Refreshing streak data on focus');
+        refreshStreakData();
+      }
+    };
+
+    // Listen for custom streak update events
+    const handleStreakUpdate = () => {
+      if (user?.uid) {
+        console.log('[Dashboard] Refreshing streak data on custom event');
+        refreshStreakData();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('streak-updated', handleStreakUpdate);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('streak-updated', handleStreakUpdate);
+    };
+  }, [user?.uid, refreshStreakData]);
   
   // Fetch real workout data from Firestore
   const { 
@@ -534,18 +569,23 @@ export default function Dashboard() {
   // Load formula: weight × reps (volume-load)
   const calculateLoadData = () => {
     const today = new Date();
-    const dayOfWeek = today.getDay();
+    const dayOfWeek = today.getDay(); // 0=Sunday, 6=Saturday
     
-    // Calculate Monday of current week (week starts on Monday)
-    const monday = new Date(today);
-    const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Sunday = 6 days from Monday
-    monday.setDate(today.getDate() - daysFromMonday);
-    monday.setHours(0, 0, 0, 0);
+    // Calculate Sunday of current week (week starts on Sunday)
+    const sunday = new Date(today);
+    sunday.setDate(today.getDate() - dayOfWeek); // Go back to Sunday
+    sunday.setHours(0, 0, 0, 0);
     
-    const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const todayIndex = dayOfWeek; // Today's index in Sunday-first array
     
-    // Initialize week data with 0 load for each day
-    const weekData = dayNames.map(day => ({ day, load: 0 }));
+    // Initialize week data with 0 load for each day (show all 7 days)
+    const weekData = dayNames.map((day, idx) => ({ 
+      day, 
+      load: idx > todayIndex ? null : 0, // null for future days to break the line
+      isToday: idx === todayIndex,
+      isFuture: idx > todayIndex
+    }));
     
     // Calculate load from workout logs
     logs.forEach((log) => {
@@ -568,50 +608,55 @@ export default function Dashboard() {
         return;
       }
       
-      // Check if workout is in current week (Monday to Sunday)
+      // Check if workout is in current week (Sunday to Saturday)
       const logDate = new Date(createdAt);
       logDate.setHours(0, 0, 0, 0);
       
-      const mondayDate = new Date(monday);
-      mondayDate.setHours(0, 0, 0, 0);
+      const sundayDate = new Date(sunday);
+      sundayDate.setHours(0, 0, 0, 0);
       
-      const sundayDate = new Date(monday);
-      sundayDate.setDate(monday.getDate() + 6);
-      sundayDate.setHours(23, 59, 59, 999);
+      const saturdayDate = new Date(sunday);
+      saturdayDate.setDate(sunday.getDate() + 6);
+      saturdayDate.setHours(23, 59, 59, 999);
       
       console.log('[Dashboard] Date check:', {
         logDate: logDate.toISOString(),
-        mondayDate: mondayDate.toISOString(),
         sundayDate: sundayDate.toISOString(),
-        isInWeek: logDate >= mondayDate && logDate <= sundayDate
+        saturdayDate: saturdayDate.toISOString(),
+        isInWeek: logDate >= sundayDate && logDate <= saturdayDate
       });
       
-      if (logDate >= mondayDate && logDate <= sundayDate) {
-        // Map day of week to our Monday-first array (0=Monday, 6=Sunday)
-        const jsDay = logDate.getDay(); // 0=Sunday, 1=Monday, ..., 6=Saturday
-        const dayIndex = jsDay === 0 ? 6 : jsDay - 1; // Convert to Monday-first: 0=Mon, 6=Sun
+      if (logDate >= sundayDate && logDate <= saturdayDate) {
+        // Map day of week directly (Sunday=0, Saturday=6)
+        const dayIndex = logDate.getDay();
         
-        // Handle both data formats
-        const weight = log.planned?.weight || log.weight || 0;
-        const reps = log.results?.totalReps || log.totalReps || 0;
-        const load = weight * reps; // Volume load formula
-        weekData[dayIndex].load += load;
-        console.log('[Dashboard] Added load:', { dayIndex, dayName: dayNames[dayIndex], weight, reps, load });
+        // Only add if day is not in the future
+        if (dayIndex <= todayIndex) {
+          // Handle both data formats
+          const weight = log.planned?.weight || log.weight || 0;
+          const reps = log.results?.totalReps || log.totalReps || 0;
+          const load = weight * reps; // Volume load formula
+          weekData[dayIndex].load += load;
+          console.log('[Dashboard] Added load:', { dayIndex, dayName: dayNames[dayIndex], weight, reps, load });
+        }
       }
     });
     
     console.log('[Dashboard] Week data:', weekData);
     
-    return weekData; // Already in Monday-first order
+    return weekData; // Sunday-first order, all 7 days but only data up to today
   };
 
   // Calculate month data (weekly totals)
   const calculateMonthLoadData = () => {
     const today = new Date();
-    const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    const currentWeekNum = Math.ceil(today.getDate() / 7);
     
-    // Group by week
-    const weeks = { W1: 0, W2: 0, W3: 0, W4: 0, W5: 0 };
+    // Only show weeks up to current week
+    const weeks = {};
+    for (let i = 1; i <= currentWeekNum; i++) {
+      weeks[`W${i}`] = { week: `W${i}`, load: 0, isCurrentWeek: i === currentWeekNum };
+    }
     
     logs.forEach((log) => {
       // Handle both timestamp formats
@@ -628,25 +673,82 @@ export default function Dashboard() {
         const weekNum = Math.ceil(dayOfMonth / 7);
         const weekKey = `W${weekNum}`;
         
-        // Handle both data formats
-        const weight = log.planned?.weight || log.weight || 0;
-        const reps = log.results?.totalReps || log.totalReps || 0;
-        const load = weight * reps;
-        
-        if (weeks[weekKey] !== undefined) {
-          weeks[weekKey] += load;
+        // Only add if the week is on or before the current week
+        if (weekNum <= currentWeekNum) {
+          // Handle both data formats
+          const weight = log.planned?.weight || log.weight || 0;
+          const reps = log.results?.totalReps || log.totalReps || 0;
+          const load = weight * reps;
+          
+          if (weeks[weekKey]) {
+            weeks[weekKey].load += load;
+          }
         }
       }
     });
     
-    return Object.entries(weeks).map(([week, load]) => ({ week, load }));
+    return Object.values(weeks);
+  };
+
+  // Calculate year data (monthly totals)
+  const calculateYearLoadData = () => {
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth();
+    
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    
+    // Only show months up to current month
+    const months = {};
+    for (let i = 0; i <= currentMonth; i++) {
+      months[monthNames[i]] = { month: monthNames[i], load: 0, isCurrentMonth: i === currentMonth };
+    }
+    
+    logs.forEach((log) => {
+      const createdAt = log.timestamps?.started?.toDate?.() || 
+                        log.timestamps?.created?.toDate?.() ||
+                        (log.startTime ? new Date(log.startTime) : null);
+      if (!createdAt) return;
+      
+      const logDate = new Date(createdAt);
+      
+      // Check if in current year and not in the future
+      if (logDate.getFullYear() === currentYear && logDate.getMonth() <= currentMonth) {
+        const monthKey = monthNames[logDate.getMonth()];
+        
+        const weight = log.planned?.weight || log.weight || 0;
+        const reps = log.results?.totalReps || log.totalReps || 0;
+        const load = weight * reps;
+        
+        if (months[monthKey]) {
+          months[monthKey].load += load;
+        }
+      }
+    });
+    
+    return Object.values(months);
   };
 
   // Load lifted data for different time periods (real data from Firestore)
   const loadLiftedDataByPeriod = {
-    day: [], // Day view not implemented yet
     week: calculateLoadData(),
     month: calculateMonthLoadData(),
+    year: calculateYearLoadData(),
+  };
+
+  // Cycle through view types
+  const cycleViewType = () => {
+    const viewOrder = ['week', 'month', 'year'];
+    const currentIndex = viewOrder.indexOf(liftViewType);
+    const nextIndex = (currentIndex + 1) % viewOrder.length;
+    setLiftViewType(viewOrder[nextIndex]);
+  };
+
+  // View type labels
+  const viewTypeLabels = {
+    week: 'This Week',
+    month: 'This Month',
+    year: 'This Year'
   };
 
   console.log('[Dashboard] loadLiftedDataByPeriod.week:', loadLiftedDataByPeriod.week);
@@ -654,7 +756,7 @@ export default function Dashboard() {
 
   // Get data based on current view
   const currentLoadData = loadLiftedDataByPeriod[liftViewType] || [];
-  const dataKey = liftViewType === 'day' ? 'time' : liftViewType === 'week' ? 'day' : 'week';
+  const dataKey = liftViewType === 'week' ? 'day' : liftViewType === 'month' ? 'week' : 'month';
   const totalLoad = currentLoadData.length > 0 ? currentLoadData.reduce((sum, item) => sum + item.load, 0) : 0;
   const maxLoad = currentLoadData.length > 0 ? Math.max(...currentLoadData.map(item => item.load)) : 0;
   const hasChartData = currentLoadData.length > 0 && currentLoadData.some(item => item.load > 0);
@@ -1096,12 +1198,15 @@ export default function Dashboard() {
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <h3 className="text-lg font-semibold text-white mb-2">Workout Load</h3>
-                  <p className="text-xs text-white/60 capitalize">
-                    {hasChartData 
-                      ? (liftViewType === 'day' ? 'Today' : liftViewType === 'week' ? 'Last 7 Days' : 'Last 4 Weeks')
-                      : 'No data available'
-                    }
-                  </p>
+                  <button 
+                    onClick={cycleViewType}
+                    className="text-xs text-white/60 capitalize bg-white/10 px-3 py-1 rounded-full hover:bg-white/20 transition-colors flex items-center gap-1"
+                  >
+                    {viewTypeLabels[liftViewType]}
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
                 </div>
                 <div className="text-right">
                   <div className={`text-2xl sm:text-3xl font-bold ${hasChartData ? 'text-yellow-300' : 'text-white/30'}`}>
@@ -1114,7 +1219,7 @@ export default function Dashboard() {
               {/* Line Chart - Always shown with axes */}
               <div className="w-full h-64 sm:h-72 md:h-80 relative">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={currentLoadData} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
+                  <ComposedChart data={currentLoadData} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
                     <XAxis 
                       dataKey={dataKey} 
@@ -1144,16 +1249,37 @@ export default function Dashboard() {
                       labelStyle={{ color: '#fef08a' }}
                       formatter={(value) => [`${value} kg`, 'Load']}
                     />
+                    <defs>
+                      <linearGradient id="loadAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#fef08a" stopOpacity={0.6} />
+                        <stop offset="100%" stopColor="#000000" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <Area
+                      type="monotone"
+                      dataKey="load"
+                      stroke="none"
+                      fill="url(#loadAreaGradient)"
+                      connectNulls={false}
+                      animationDuration={500}
+                    />
                     <Line
                       type="monotone"
                       dataKey="load"
                       stroke="#fef08a"
-                      strokeWidth={3}
-                      dot={{ fill: '#fef08a', strokeWidth: 2, r: 4 }}
+                      strokeWidth={4}
+                      connectNulls={false}
+                      dot={(props) => {
+                        const { cx, cy, payload } = props;
+                        if (payload?.isToday || payload?.isCurrentWeek || payload?.isCurrentMonth) {
+                          return <circle cx={cx} cy={cy} r={6} fill="#fef08a" stroke="#fef08a" strokeWidth={2} />;
+                        }
+                        return null;
+                      }}
                       activeDot={{ r: 6, fill: '#fef08a' }}
                       animationDuration={500}
                     />
-                  </LineChart>
+                  </ComposedChart>
                 </ResponsiveContainer>
               </div>
             </div>
