@@ -2,13 +2,9 @@ import React, { useState, useMemo } from 'react'
 import { calculateWorkoutCalories, calculateSimpleCalories } from '../utils/calorieCalculator'
 
 /**
- * TotalCaloriesCard - Shows total calories burned with day/week tap-cycle filter
- * Compact half-width card (300px height) with single tap to cycle
+ * TotalCaloriesCard - Shows total calories burned
+ * Compact card with orange gradient background matching mockup design
  * Uses MET-based calorie calculation for scientific accuracy
- * 
- * @param {Object} props
- * @param {Array} props.logs - Array of workout log objects
- * @param {boolean} props.hasData - Whether there is workout data
  */
 export default function TotalCaloriesCard({ logs = [], hasData = false }) {
   const filters = ['day', 'week']
@@ -27,7 +23,6 @@ export default function TotalCaloriesCard({ logs = [], hasData = false }) {
     const now = new Date()
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
     
-    // Start of this week (Monday)
     const dayOfWeek = now.getDay()
     const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1
     const weekStart = new Date(today)
@@ -47,7 +42,6 @@ export default function TotalCaloriesCard({ logs = [], hasData = false }) {
 
       let calories = log.results?.calories || 0
       
-      // If no stored calories, calculate using MET formula
       if (!calories || calories === 0) {
         const totalReps = log.results?.totalReps || log.results?.completedReps || log.totalReps || 0
         const durationMs = log.results?.durationMs || 0
@@ -55,7 +49,6 @@ export default function TotalCaloriesCard({ logs = [], hasData = false }) {
         const exercise = log.exercise?.namePath || log.exercise?.name || ''
         
         if (durationMs > 0) {
-          // Use MET formula if we have duration
           const result = calculateWorkoutCalories({
             exercise,
             equipment,
@@ -64,7 +57,6 @@ export default function TotalCaloriesCard({ logs = [], hasData = false }) {
           })
           calories = result.calories
         } else if (totalReps > 0) {
-          // Fallback to simple calculation
           calories = calculateSimpleCalories(totalReps, 0, equipment)
         }
       }
@@ -83,89 +75,83 @@ export default function TotalCaloriesCard({ logs = [], hasData = false }) {
     week: 'This Week',
   }
 
-  // Format number with commas
   const formatCalories = (val) => {
     if (val >= 1000) {
-      return val.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 1 })
+      return val.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
     }
-    return val.toFixed(1)
+    return Math.round(val).toString()
   }
-
-  // Fire icon component
-  const FireIcon = () => (
-    <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(255, 206, 171, 0.3)' }}>
-      <svg className="w-4 h-4" style={{ color: 'rgb(255 206 171 / 91%)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" />
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z" />
-      </svg>
-    </div>
-  )
 
   // Empty state
   if (!hasData) {
     return (
-      <div className="rounded-2xl p-3 h-[300px] flex flex-col" style={{ backgroundColor: 'rgb(255 104 26 / 75%)' }}>
-        {/* Header row with title and fire icon */}
-        <div className="flex items-start justify-between">
-          <div>
-            <h3 className="text-xs font-semibold tracking-wide" style={{ color: 'rgb(255 206 171 / 91%)' }}>
-              Calories Burned
-            </h3>
-            <p className="text-[10px] mt-0.5" style={{ color: 'rgb(255 206 171 / 91%)' }}>{filterLabels[filter]}</p>
-          </div>
-          <FireIcon />
-        </div>
-        <div className="flex-1 flex flex-col items-center justify-center text-center">
-          <p className="text-[11px]" style={{ color: 'rgb(255 206 171 / 91%)' }}>No calorie data yet</p>
+      <div
+        className="rounded-2xl p-4 flex flex-col"
+        style={{
+          background: 'linear-gradient(135deg, #FF9012 0%, #AD380A 100%)',
+          minHeight: '80px',
+        }}
+      >
+        {/* Title */}
+        <h3 className="text-sm font-extrabold text-white/90">Calories Burned</h3>
+        {/* Filter pill below title */}
+        <button
+          onClick={cycleFilter}
+          className="px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-white/20 text-white/80 flex items-center gap-1 w-fit mt-1"
+        >
+          {filterLabels[filter]}
+          <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+        <div className="flex-1 flex flex-col items-end justify-center">
+          <p className="text-xs text-white/50">No data yet</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="rounded-2xl p-3 h-[300px] flex flex-col" style={{ backgroundColor: 'rgb(255 104 26 / 75%)' }}>
-      {/* Header row with title and fire icon */}
-      <div className="flex items-start justify-between">
-        <h3 className="text-xs font-semibold tracking-wide" style={{ color: 'rgb(255 206 171 / 91%)' }}>
-          Calories Burned
-        </h3>
-        <FireIcon />
-      </div>
+    <div
+      className="rounded-2xl p-3 flex flex-col"
+      style={{
+        background: 'linear-gradient(135deg, #FF9012 0%, #AD380A 100%)',
+        minHeight: '80px',
+      }}
+    >
+      {/* Title */}
+      <h3 className="text-xs font-semibold text-white/90">Calories Burned</h3>
+      {/* Filter pill below title */}
+      <button
+        onClick={cycleFilter}
+        className="px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-white/20 text-white/80 flex items-center gap-1 w-fit mt-1"
+      >
+        {filterLabels[filter]}
+        <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
 
-      {/* Single cycle filter button */}
-      <div>
-        <button
-          onClick={cycleFilter}
-          className="px-3 py-1 rounded-full text-[10px] font-medium transition-all duration-200"
-          style={{
-            backgroundColor: 'rgba(255, 206, 171, 0.3)',
-            color: 'rgb(255 206 171 / 91%)',
-            border: '1px solid rgba(255, 206, 171, 0.5)',
-          }}
-        >
-          {filterLabels[filter]}
-        </button>
-      </div>
-
-      {/* Main calorie display */}
-      <div className="flex-1 flex flex-col items-center justify-center">
-        <div className="text-center">
-          <span className="font-bold leading-none" style={{ color: 'rgb(255 206 171 / 91%)', fontSize: '4.5rem' }}>
-            {totalCalories > 0 ? formatCalories(totalCalories) : '0'}
-          </span>
-          <div className="flex items-center justify-center gap-1 mt-1">
-            <span className="text-sm font-medium" style={{ color: 'rgb(255 206 171 / 91%)' }}>Kcal</span>
-          </div>
+      {/* Main content – all right-aligned */}
+      <div className="flex-1 flex flex-col items-end justify-center">
+        {/* Large calorie number */}
+        <span className="font-extrabold text-white leading-none" style={{ fontSize: '4.5rem' }}>
+          {formatCalories(totalCalories)}
+        </span>
+        {/* Kcal + fire icon */}
+        <div className="flex items-center gap-1 mt-0.5">
+          <span className="text-sm font-semibold text-white/70">Kcal</span>
+          <svg className="w-4 h-4" style={{ color: '#5C1A00' }} fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12 23c-3.6 0-7-2.4-7-7 0-3.1 2.1-5.7 3.2-6.8.4-.4 1-.5 1.5-.2.5.2.8.7.8 1.2v.4c0 .6.2 1.2.6 1.7.1-.6.4-1.2.8-1.7l2.5-3.4c.3-.4.8-.6 1.3-.5s.9.5 1 1c.4 1.7 1.3 3.8 2.3 5.3.7 1 1 2.3 1 3.5 0 3.8-2.6 6.5-8 6.5z"/>
+          </svg>
         </div>
       </div>
 
-      {/* Footer: session count */}
-      <div className="mt-auto pt-2 border-t" style={{ borderColor: 'rgba(255, 206, 171, 0.4)' }}>
-        <div className="flex items-center justify-center gap-1">
-          <span className="text-[10px]" style={{ color: 'rgb(255 206 171 / 91%)' }}>
-            {sessionCount} {sessionCount === 1 ? 'session' : 'sessions'} {filterLabels[filter].toLowerCase()}
-          </span>
-        </div>
+      {/* Footer: session count – right-aligned */}
+      <div className="mt-auto text-right">
+        <span className="text-[11px] text-white/50 font-medium">
+          From {sessionCount} {sessionCount === 1 ? 'session' : 'sessions'} {filter === 'day' ? 'today' : 'this week'}
+        </span>
       </div>
     </div>
   )

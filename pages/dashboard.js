@@ -1219,16 +1219,21 @@ export default function Dashboard() {
           <section className="mb-4 md:mb-6 content-fade-up-4">
             <div className="grid grid-cols-2 gap-4">
               {/* Left: Equipment Distribution */}
-            <EquipmentDistributionCard
-              data={equipmentDistributionData}
-              period="This Month"
-              animate={true}
-              hasData={equipmentDistributionData.length > 0}
-            />              {/* Right: Total Calories Burned */}
-              <TotalCaloriesCard
-                logs={logs}
-                hasData={logs.length > 0}
+              <EquipmentDistributionCard
+                data={equipmentDistributionData}
+                period="This Month"
+                animate={true}
+                hasData={equipmentDistributionData.length > 0}
               />
+              {/* Right: Stacked cards */}
+              <div className="flex flex-col gap-4">
+                <TotalCaloriesCard
+                  logs={logs}
+                  hasData={logs.length > 0}
+                />
+                {/* Placeholder card */}
+                <div className="rounded-2xl bg-white/[0.07] flex-1" style={{ minHeight: '100px' }} />
+              </div>
             </div>
           </section>
 
