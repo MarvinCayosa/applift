@@ -104,7 +104,7 @@ export default function TotalCaloriesCard({ logs = [], hasData = false }) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
           </svg>
         </button>
-        <div className="flex-1 flex flex-col items-end justify-center">
+        <div className="flex-1 px-2 flex flex-col items-end justify-center">
           <p className="text-xs text-white/50">No data yet</p>
         </div>
       </div>
@@ -133,7 +133,7 @@ export default function TotalCaloriesCard({ logs = [], hasData = false }) {
       </button>
 
       {/* Main content – all right-aligned */}
-      <div className="flex-1 flex flex-col items-end justify-center">
+      <div className="flex-1 px-2 flex flex-col items-end justify-center">
         {/* Large calorie number */}
         <span className="font-extrabold text-white leading-none" style={{ fontSize: '4.5rem' }}>
           {formatCalories(totalCalories)}
