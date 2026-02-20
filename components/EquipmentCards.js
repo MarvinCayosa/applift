@@ -38,9 +38,12 @@ function EquipmentCard({ equipment }) {
           src={equipment.image}
           alt={equipment.name}
           className={`absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-105 ${
-            equipment.id === 'dumbbell' ? 'scale-[2.2] object-center' : ''
+            equipment.id === 'dumbbell' ? 'scale-[2.2]' : ''
           }`}
-          style={equipment.id === 'dumbbell' ? { objectPosition: '30% 15%' } : {}}
+          style={equipment.id === 'dumbbell' ? { 
+            transform: 'scale(2.2) translateX(15px) translateY(15px)',
+            objectPosition: 'center'
+          } : {}}
         />
         {/* Gradient overlay */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
