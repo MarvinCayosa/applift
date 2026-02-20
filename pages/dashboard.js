@@ -1042,8 +1042,8 @@ export default function Dashboard() {
                       currentWeek={currentWeek}
                       calendar3Months={calendar3Months}
                       workoutLogs={workoutLogsForCalendar}
-                      onDaySelect={(day) => router.push(`/history?day=${day.day}`)}
-                      onMonthSelect={(month, year) => router.push(`/history?month=${month}&year=${year}`)}
+                      onDaySelect={(day) => router.push(`/statistics?day=${day.day}`)}
+                      onMonthSelect={(month, year) => router.push(`/statistics?month=${month}&year=${year}`)}
                       variant="mobile"
                     />
                   </article>
@@ -1053,7 +1053,7 @@ export default function Dashboard() {
                     <div className="flex items-center justify-between mb-4">
                       <h3 className="text-sm font-semibold text-white/90">Recent Workouts</h3>
                       <button
-                        onClick={() => router.push('/history')}
+                        onClick={() => router.push('/statistics')}
                         className="text-white/40 hover:text-white/60 transition-colors"
                         aria-label="See all workouts"
                       >
@@ -1126,8 +1126,8 @@ export default function Dashboard() {
                     currentWeek={currentWeek}
                     calendar3Months={calendar3Months}
                     workoutLogs={workoutLogsForCalendar}
-                    onDaySelect={(day) => router.push(`/history?day=${day.day}`)}
-                    onMonthSelect={(month, year) => router.push(`/history?month=${month}&year=${year}`)}
+                    onDaySelect={(day) => router.push(`/statistics?day=${day.day}`)}
+                    onMonthSelect={(month, year) => router.push(`/statistics?month=${month}&year=${year}`)}
                     variant="desktop"
                   />
                 </div>
@@ -1137,7 +1137,7 @@ export default function Dashboard() {
                   <div className="flex items-center justify-between mb-5">
                     <h3 className="text-sm font-semibold text-white/90 uppercase tracking-wide">Recent Workouts</h3>
                     <button
-                      onClick={() => router.push('/history')}
+                      onClick={() => router.push('/statistics')}
                       className="text-white/40 hover:text-white/60 transition-colors"
                       aria-label="See all workouts"
                     >
@@ -1191,110 +1191,28 @@ export default function Dashboard() {
             </div>
           </section>
 
-          {/* Load Lifted Section */}
-          <section className="mb-4 md:mb-6 content-fade-up-3">
-            <div className="bg-black rounded-3xl p-5 sm:p-6 shadow-2xl">
-              {/* Header with title and stats */}
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-white mb-2">Workout Load</h3>
-                  <button 
-                    onClick={cycleViewType}
-                    className="text-xs text-white/60 capitalize bg-white/10 px-3 py-1 rounded-full hover:bg-white/20 transition-colors flex items-center gap-1"
-                  >
-                    {viewTypeLabels[liftViewType]}
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-                </div>
-                <div className="text-right">
-                  <div className={`text-2xl sm:text-3xl font-bold ${hasChartData ? 'text-yellow-300' : 'text-white/30'}`}>
-                    {totalLoad.toFixed(1)} kg
-                  </div>
-                  <div className="text-xs text-white/60">Total</div>
-                </div>
-              </div>
-
-              {/* Line Chart - Always shown with axes */}
-              <div className="w-full h-64 sm:h-72 md:h-80 relative">
-                <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={currentLoadData} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                    <XAxis 
-                      dataKey={dataKey} 
-                      stroke="rgba(255,255,255,0.5)" 
-                      style={{ fontSize: '12px' }}
-                      axisLine={true}
-                      tickLine={false}
-                      interval={0}
-                      tick={{ fill: 'rgba(255,255,255,0.5)' }}
-                    />
-                    <YAxis 
-                      stroke="rgba(255,255,255,0.5)" 
-                      style={{ fontSize: '12px' }}
-                      domain={[0, hasChartData ? 'dataMax' : 100]}
-                      axisLine={true}
-                      tickLine={false}
-                      width={35}
-                      tick={{ fill: 'rgba(255,255,255,0.5)' }}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: 'rgba(0,0,0,0.9)',
-                        border: '1px solid rgba(255,255,255,0.2)',
-                        borderRadius: '12px',
-                        padding: '12px 16px',
-                      }}
-                      labelStyle={{ color: '#fef08a' }}
-                      formatter={(value) => [`${value} kg`, 'Load']}
-                    />
-                    <defs>
-                      <linearGradient id="loadAreaGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#fef08a" stopOpacity={0.6} />
-                        <stop offset="100%" stopColor="#000000" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <Area
-                      type="monotone"
-                      dataKey="load"
-                      stroke="none"
-                      fill="url(#loadAreaGradient)"
-                      connectNulls={false}
-                      animationDuration={500}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="load"
-                      stroke="#fef08a"
-                      strokeWidth={4}
-                      connectNulls={false}
-                      dot={(props) => {
-                        const { cx, cy, payload } = props;
-                        if (payload?.isToday || payload?.isCurrentWeek || payload?.isCurrentMonth) {
-                          return <circle cx={cx} cy={cy} r={6} fill="#fef08a" stroke="#fef08a" strokeWidth={2} />;
-                        }
-                        return null;
-                      }}
-                      activeDot={{ r: 6, fill: '#fef08a' }}
-                      animationDuration={500}
-                    />
-                  </ComposedChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          </section>
-
-          {/* Weekly Comparison Card - Full width gray card */}
+          {/* Weekly Load Comparison Card */}
           <section className="mb-4 md:mb-5 content-fade-up-3">
-            <LoadTrendIndicator
-              difference={loadTrendData.difference}
-              percentChange={loadTrendData.percentChange}
-              period={loadTrendData.period}
-              currentTotal={loadTrendData.thisWeekLoad}
-              previousTotal={loadTrendData.lastWeekLoad}
-              hasData={logs.length > 0}
-            />
+            <div className="relative">
+              <LoadTrendIndicator
+                difference={loadTrendData.difference}
+                percentChange={loadTrendData.percentChange}
+                period={loadTrendData.period}
+                currentTotal={loadTrendData.thisWeekLoad}
+                previousTotal={loadTrendData.lastWeekLoad}
+                hasData={logs.length > 0}
+              />
+              {/* Arrow to Statistics */}
+              <button
+                onClick={() => router.push('/statistics')}
+                className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center transition-opacity hover:opacity-70"
+                aria-label="See more statistics"
+              >
+                <svg className="w-5 h-5 text-white/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
           </section>
 
           {/* Two half-width cards side by side */}

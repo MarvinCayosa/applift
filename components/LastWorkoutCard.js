@@ -5,7 +5,7 @@ export default function LastWorkoutCard({ equipment, equipmentColor }) {
 
   return (
     <div
-      onClick={() => router.push('/history')}
+      onClick={() => router.push('/statistics')}
       className="rounded-2xl px-5 py-4 flex items-center justify-between cursor-pointer hover:scale-[1.02] transition-all"
       style={{
         backgroundColor: 'rgba(60, 60, 60, 0.8)',

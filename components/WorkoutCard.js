@@ -16,7 +16,7 @@ export default function WorkoutCard({ workout }) {
   };
 
   const handleClick = () => {
-    router.push(`/history?exercise=${encodeURIComponent(workout.exercise)}&date=${encodeURIComponent(workout.date)}`);
+    router.push(`/statistics?exercise=${encodeURIComponent(workout.exercise)}&date=${encodeURIComponent(workout.date)}`);
   };
 
   return (

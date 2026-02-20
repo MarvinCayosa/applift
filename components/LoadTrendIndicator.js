@@ -24,7 +24,7 @@ export default function LoadTrendIndicator({
   if (!hasData) {
     return (
       <div className="bg-white/10 rounded-2xl p-4">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 pr-8">
           <div>
             <h3 className="text-sm font-semibold text-white">Weekly Load Comparison</h3>
             <p className="text-[10px] text-white/40">vs {period}</p>
@@ -119,7 +119,7 @@ export default function LoadTrendIndicator({
   return (
     <div className="bg-white/10 rounded-2xl p-4">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 pr-8">
         <div className="flex items-center gap-2">
           <div>
             <h3 className="text-sm font-semibold text-white">Weekly Load Comparison</h3>
