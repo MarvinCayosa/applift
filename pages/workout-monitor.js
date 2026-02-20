@@ -11,7 +11,7 @@ import LoadingScreen from '../components/LoadingScreen';
 
 export default function WorkoutMonitor() {
   const router = useRouter();
-  const { equipment, workout, plannedSets, plannedReps, weight, weightUnit, setType } = router.query;
+  const { equipment, workout, plannedSets, plannedReps, weight, weightUnit, setType, restTime } = router.query;
   
   // Workout logging context - streaming version
   const { 
@@ -93,6 +93,7 @@ export default function WorkoutMonitor() {
   const [workoutWeight, setWorkoutWeight] = useState(0);
   const [workoutWeightUnit, setWorkoutWeightUnit] = useState('kg');
   const [workoutSetType, setWorkoutSetType] = useState('recommended');
+  const [workoutRestTime, setWorkoutRestTime] = useState(30);
 
   // Update workout config when query params are available
   useEffect(() => {
@@ -101,6 +102,7 @@ export default function WorkoutMonitor() {
     if (weight) setWorkoutWeight(parseFloat(weight));
     if (weightUnit) setWorkoutWeightUnit(weightUnit);
     if (setType) setWorkoutSetType(setType);
+    if (restTime) setWorkoutRestTime(parseInt(restTime));
     
     console.log('📋 Workout Config Updated:', {
       sets: plannedSets,
@@ -108,8 +110,9 @@ export default function WorkoutMonitor() {
       weight: weight,
       weightUnit: weightUnit,
       setType: setType,
+      restTime: restTime,
     });
-  }, [plannedSets, plannedReps, weight, weightUnit, setType]);
+  }, [plannedSets, plannedReps, weight, weightUnit, setType, restTime]);
   
   // Initialize streaming session immediately on page load (mark as unfinished)
   // This removes the delay when user presses start
@@ -165,6 +168,7 @@ export default function WorkoutMonitor() {
     rawAccelData,
     filteredAccelData,
     isSubscribed,
+    restTime: sessionRestTime,
     startRecording: startRecordingSession,
     stopRecording: stopSession,
     togglePause,
@@ -179,6 +183,7 @@ export default function WorkoutMonitor() {
     connected,
     recommendedReps,
     recommendedSets,
+    restTime: workoutRestTime,
     // Stream IMU samples to GCS as they come in
     onIMUSample: (sample) => {
       if (isStreaming) {
@@ -426,7 +431,7 @@ export default function WorkoutMonitor() {
                   fill="none"
                   strokeLinecap="round"
                   strokeDasharray={`${2 * Math.PI * 110}`}
-                  strokeDashoffset={`${2 * Math.PI * 110 * (1 - (30 - breakTimeRemaining) / 30)}`}
+                  strokeDashoffset={`${2 * Math.PI * 110 * (1 - (sessionRestTime - breakTimeRemaining) / sessionRestTime)}`}
                   style={{ 
                     transition: breakPaused ? 'none' : 'stroke-dashoffset 1s linear',
                     filter: 'drop-shadow(0 0 8px rgba(168, 85, 247, 0.8))'
@@ -435,9 +440,9 @@ export default function WorkoutMonitor() {
                 {/* Gradient definition - light to dark as time progresses */}
                 <defs>
                   <linearGradient id="breakGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor={breakTimeRemaining > 20 ? "#e9d5ff" : breakTimeRemaining > 10 ? "#c084fc" : "#9333ea"} />
-                    <stop offset="50%" stopColor={breakTimeRemaining > 15 ? "#c084fc" : "#a855f7"} />
-                    <stop offset="100%" stopColor={breakTimeRemaining > 10 ? "#a855f7" : "#7c3aed"} />
+                    <stop offset="0%" stopColor={breakTimeRemaining > sessionRestTime * 0.67 ? "#e9d5ff" : breakTimeRemaining > sessionRestTime * 0.33 ? "#c084fc" : "#9333ea"} />
+                    <stop offset="50%" stopColor={breakTimeRemaining > sessionRestTime * 0.5 ? "#c084fc" : "#a855f7"} />
+                    <stop offset="100%" stopColor={breakTimeRemaining > sessionRestTime * 0.33 ? "#a855f7" : "#7c3aed"} />
                   </linearGradient>
                 </defs>
               </svg>

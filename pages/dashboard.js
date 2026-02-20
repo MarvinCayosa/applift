@@ -10,7 +10,7 @@ import LoadingScreen from '../components/LoadingScreen';
 import LoadTrendIndicator from '../components/LoadTrendIndicator';
 import MovementQuality from '../components/MovementQuality';
 import EquipmentDistributionCard from '../components/EquipmentDistributionCard';
-import PlaceholderCard from '../components/PlaceholderCard';
+import TotalCaloriesCard from '../components/TotalCaloriesCard';
 import { ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useUserProfile } from '../utils/userProfileStore';
 import { useWorkoutStreak } from '../utils/useWorkoutStreak';
@@ -1306,10 +1306,10 @@ export default function Dashboard() {
               period="This Month"
               animate={true}
               hasData={equipmentDistributionData.length > 0}
-            />              {/* Right: Placeholder for future feature */}
-              <PlaceholderCard
-                title="Quick Stats"
-                subtitle="Coming soon"
+            />              {/* Right: Total Calories Burned */}
+              <TotalCaloriesCard
+                logs={logs}
+                hasData={logs.length > 0}
               />
             </div>
           </section>

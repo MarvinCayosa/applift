@@ -93,6 +93,7 @@ export function useWorkoutSession({
   connected, 
   recommendedReps = 5, 
   recommendedSets = 2,
+  restTime = 30,     // Custom rest time in seconds
   onIMUSample,       // NEW: Called for each IMU sample (for streaming)
   onRepDetected,     // NEW: Called when a rep is detected
   onSetComplete,
@@ -130,7 +131,7 @@ export function useWorkoutSession({
   
   // Break state
   const [isOnBreak, setIsOnBreak] = useState(false);
-  const [breakTimeRemaining, setBreakTimeRemaining] = useState(30);
+  const [breakTimeRemaining, setBreakTimeRemaining] = useState(restTime);
   const [breakPaused, setBreakPaused] = useState(false);
   const [motivationalMessage, setMotivationalMessage] = useState('');
   const breakTimerRef = useRef(null);
@@ -483,7 +484,7 @@ export function useWorkoutSession({
     setMotivationalMessage(messages[Math.floor(Math.random() * messages.length)]);
     setIsOnBreak(true);
     setIsPaused(true);
-    setBreakTimeRemaining(30);
+    setBreakTimeRemaining(restTime);
   };
 
   // End break and start next set automatically
@@ -530,7 +531,7 @@ export function useWorkoutSession({
       clearInterval(breakTimerRef.current);
       breakTimerRef.current = null;
     }
-    setBreakTimeRemaining(30);
+    setBreakTimeRemaining(restTime);
     endBreak();
   };
   
@@ -717,6 +718,7 @@ export function useWorkoutSession({
     sampleCount,
     dataRate,
     isSubscribed: imuSubscribed,
+    restTime, // Export rest time for UI progress calculation
     
     // Chart data
     timeData,

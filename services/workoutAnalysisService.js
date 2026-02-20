@@ -797,15 +797,26 @@ const computePhaseTimingsFromOrientation = (roll, pitch, yaw, timestamps) => {
 /**
  * Compute fatigue indicators using gyroscope-based methodology
  * 
- * Formula: F = 0.35·D_ω + 0.25·I_T + 0.20·I_J + 0.20·I_S
+ * Updated Formula (with ML classification):
+ * F = 0.25·D_ω + 0.18·I_T + 0.14·I_J + 0.14·I_S + 0.29·Q_exec
+ * 
+ * Original Formula (without ML classification):
+ * F = 0.35·D_ω + 0.25·I_T + 0.20·I_J + 0.20·I_S
  * 
  * Where:
- * - D_ω: Peak angular velocity change (35%)
- * - I_T: Tempo/duration increase (25%)
- * - I_J: Jerk increase (20%)
- * - I_S: Shakiness increase (20%)
+ * - D_ω: Peak angular velocity change 
+ * - I_T: Tempo/duration increase 
+ * - I_J: Jerk increase 
+ * - I_S: Shakiness increase 
+ * - Q_exec: Execution quality penalty from ML classification
+ *   - Based on clean rep percentage
+ *   - Penalizes "Abrupt Initiation" (momentum use = fatigue compensation)
+ *   - Penalizes "Uncontrolled Movement" (loss of control = muscular fatigue)
+ * 
+ * @param {Array} repMetricsList - Array of rep metrics
+ * @param {Object} mlClassification - Optional ML classification data with cleanPercentage and classDistribution
  */
-export const computeFatigueIndicators = (repMetricsList) => {
+export const computeFatigueIndicators = (repMetricsList, mlClassification = null) => {
   if (!repMetricsList || repMetricsList.length < 3) {
     return {
       fatigueScore: 0,
@@ -814,6 +825,7 @@ export const computeFatigueIndicators = (repMetricsList) => {
       I_T: 0,
       I_J: 0,
       I_S: 0,
+      Q_exec: 0,
       gyroDirection: 'stable',
       consistencyScore: 0,
       performanceReport: {
@@ -872,21 +884,83 @@ export const computeFatigueIndicators = (repMetricsList) => {
     I_S = avgShakyFirst > 0 ? (avgShakyLast - avgShakyFirst) / avgShakyFirst : 0;
   }
   
+  // === Q_exec: Execution Quality Penalty from ML Classification ===
+  // This addresses the issue where all reps are poor quality (user fatigued from start)
+  // The kinematic indicators measure DECLINE, but Q_exec measures ABSOLUTE quality
+  let Q_exec = 0;
+  let hasMLClassification = false;
+  
+  if (mlClassification && typeof mlClassification.cleanPercentage === 'number') {
+    hasMLClassification = true;
+    const cleanPct = mlClassification.cleanPercentage;
+    
+    // Base penalty: inverse of clean percentage (0 = all clean, 1 = no clean reps)
+    // Scale: 100% clean = 0 penalty, 0% clean = 1.0 penalty
+    Q_exec = (100 - cleanPct) / 100;
+    
+    // Additional penalties for specific problematic classifications
+    if (mlClassification.classDistribution) {
+      const dist = mlClassification.classDistribution;
+      const totalClassified = Object.values(dist).reduce((sum, count) => sum + count, 0);
+      
+      if (totalClassified > 0) {
+        // "Abrupt Initiation" indicates momentum use - sign of fatigue compensation
+        // User is "cheating" the movement by using momentum instead of controlled muscle force
+        const abruptInitiation = dist['Abrupt Initiation'] || dist['abrupt_initiation'] || 0;
+        const abruptPct = abruptInitiation / totalClassified;
+        if (abruptPct > 0.25) {
+          // 25%+ abrupt initiation = momentum compensation penalty
+          // This catches users who swing/jerk weights to compensate for tired muscles
+          Q_exec = Math.min(1.0, Q_exec + (abruptPct - 0.25) * 0.4);
+        }
+        
+        // "Uncontrolled Movement" indicates loss of control - direct sign of muscular fatigue
+        // User cannot maintain proper form through the full range of motion
+        const uncontrolled = dist['Uncontrolled Movement'] || dist['uncontrolled_movement'] || 0;
+        const uncontrolledPct = uncontrolled / totalClassified;
+        if (uncontrolledPct > 0.20) {
+          // 20%+ uncontrolled = lost control penalty
+          // This catches users who are losing motor control from fatigue
+          Q_exec = Math.min(1.0, Q_exec + (uncontrolledPct - 0.20) * 0.5);
+        }
+      }
+    }
+  }
+  
   // === Composite Fatigue Score ===
   const D_omega_clamped = Math.max(0, D_omega);
   const I_T_clamped = Math.max(0, I_T);
   const I_J_clamped = Math.max(0, I_J);
   const I_S_clamped = Math.max(0, I_S);
+  const Q_exec_clamped = Math.max(0, Math.min(1, Q_exec));
   
-  let fatigueRaw = (0.35 * D_omega_clamped) +
-                   (0.25 * I_T_clamped) +
-                   (0.20 * I_J_clamped) +
-                   (0.20 * I_S_clamped);
+  let fatigueRaw;
+  if (hasMLClassification) {
+    // With ML classification: give significant weight to execution quality
+    // This fixes the "all bad reps = low fatigue" problem
+    fatigueRaw = (0.25 * D_omega_clamped) +
+                 (0.18 * I_T_clamped) +
+                 (0.14 * I_J_clamped) +
+                 (0.14 * I_S_clamped) +
+                 (0.29 * Q_exec_clamped);
+  } else {
+    // Without ML classification: use original kinematic-only formula
+    fatigueRaw = (0.35 * D_omega_clamped) +
+                 (0.25 * I_T_clamped) +
+                 (0.20 * I_J_clamped) +
+                 (0.20 * I_S_clamped);
+  }
   
   // Boost for severe indicators
-  const worstIndicator = Math.max(D_omega_clamped, I_T_clamped, I_J_clamped, I_S_clamped);
-  if (worstIndicator > 0.40) {
-    fatigueRaw = Math.min(1.0, fatigueRaw + (worstIndicator - 0.40) * 0.5);
+  const worstKinematicIndicator = Math.max(D_omega_clamped, I_T_clamped, I_J_clamped, I_S_clamped);
+  if (worstKinematicIndicator > 0.40) {
+    fatigueRaw = Math.min(1.0, fatigueRaw + (worstKinematicIndicator - 0.40) * 0.5);
+  }
+  
+  // Additional boost if execution quality is very poor (even without kinematic decline)
+  // This ensures "consistently bad form" gets flagged as fatigued/compensating
+  if (hasMLClassification && Q_exec_clamped > 0.60) {
+    fatigueRaw = Math.min(1.0, fatigueRaw + (Q_exec_clamped - 0.60) * 0.3);
   }
   
   const fatigueScore = Math.min(100, fatigueRaw * 100);
@@ -954,6 +1028,37 @@ export const computeFatigueIndicators = (repMetricsList) => {
     keyFindings.push('⚠️ Significant fatigue detected — movement quality degraded notably');
   }
   
+  // ML Classification-based insights
+  if (hasMLClassification && mlClassification) {
+    const cleanPct = mlClassification.cleanPercentage;
+    if (cleanPct < 30) {
+      keyFindings.push(`⚠️ Very low clean rep % (${cleanPct}%) — likely using compensation patterns`);
+    } else if (cleanPct < 50) {
+      keyFindings.push(`⚠️ Less than half of reps are clean (${cleanPct}%) — form breakdown detected`);
+    }
+    
+    // Check for specific problematic patterns
+    if (mlClassification.classDistribution) {
+      const dist = mlClassification.classDistribution;
+      const totalClassified = Object.values(dist).reduce((sum, count) => sum + count, 0);
+      
+      if (totalClassified > 0) {
+        const abruptInitiation = dist['Abrupt Initiation'] || dist['abrupt_initiation'] || 0;
+        const uncontrolled = dist['Uncontrolled Movement'] || dist['uncontrolled_movement'] || 0;
+        const abruptPct = (abruptInitiation / totalClassified) * 100;
+        const uncontrolledPct = (uncontrolled / totalClassified) * 100;
+        
+        if (abruptPct > 40) {
+          keyFindings.push(`⚠️ High momentum use (${abruptPct.toFixed(0)}% abrupt initiation) — consider reducing weight`);
+        }
+        
+        if (uncontrolledPct > 30) {
+          keyFindings.push(`⚠️ Loss of control (${uncontrolledPct.toFixed(0)}% uncontrolled) — muscular fatigue evident`);
+        }
+      }
+    }
+  }
+  
   if (hasGyro && D_omega > 0.15) {
     if (gyroDirection === 'surge') {
       keyFindings.push(`⚠️ Peak angular velocity SURGED ${(D_omega * 100).toFixed(1)}% — compensatory swinging`);
@@ -987,6 +1092,8 @@ export const computeFatigueIndicators = (repMetricsList) => {
     I_T: Math.round(I_T * 10000) / 10000,
     I_J: Math.round(I_J * 10000) / 10000,
     I_S: Math.round(I_S * 10000) / 10000,
+    Q_exec: Math.round(Q_exec_clamped * 10000) / 10000,
+    hasMLClassification,
     gyroDirection,
     hasGyro,
     

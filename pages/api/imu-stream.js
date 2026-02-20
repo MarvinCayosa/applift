@@ -150,6 +150,39 @@ function sanitizeForPath(str) {
 }
 
 /**
+ * MET values for equipment types
+ * Based on Compendium of Physical Activities
+ */
+const EQUIPMENT_MET = {
+  'dumbbell': 5.0,
+  'barbell': 6.0,
+  'weight-stack': 4.5,
+  'kettlebell': 6.0,
+  'bodyweight': 4.0,
+  'cable': 4.5,
+  'default': 5.0,
+};
+
+/**
+ * Calculate calories using MET formula
+ * Calories = Duration (min) × (MET × 3.5 × Body Weight (kg)) / 200
+ * 
+ * @param {number} durationMs - Duration in milliseconds
+ * @param {string} equipment - Equipment type
+ * @param {number} bodyWeightKg - Body weight (default: 70kg)
+ */
+function calculateCaloriesMET(durationMs, equipment, bodyWeightKg = 70) {
+  if (!durationMs || durationMs <= 0) return 0;
+  
+  const durationMinutes = durationMs / 60000;
+  const normalizedEquipment = (equipment || 'default').toLowerCase().replace(/\s+/g, '-');
+  const met = EQUIPMENT_MET[normalizedEquipment] || EQUIPMENT_MET.default;
+  
+  const calories = durationMinutes * (met * 3.5 * bodyWeightKg) / 200;
+  return Math.round(calories);
+}
+
+/**
  * Save workout metadata to Firestore
  * PRIMARY Structure: userWorkouts/{userId}/{equipment}/{exercise}/{workoutId}
  * This is the main structure - organized by user, then equipment, then exercise
@@ -164,6 +197,16 @@ async function saveWorkoutToFirestore(userId, workoutId, metadata) {
     
     // Get the GCS path from metadata or construct it
     const gcsPath = metadata.gcsPath || `users/${userId}/${equipment}/${exercise}`;
+    
+    // Calculate workout duration from timestamps
+    let durationMs = 0;
+    if (metadata.startTime && metadata.endTime) {
+      durationMs = new Date(metadata.endTime).getTime() - new Date(metadata.startTime).getTime();
+    }
+    
+    // Calculate calories using MET formula (default 70kg body weight)
+    // TODO: Get actual user body weight from profile
+    const calories = calculateCaloriesMET(durationMs, metadata.equipment, 70);
     
     // Document data
     const workoutData = {
@@ -187,6 +230,8 @@ async function saveWorkoutToFirestore(userId, workoutId, metadata) {
         completedReps: metadata.completedReps,
         totalReps: metadata.totalReps,
         sets: metadata.sets,
+        calories: calories,
+        durationMs: durationMs,
       },
       status: metadata.status,
       setType: metadata.setType,

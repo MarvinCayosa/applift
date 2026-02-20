@@ -794,12 +794,14 @@ function computeRepMetrics(repData) {
   };
 }
 
-function computeFatigueIndicators(repMetricsList) {
+function computeFatigueIndicators(repMetricsList, mlClassification = null) {
   if (!repMetricsList || repMetricsList.length < 3) {
     return {
       fatigueScore: 0,
       fatigueLevel: 'insufficient_data',
       consistencyScore: 0,
+      Q_exec: 0,
+      hasMLClassification: false,
       performanceReport: {
         sessionQuality: 'Insufficient Data',
         keyFindings: ['⚠️ Need at least 3 reps for analysis']
@@ -852,20 +854,71 @@ function computeFatigueIndicators(repMetricsList) {
     I_S = avgShakyFirst > 0 ? (avgShakyLast - avgShakyFirst) / avgShakyFirst : 0;
   }
   
+  // Q_exec: Execution Quality Penalty from ML Classification
+  let Q_exec = 0;
+  let hasMLClassification = false;
+  
+  if (mlClassification && typeof mlClassification.cleanPercentage === 'number') {
+    hasMLClassification = true;
+    const cleanPct = mlClassification.cleanPercentage;
+    
+    // Base penalty: inverse of clean percentage
+    Q_exec = (100 - cleanPct) / 100;
+    
+    // Additional penalties for specific problematic classifications
+    const dist = mlClassification.distribution || mlClassification.classDistribution;
+    if (dist) {
+      const totalClassified = Object.values(dist).reduce((sum, count) => sum + count, 0);
+      
+      if (totalClassified > 0) {
+        // Abrupt Initiation = momentum use = fatigue compensation
+        const abruptInitiation = dist['Abrupt Initiation'] || dist['abrupt_initiation'] || 0;
+        const abruptPct = abruptInitiation / totalClassified;
+        if (abruptPct > 0.25) {
+          Q_exec = Math.min(1.0, Q_exec + (abruptPct - 0.25) * 0.4);
+        }
+        
+        // Uncontrolled Movement = loss of control = muscular fatigue
+        const uncontrolled = dist['Uncontrolled Movement'] || dist['uncontrolled_movement'] || 0;
+        const uncontrolledPct = uncontrolled / totalClassified;
+        if (uncontrolledPct > 0.20) {
+          Q_exec = Math.min(1.0, Q_exec + (uncontrolledPct - 0.20) * 0.5);
+        }
+      }
+    }
+  }
+  
   // Composite fatigue score
   const D_omega_clamped = Math.max(0, D_omega);
   const I_T_clamped = Math.max(0, I_T);
   const I_J_clamped = Math.max(0, I_J);
   const I_S_clamped = Math.max(0, I_S);
+  const Q_exec_clamped = Math.max(0, Math.min(1, Q_exec));
   
-  let fatigueRaw = (0.35 * D_omega_clamped) +
-                   (0.25 * I_T_clamped) +
-                   (0.20 * I_J_clamped) +
-                   (0.20 * I_S_clamped);
+  let fatigueRaw;
+  if (hasMLClassification) {
+    // With ML classification: include execution quality factor
+    fatigueRaw = (0.25 * D_omega_clamped) +
+                 (0.18 * I_T_clamped) +
+                 (0.14 * I_J_clamped) +
+                 (0.14 * I_S_clamped) +
+                 (0.29 * Q_exec_clamped);
+  } else {
+    // Without ML classification: original kinematic-only formula
+    fatigueRaw = (0.35 * D_omega_clamped) +
+                 (0.25 * I_T_clamped) +
+                 (0.20 * I_J_clamped) +
+                 (0.20 * I_S_clamped);
+  }
   
-  const worstIndicator = Math.max(D_omega_clamped, I_T_clamped, I_J_clamped, I_S_clamped);
-  if (worstIndicator > 0.40) {
-    fatigueRaw = Math.min(1.0, fatigueRaw + (worstIndicator - 0.40) * 0.5);
+  const worstKinematicIndicator = Math.max(D_omega_clamped, I_T_clamped, I_J_clamped, I_S_clamped);
+  if (worstKinematicIndicator > 0.40) {
+    fatigueRaw = Math.min(1.0, fatigueRaw + (worstKinematicIndicator - 0.40) * 0.5);
+  }
+  
+  // Boost for very poor execution quality
+  if (hasMLClassification && Q_exec_clamped > 0.60) {
+    fatigueRaw = Math.min(1.0, fatigueRaw + (Q_exec_clamped - 0.60) * 0.3);
   }
   
   const fatigueScore = Math.min(100, fatigueRaw * 100);
@@ -899,6 +952,34 @@ function computeFatigueIndicators(repMetricsList) {
     keyFindings.push('⚠️ Significant fatigue detected');
   }
   
+  // ML Classification-based insights
+  if (hasMLClassification && mlClassification) {
+    const cleanPct = mlClassification.cleanPercentage;
+    if (cleanPct < 30) {
+      keyFindings.push(`⚠️ Very low clean rep % (${cleanPct}%) — likely using compensation`);
+    } else if (cleanPct < 50) {
+      keyFindings.push(`⚠️ Less than half of reps are clean (${cleanPct}%)`);
+    }
+    
+    const dist = mlClassification.distribution || mlClassification.classDistribution;
+    if (dist) {
+      const totalClassified = Object.values(dist).reduce((sum, count) => sum + count, 0);
+      if (totalClassified > 0) {
+        const abruptInitiation = dist['Abrupt Initiation'] || dist['abrupt_initiation'] || 0;
+        const uncontrolled = dist['Uncontrolled Movement'] || dist['uncontrolled_movement'] || 0;
+        const abruptPct = (abruptInitiation / totalClassified) * 100;
+        const uncontrolledPct = (uncontrolled / totalClassified) * 100;
+        
+        if (abruptPct > 40) {
+          keyFindings.push(`⚠️ High momentum use (${abruptPct.toFixed(0)}%) — consider reducing weight`);
+        }
+        if (uncontrolledPct > 30) {
+          keyFindings.push(`⚠️ Loss of control (${uncontrolledPct.toFixed(0)}%) — muscular fatigue`);
+        }
+      }
+    }
+  }
+  
   if (consistencyScore > 85) {
     keyFindings.push('✅ Highly consistent movements');
   } else if (consistencyScore < 60) {
@@ -916,6 +997,8 @@ function computeFatigueIndicators(repMetricsList) {
     I_T: Math.round(I_T * 10000) / 10000,
     I_J: Math.round(I_J * 10000) / 10000,
     I_S: Math.round(I_S * 10000) / 10000,
+    Q_exec: Math.round(Q_exec_clamped * 10000) / 10000,
+    hasMLClassification,
     gyroDirection,
     consistencyScore: Math.round(consistencyScore * 10) / 10,
     performanceReport: {
@@ -1267,6 +1350,26 @@ export default async function handler(req, res) {
                 : 0
             };
           }
+        }
+        
+        // *** RECALCULATE FATIGUE WITH ML CLASSIFICATION ***
+        // The initial fatigue analysis didn't have ML classification data.
+        // Now that we have it, recalculate to incorporate execution quality.
+        if (analysis.repMetrics && analysis.repMetrics.length >= 3) {
+          console.log('[Analyze API] Recalculating fatigue with ML classification data...');
+          const enhancedFatigue = computeFatigueIndicators(analysis.repMetrics, analysis.mlClassification);
+          
+          // Update the fatigue object with enhanced analysis
+          analysis.fatigue = {
+            ...analysis.fatigue,
+            ...enhancedFatigue
+          };
+          
+          console.log('[Analyze API] Enhanced fatigue score:', {
+            originalScore: analysis.fatigue.fatigueScore,
+            Q_exec: enhancedFatigue.Q_exec,
+            hasMLClassification: enhancedFatigue.hasMLClassification
+          });
         }
         
         console.log('[Analyze API] Classification complete:', {
