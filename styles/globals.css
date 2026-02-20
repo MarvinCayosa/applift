@@ -433,6 +433,22 @@ svg { color: inherit; }
   animation: fadeOut 400ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
 }
 
+/* Fade up animation for statistics components */
+@keyframes fadeUp {
+  0% {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-up {
+  animation: fadeUp 600ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+}
+
 /* Fast fade-up for secondary elements */
 .content-fade-up-fast {
   animation: contentFadeUp 420ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards;

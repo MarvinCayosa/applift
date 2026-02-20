@@ -1,6 +1,7 @@
 import Head from 'next/head';
 import { useState, useMemo, useRef, useEffect } from 'react';
 import BottomNav from '../components/BottomNav';
+import EquipmentCards from '../components/EquipmentCards';
 import { useWorkoutLogs } from '../utils/useWorkoutLogs';
 import {
   ResponsiveContainer,
@@ -330,7 +331,7 @@ export default function Statistics() {
           </div>
 
           {/* Workout Load Chart */}
-          <section className="mb-6">
+          <section className="mb-6 opacity-0 animate-fade-up" style={{ animationDelay: '0.1s', animationFillMode: 'forwards' }}>
             <div className="bg-zinc-900 rounded-3xl p-5 sm:p-6 shadow-2xl">
               {/* Header with title and stats */}
               <div className="flex items-start justify-between mb-4">
@@ -422,15 +423,22 @@ export default function Statistics() {
           </section>
 
           {/* Colorful Metric Cards - Horizontal Carousel */}
-          <section className="mb-6">
+          <section className="mb-6 opacity-0 animate-fade-up" style={{ animationDelay: '0.3s', animationFillMode: 'forwards' }}>
             <MetricCardsCarousel
               totalWorkouts={totalWorkouts}
               weekDuration={weekDuration}
               avgLoadPerWorkout={avgLoadPerWorkout}
             />
           </section>
+
+          {/* Equipment Cards - Links to equipment-specific pages */}
+          <section className="mb-6 opacity-0 animate-fade-up" style={{ animationDelay: '0.5s', animationFillMode: 'forwards' }}>
+            <EquipmentCards />
+          </section>
         </div>
       </main>
+      
+      <BottomNav />
     </div>
   );
 }
