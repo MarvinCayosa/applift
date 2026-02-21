@@ -117,8 +117,22 @@ export default function Statistics() {
   });
   const [liftViewType, setLiftViewType] = useState('week');
 
-  // Calculate load from real workout data (weekly)
-  const calculateLoadData = () => {
+  // Helper: get load from a log entry
+  const getLogLoad = (log) => {
+    const weight = log.planned?.weight || log.weight || 0;
+    const reps = log.results?.totalReps || log.totalReps || 0;
+    return weight * reps;
+  };
+
+  // Helper: parse log date
+  const getLogDate = (log) => {
+    return log.timestamps?.started?.toDate?.() || 
+           log.timestamps?.created?.toDate?.() ||
+           (log.startTime ? new Date(log.startTime) : null);
+  };
+
+  // Calculate daily load data for the CURRENT WEEK (Sun-Sat)
+  const calculateWeekLoadData = () => {
     const today = new Date();
     const dayOfWeek = today.getDay();
     
@@ -130,24 +144,20 @@ export default function Statistics() {
     const todayIndex = dayOfWeek;
     
     const weekData = dayNames.map((day, idx) => ({ 
-      day, 
+      label: day, 
       load: idx > todayIndex ? null : 0,
       isToday: idx === todayIndex,
       isFuture: idx > todayIndex
     }));
     
     logs.forEach((log) => {
-      const createdAt = log.timestamps?.started?.toDate?.() || 
-                        log.timestamps?.created?.toDate?.() ||
-                        (log.startTime ? new Date(log.startTime) : null);
+      const createdAt = getLogDate(log);
       if (!createdAt) return;
       
       const logDate = new Date(createdAt);
       logDate.setHours(0, 0, 0, 0);
       
       const sundayDate = new Date(sunday);
-      sundayDate.setHours(0, 0, 0, 0);
-      
       const saturdayDate = new Date(sunday);
       saturdayDate.setDate(sunday.getDate() + 6);
       saturdayDate.setHours(23, 59, 59, 999);
@@ -155,10 +165,7 @@ export default function Statistics() {
       if (logDate >= sundayDate && logDate <= saturdayDate) {
         const dayIndex = logDate.getDay();
         if (dayIndex <= todayIndex) {
-          const weight = log.planned?.weight || log.weight || 0;
-          const reps = log.results?.totalReps || log.totalReps || 0;
-          const load = weight * reps;
-          weekData[dayIndex].load += load;
+          weekData[dayIndex].load += getLogLoad(log);
         }
       }
     });
@@ -166,81 +173,90 @@ export default function Statistics() {
     return weekData;
   };
 
-  // Calculate month data (weekly totals)
+  // Calculate DAILY load data for the entire current month (zoomed out daily view)
+  // Labels show W1, W2, W3, etc. on the first day of each week
   const calculateMonthLoadData = () => {
     const today = new Date();
-    const currentWeekNum = Math.ceil(today.getDate() / 7);
+    const currentDay = today.getDate();
+    const currentMonth = today.getMonth();
+    const currentYear = today.getFullYear();
     
-    const weeks = {};
-    for (let i = 1; i <= currentWeekNum; i++) {
-      weeks[`W${i}`] = { week: `W${i}`, load: 0, isCurrentWeek: i === currentWeekNum };
+    // Build array with one entry per day up to today
+    const days = [];
+    for (let d = 1; d <= currentDay; d++) {
+      const weekNum = Math.ceil(d / 7);
+      const isFirstDayOfWeek = (d - 1) % 7 === 0; // 1, 8, 15, 22, 29...
+      days.push({
+        label: isFirstDayOfWeek ? `W${weekNum}` : '',
+        load: 0,
+        isToday: d === currentDay,
+        isFuture: false
+      });
     }
     
     logs.forEach((log) => {
-      const createdAt = log.timestamps?.started?.toDate?.() || 
-                        log.timestamps?.created?.toDate?.() ||
-                        (log.startTime ? new Date(log.startTime) : null);
+      const createdAt = getLogDate(log);
       if (!createdAt) return;
-      
       const logDate = new Date(createdAt);
-      
-      if (logDate.getMonth() === today.getMonth() && logDate.getFullYear() === today.getFullYear()) {
-        const dayOfMonth = logDate.getDate();
-        const weekNum = Math.ceil(dayOfMonth / 7);
-        const weekKey = `W${weekNum}`;
-        
-        if (weekNum <= currentWeekNum && weeks[weekKey]) {
-          const weight = log.planned?.weight || log.weight || 0;
-          const reps = log.results?.totalReps || log.totalReps || 0;
-          const load = weight * reps;
-          weeks[weekKey].load += load;
+      if (logDate.getMonth() === currentMonth && logDate.getFullYear() === currentYear) {
+        const dayNum = logDate.getDate();
+        if (dayNum <= currentDay && days[dayNum - 1]) {
+          days[dayNum - 1].load += getLogLoad(log);
         }
       }
     });
     
-    return Object.values(weeks);
+    return days;
   };
 
-  // Calculate year data (monthly totals)
+  // Calculate DAILY load data for the entire current year (zoomed out daily view)
+  // Labels show Jan, Feb, Mar, etc. on the first day of each month
   const calculateYearLoadData = () => {
     const today = new Date();
     const currentYear = today.getFullYear();
-    const currentMonth = today.getMonth();
-    
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     
-    const months = {};
-    for (let i = 0; i <= currentMonth; i++) {
-      months[monthNames[i]] = { month: monthNames[i], load: 0, isCurrentMonth: i === currentMonth };
+    // Build daily entries from Jan 1 to today
+    const days = [];
+    const start = new Date(currentYear, 0, 1);
+    const end = new Date(today);
+    end.setHours(23, 59, 59, 999);
+    
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const monthIdx = d.getMonth();
+      const dayOfMonth = d.getDate();
+      const isFirstOfMonth = dayOfMonth === 1;
+      days.push({
+        label: isFirstOfMonth ? monthNames[monthIdx] : '',
+        load: 0,
+        isToday: d.getDate() === today.getDate() && d.getMonth() === today.getMonth(),
+        isFuture: false,
+        _date: new Date(d)
+      });
     }
     
     logs.forEach((log) => {
-      const createdAt = log.timestamps?.started?.toDate?.() || 
-                        log.timestamps?.created?.toDate?.() ||
-                        (log.startTime ? new Date(log.startTime) : null);
+      const createdAt = getLogDate(log);
       if (!createdAt) return;
-      
       const logDate = new Date(createdAt);
+      if (logDate.getFullYear() !== currentYear) return;
       
-      if (logDate.getFullYear() === currentYear && logDate.getMonth() <= currentMonth) {
-        const monthKey = monthNames[logDate.getMonth()];
-        
-        const weight = log.planned?.weight || log.weight || 0;
-        const reps = log.results?.totalReps || log.totalReps || 0;
-        const load = weight * reps;
-        
-        if (months[monthKey]) {
-          months[monthKey].load += load;
-        }
+      // Find the index for this date (days since Jan 1)
+      const jan1 = new Date(currentYear, 0, 1);
+      const diffDays = Math.floor((logDate - jan1) / 86400000);
+      if (diffDays >= 0 && diffDays < days.length) {
+        days[diffDays].load += getLogLoad(log);
       }
     });
     
-    return Object.values(months);
+    // Clean up _date helper
+    days.forEach(d => delete d._date);
+    return days;
   };
 
-  // Load lifted data for different time periods
+  // Load lifted data for different time periods (all daily granularity)
   const loadLiftedDataByPeriod = useMemo(() => ({
-    week: calculateLoadData(),
+    week: calculateWeekLoadData(),
     month: calculateMonthLoadData(),
     year: calculateYearLoadData(),
   }), [logs]);
@@ -260,9 +276,9 @@ export default function Statistics() {
     year: 'This Year'
   };
 
-  // Get data based on current view
+  // Get data based on current view (all use 'label' as key now)
   const currentLoadData = loadLiftedDataByPeriod[liftViewType] || [];
-  const dataKey = liftViewType === 'week' ? 'day' : liftViewType === 'month' ? 'week' : 'month';
+  const dataKey = 'label';
   const totalLoad = currentLoadData.length > 0 ? currentLoadData.reduce((sum, item) => sum + (item.load || 0), 0) : 0;
   const hasChartData = currentLoadData.length > 0 && currentLoadData.some(item => item.load > 0);
 
@@ -359,7 +375,24 @@ export default function Statistics() {
               <div className="w-full h-56 sm:h-64 relative">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={currentLoadData} margin={{ top: 10, right: 10, left: 10, bottom: 10 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+                    <CartesianGrid 
+                      strokeDasharray="3 3" 
+                      stroke="rgba(255,255,255,0.08)" 
+                      verticalCoordinatesGenerator={(props) => {
+                        const { xAxis, width, offset } = props;
+                        const coordinates = [];
+                        
+                        // Only show grid lines where we have labels
+                        currentLoadData.forEach((item, index) => {
+                          if (item.label && item.label.trim() !== '') {
+                            const x = offset.left + (index * (width - offset.left - offset.right) / (currentLoadData.length - 1 || 1));
+                            coordinates.push(x);
+                          }
+                        });
+                        
+                        return coordinates;
+                      }}
+                    />
                     <XAxis 
                       dataKey={dataKey} 
                       stroke="rgba(255,255,255,0.5)" 

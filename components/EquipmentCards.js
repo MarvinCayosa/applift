@@ -15,7 +15,7 @@ const equipmentData = [
   {
     id: 'dumbbell',
     name: 'Dumbbell',
-    image: '/images/workout-cards/dumbell.jpg',
+    image: '/images/workout-cards/dumbbell.png',
     href: '/equipment/dumbbell',
   },
   {

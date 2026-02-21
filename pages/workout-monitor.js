@@ -46,14 +46,14 @@ export default function WorkoutMonitor() {
       if (workoutLower.includes('bench') || workoutLower.includes('press')) {
         return '/images/workout-cards/barbell-flat-bench-press.jpg';
       } else if (workoutLower.includes('squat')) {
-        return '/images/workout-cards/barbell-front-squats.jpg';
+        return '/images/workout-cards/barbell_back_squats.jpg';
       }
       return '/images/workout-cards/barbell-comingsoon.jpg';
     } else if (equipmentLower.includes('dumbbell') || equipmentLower.includes('dumbbell')) {
       if (workoutLower.includes('curl')) {
         return '/images/workout-cards/dumbbell-concentration-curls.jpg';
       } else if (workoutLower.includes('extension') || workoutLower.includes('tricep')) {
-        return '/images/workout-cards/dumbbell-overhead-extension.jpg';
+        return '/images/workout-cards/dumbbell_overhead_tricep_extensions.png';
       }
       return '/images/workout-cards/dumbbell-comingsoon.jpg';
     } else if (equipmentLower.includes('weight stack') || equipmentLower.includes('weightstack') || equipmentLower.includes('cable')) {

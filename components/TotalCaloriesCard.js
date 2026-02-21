@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { calculateWorkoutCalories, calculateSimpleCalories } from '../utils/calorieCalculator'
 
 /**
@@ -10,11 +10,39 @@ export default function TotalCaloriesCard({ logs = [], hasData = false }) {
   const filters = ['day', 'week']
   const [filterIndex, setFilterIndex] = useState(0)
   const filter = filters[filterIndex]
+  
+  // Slide transition state: 'idle' | 'slide-out' | 'slide-in'
+  const [slidePhase, setSlidePhase] = useState('idle')
+  const [displayValue, setDisplayValue] = useState(null)
+  const slideTimerRef = useRef(null)
 
   // Cycle to next filter on tap
-  const cycleFilter = () => {
-    setFilterIndex((prev) => (prev + 1) % filters.length)
-  }
+  const cycleFilter = useCallback(() => {
+    if (slidePhase !== 'idle') return
+    // Phase 1: slide the current value out to the left
+    setSlidePhase('slide-out')
+    // After the slide-out completes, swap value and slide in
+    slideTimerRef.current = setTimeout(() => {
+      setFilterIndex((prev) => (prev + 1) % filters.length)
+      setSlidePhase('slide-in')
+      // After slide-in completes, return to idle
+      slideTimerRef.current = setTimeout(() => {
+        setSlidePhase('idle')
+      }, 250)
+    }, 250)
+  }, [slidePhase])
+
+  // Clean up timers
+  useEffect(() => {
+    return () => { if (slideTimerRef.current) clearTimeout(slideTimerRef.current) }
+  }, [])
+
+  // Keep displayValue in sync when not animating
+  useEffect(() => {
+    if (slidePhase === 'idle' || slidePhase === 'slide-in') {
+      setDisplayValue(null) // null means "use live totalCalories"
+    }
+  }, [slidePhase])
 
   // Calculate total calories based on selected filter
   const { totalCalories, sessionCount } = useMemo(() => {
@@ -82,6 +110,48 @@ export default function TotalCaloriesCard({ logs = [], hasData = false }) {
     return Math.round(val).toString()
   }
 
+  // Resolve what text to display
+  const shownCalories = displayValue !== null ? displayValue : totalCalories
+
+  // Snapshot the outgoing value when slide-out starts
+  useEffect(() => {
+    if (slidePhase === 'slide-out') {
+      setDisplayValue(totalCalories) // freeze current value during exit
+    }
+  }, [slidePhase])
+
+  // Slide style helper
+  const getSlideStyle = () => {
+    if (slidePhase === 'slide-out') {
+      return { transform: 'translateX(-110%)', opacity: 0 }
+    }
+    if (slidePhase === 'slide-in') {
+      // On first render of slide-in the element starts off-screen right,
+      // then the CSS transition brings it to center.
+      return { transform: 'translateX(0)', opacity: 1 }
+    }
+    return { transform: 'translateX(0)', opacity: 1 }
+  }
+
+  // For slide-in we need the element to start at translateX(110%) then transition to 0.
+  // We accomplish this with a two-frame trick using a ref.
+  const slideInRef = useRef(null)
+  useEffect(() => {
+    if (slidePhase === 'slide-in' && slideInRef.current) {
+      // Force starting position before transition
+      const el = slideInRef.current
+      el.style.transition = 'none'
+      el.style.transform = 'translateX(110%)'
+      el.style.opacity = '0'
+      // Force layout reflow
+      void el.offsetWidth
+      // Now enable transition and animate to final position
+      el.style.transition = 'transform 250ms cubic-bezier(0.16,1,0.3,1), opacity 250ms ease-out'
+      el.style.transform = 'translateX(0)'
+      el.style.opacity = '1'
+    }
+  }, [slidePhase])
+
   // Empty state
   if (!hasData) {
     return (
@@ -92,9 +162,7 @@ export default function TotalCaloriesCard({ logs = [], hasData = false }) {
           minHeight: '80px',
         }}
       >
-        {/* Title */}
         <h3 className="text-sm font-extrabold text-white/90">Calories Burned</h3>
-        {/* Filter pill below title */}
         <button
           onClick={cycleFilter}
           className="px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-white/20 text-white/80 flex items-center gap-1 w-fit mt-1"
@@ -134,10 +202,22 @@ export default function TotalCaloriesCard({ logs = [], hasData = false }) {
 
       {/* Main content – all right-aligned */}
       <div className="flex-1 px-2 flex flex-col items-end justify-center">
-        {/* Large calorie number */}
-        <span className="font-extrabold text-white leading-none" style={{ fontSize: '4.5rem' }}>
-          {formatCalories(totalCalories)}
-        </span>
+        {/* Large calorie number with smooth slide transition */}
+        <div className="relative overflow-hidden h-16 flex items-center justify-end w-full">
+          <span
+            ref={slideInRef}
+            className="font-extrabold text-white leading-none"
+            style={{
+              fontSize: '4.5rem',
+              transition: slidePhase === 'slide-out'
+                ? 'transform 250ms cubic-bezier(0.5,0,0.75,0), opacity 200ms ease-in'
+                : 'none',
+              ...getSlideStyle()
+            }}
+          >
+            {formatCalories(shownCalories)}
+          </span>
+        </div>
         {/* Kcal + fire icon */}
         <div className="flex items-center gap-1 mt-0.5">
           <span className="text-sm font-semibold text-white/70">Kcal</span>
