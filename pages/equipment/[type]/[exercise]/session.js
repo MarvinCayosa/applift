@@ -122,7 +122,8 @@ export default function SessionSummaryPage() {
   const totalSec = durationMs ? Math.round(durationMs / 1000) : totalTimeSec
   const avgConc = log?.results?.avgConcentric || 0
   const avgEcc = log?.results?.avgEccentric || 0
-  const setData = log?.results?.setData || log?.results?.sets || []
+  const rawSetData = log?.results?.setData || log?.results?.sets
+  const setData = Array.isArray(rawSetData) ? rawSetData : []
   const totalLoad = reps * weight
 
   const formatTime = (sec) => {

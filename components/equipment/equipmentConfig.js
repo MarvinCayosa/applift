@@ -9,7 +9,7 @@ const equipmentConfig = {
     slug: 'dumbbell',
     primary: '#3B82F6',       // Blue-500
     primaryDark: '#1e5bab',   // Darker muted blue
-    heroImage: '/images/workout-cards/dumbbell_overhead_tricep_extensions.png',
+    heroImage: '/images/workout-cards/dumbbell.png',
     exercises: [
       {
         key: 'overhead-triceps-extension',
@@ -35,7 +35,7 @@ const equipmentConfig = {
     slug: 'barbell',
     primary: '#EAB308',       // Yellow-500
     primaryDark: '#d09e28',   // Darker muted yellow
-    heroImage: '/images/workout-cards/barbell-flat-bench-press.jpg',
+    heroImage: '/images/workout-cards/barbell.webp',
     exercises: [
       {
         key: 'flat-bench-barbell-press',
@@ -61,7 +61,7 @@ const equipmentConfig = {
     slug: 'weight-stack',
     primary: '#EF4444',       // Red-500
     primaryDark: '#b22222',   // Darker muted red
-    heroImage: '/images/workout-cards/weightstack-lateral-pulldown.jpg',
+    heroImage: '/images/workout-cards/lat-pulldown.webp',
     exercises: [
       {
         key: 'lateral-pulldown',

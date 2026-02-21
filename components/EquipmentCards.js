@@ -31,8 +31,8 @@ const equipmentData = [
  */
 function EquipmentCard({ equipment }) {
   return (
-    <Link href={equipment.href} className="flex-1 block">
-      <div className="relative h-[160px] rounded-2xl overflow-hidden group">
+    <Link href={equipment.href} className="flex-shrink-0 block" style={{ width: '45vw', maxWidth: '200px' }}>
+      <div className="relative rounded-2xl overflow-hidden group" style={{ aspectRatio: '3/4' }}>
         {/* Background image */}
         <img
           src={equipment.image}
@@ -48,12 +48,12 @@ function EquipmentCard({ equipment }) {
         {/* Gradient overlay */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
         {/* Content */}
-        <div className="absolute bottom-0 left-0 right-0 p-3 flex items-end justify-between">
-          <span className="text-white text-sm font-semibold leading-tight">
+        <div className="absolute bottom-0 left-0 right-0 p-4 flex items-end justify-between">
+          <span className="text-white text-2xl font-semibold leading-tight">
             {equipment.name}
           </span>
           <svg
-            className="w-4 h-4 text-white/70"
+            className="w-5 h-5 text-white/70"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -72,7 +72,7 @@ function EquipmentCard({ equipment }) {
 }
 
 /**
- * EquipmentCards - Equipment selector that fits all cards on one screen
+ * EquipmentCards - Equipment selector with horizontally scrollable cards
  * Links to individual equipment pages with exercise history and summaries
  */
 export default function EquipmentCards() {
@@ -80,8 +80,11 @@ export default function EquipmentCards() {
     <div>
       {/* Section title */}
       <h2 className="text-xl font-bold text-white mb-4">Exercises</h2>
-      {/* Cards container - fits all cards in one row */}
-      <div className="flex gap-3">
+      {/* Cards container - horizontally scrollable */}
+      <div 
+        className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-2"
+        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+      >
         {equipmentData.map((equipment) => (
           <EquipmentCard key={equipment.id} equipment={equipment} />
         ))}
