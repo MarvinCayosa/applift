@@ -264,7 +264,7 @@ export const updateIMUDataPath = async (logId, imuDataPath) => {
 };
 
 /**
- * Get a single workout log by ID
+ * Get a single workout log by ID (legacy workoutLogs collection)
  */
 export const getWorkoutLog = async (logId) => {
   try {
@@ -279,6 +279,66 @@ export const getWorkoutLog = async (logId) => {
     console.error('[WorkoutLogService] Error getting workout log:', error);
     throw error;
   }
+};
+
+/**
+ * Get a single workout log from the hierarchical userWorkouts structure.
+ * Path: userWorkouts/{userId}/{equipment}/{exercise}/logs/{logId}
+ *
+ * Falls back to the in-memory cache and legacy collection automatically.
+ */
+export const getWorkoutLogByPath = async (userId, equipment, exercise, logId) => {
+  // 1. Try in-memory cache first (populated by getUserWorkoutLogs)
+  const cacheKey = `logs_${userId}_all`;
+  const cached = getCached(cacheKey);
+  if (cached) {
+    const found = cached.find((l) => l.id === logId);
+    if (found) {
+      console.log('[WorkoutLogService] Found log in cache:', logId);
+      return found;
+    }
+  }
+
+  // 2. Try hierarchical path
+  if (userId && equipment && exercise) {
+    try {
+      const logRef = doc(
+        db,
+        USER_WORKOUTS_COLLECTION,
+        userId,
+        equipment,
+        exercise,
+        'logs',
+        logId
+      );
+      const snap = await getDoc(logRef);
+      if (snap.exists()) {
+        console.log('[WorkoutLogService] Found log at path:', logRef.path);
+        return { id: snap.id, _equipment: equipment, _exercise: exercise, ...snap.data() };
+      }
+    } catch (err) {
+      console.warn('[WorkoutLogService] Path fetch failed:', err.message);
+    }
+  }
+
+  // 3. Fallback to legacy collection
+  const legacy = await getWorkoutLog(logId);
+  if (legacy) return legacy;
+
+  // 4. Last resort – collectionGroup query across all 'logs' subcollections
+  try {
+    const q = query(collectionGroup(db, 'logs'), where('__name__', '==', logId));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      const d = snap.docs[0];
+      console.log('[WorkoutLogService] Found log via collectionGroup:', d.ref.path);
+      return { id: d.id, ...d.data() };
+    }
+  } catch (err) {
+    console.warn('[WorkoutLogService] collectionGroup fallback failed:', err.message);
+  }
+
+  return null;
 };
 
 /**
@@ -841,6 +901,7 @@ export default {
   cancelWorkoutLog,
   updateIMUDataPath,
   getWorkoutLog,
+  getWorkoutLogByPath,
   getUserWorkoutLogs,
   getWorkoutLogsByDateRange,
   getUserWorkoutStats,

@@ -5,7 +5,7 @@ import { useRef, useState, useEffect } from 'react'
  * Each card shows: exercise name, sets×reps · time, date, weight.
  * The first exercise variant gets the primary colour; the second gets a darker shade.
  */
-export default function RecentExerciseCards({ exercises, exerciseLogs, primaryColor, primaryDark }) {
+export default function RecentExerciseCards({ exercises, exerciseLogs, primaryColor, primaryDark, loading }) {
   const scrollRef = useRef(null)
 
   // Build a flat, date‑sorted array of recent sessions
@@ -49,6 +49,32 @@ export default function RecentExerciseCards({ exercises, exerciseLogs, primaryCo
   const formatDate = (d) =>
     d.toLocaleDateString('en-US', { month: 'short', day: '2-digit' })
 
+  // Skeleton loading state
+  if (loading) {
+    return (
+      <div className="flex gap-3 overflow-hidden pb-1">
+        {[1, 2, 3].map((i) => (
+          <div
+            key={i}
+            className="flex-shrink-0 rounded-2xl py-6 px-6 flex flex-col"
+            style={{ backgroundColor: 'rgba(255,255,255,0.05)', width: '180px', minHeight: '160px' }}
+          >
+            <div className="flex items-start justify-between">
+              <div className="h-5 w-24 bg-white/10 rounded animate-pulse" />
+              <div className="h-4 w-4 bg-white/10 rounded animate-pulse" />
+            </div>
+            <div className="h-px w-full bg-white/10 mt-3" />
+            <div className="h-4 w-20 bg-white/10 rounded animate-pulse mt-3" />
+            <div className="flex items-end justify-between mt-auto pt-2">
+              <div className="h-4 w-14 bg-white/10 rounded animate-pulse" />
+              <div className="h-8 w-12 bg-white/10 rounded animate-pulse" />
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
   if (items.length === 0) {
     return (
       <div className="bg-white/[0.05] rounded-2xl p-6 text-center">
@@ -68,7 +94,7 @@ export default function RecentExerciseCards({ exercises, exerciseLogs, primaryCo
         return (
           <div
             key={i}
-            className="flex-shrink-0 rounded-2xl py-6 px-6 flex flex-col"
+            className="flex-shrink-0 rounded-2xl py-6 px-4 flex flex-col"
             style={{ backgroundColor: bg, width: '180px', minHeight: '160px' }}
           >
             {/* Exercise name + chevron */}

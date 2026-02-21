@@ -16,7 +16,7 @@ export default function EquipmentStatsRow({ stats, primaryColor }) {
     <div className="flex gap-2">
       {/* Total Sessions - primary color box */}
       <div
-        className="rounded-2xl py-6 px-4 text-center flex flex-col justify-center"
+        className="rounded-2xl py-6 px-6 text-center flex flex-col justify-center"
         style={{ backgroundColor: primaryColor, minWidth: '90px' }}
       >
         <p className="text-4xl font-bold text-white leading-none">{stats.totalSessions}</p>

@@ -28,7 +28,7 @@ export default function EquipmentHero({ label, heroImage }) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </button>
-        <div className="flex-1 text-center pt-2 pr-9">
+        <div className="flex-1 text-center pt-5 pr-9">
           <h1 className="text-2xl font-bold text-white">{label}</h1>
           <p className="text-xs text-white/60">Statistics</p>
         </div>

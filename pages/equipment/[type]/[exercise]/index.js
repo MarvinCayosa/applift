@@ -1,9 +1,9 @@
 import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { useMemo } from 'react'
-import BottomNav from '../../../components/BottomNav'
-import { equipmentConfig } from '../../../components/equipment'
-import useEquipmentData from '../../../components/equipment/useEquipmentData'
+import BottomNav from '../../../../components/BottomNav'
+import { equipmentConfig } from '../../../../components/equipment'
+import useEquipmentData from '../../../../components/equipment/useEquipmentData'
 
 /**
  * Exercise detail page – shows all past workout sessions for a
@@ -68,7 +68,11 @@ export default function ExerciseDetailPage() {
 
     router.push({
       pathname: `/equipment/${slug}/${exerciseSlug}/session`,
-      query: { logId }
+      query: {
+        logId,
+        eq: log._equipment || '',
+        ex: log._exercise || '',
+      }
     })
   }
 

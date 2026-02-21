@@ -57,18 +57,13 @@ export default function EquipmentPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            {loading ? (
-              <div className="flex justify-center py-8">
-                <div className="w-6 h-6 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-              </div>
-            ) : (
-              <RecentExerciseCards
-                exercises={config.exercises}
-                exerciseLogs={exerciseLogs}
-                primaryColor={config.primary}
-                primaryDark={config.primaryDark}
-              />
-            )}
+            <RecentExerciseCards
+              exercises={config.exercises}
+              exerciseLogs={exerciseLogs}
+              primaryColor={config.primary}
+              primaryDark={config.primaryDark}
+              loading={loading}
+            />
           </section>
 
           {/* Exercise Image Cards */}
