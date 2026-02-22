@@ -27,14 +27,20 @@ export default function RepInsightCard({ repData, repNumber }) {
   } : null;
   
   // Determine form quality display and color based on classification
+  // prediction 0 = green (clean), 1 = yellow (mild), 2 = red (severe)
+  const PRED_2_LABELS_RI = [
+    'Abrupt Initiation', 'Abrupt', 'Inclination Asymmetry', 'Inclination',
+    'Releasing Too Fast', 'Release Fast', 'Poor Form', 'Bad Form',
+  ];
   const getFormDisplay = (prediction) => {
     if (!prediction) {
       return { label: 'Pending', color: { primary: '#6b7280', secondary: '#9ca3af' } };
     }
-    if (prediction.formQuality === 'clean' || prediction.label === 'Clean') {
+    // Use numeric prediction if available
+    if (prediction.prediction === 0 || prediction.formQuality === 'clean' || prediction.label === 'Clean') {
       return { label: prediction.label || 'Clean', color: { primary: '#22c55e', secondary: '#22c55e' } };
     }
-    if (prediction.formQuality === 'abrupt' || prediction.label?.includes('Abrupt') || prediction.label?.includes('Too Fast')) {
+    if (prediction.prediction === 2 || prediction.formQuality === 'abrupt' || PRED_2_LABELS_RI.some((l) => prediction.label?.includes(l) || l.includes(prediction.label || ''))) {
       return { label: prediction.label || 'Abrupt', color: { primary: '#ef4444', secondary: '#f87171' } };
     }
     return { label: prediction.label || 'Uncontrolled', color: { primary: '#f59e0b', secondary: '#fbbf24' } };

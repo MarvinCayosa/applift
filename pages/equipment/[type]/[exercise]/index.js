@@ -128,8 +128,8 @@ export default function ExerciseDetailPage() {
   const handleSessionClick = (log) => {
     if (!log.id) return
     router.push({
-      pathname: `/equipment/${slug}/${exerciseSlug}/session`,
-      query: { logId: log.id, eq: log._equipment || '', ex: log._exercise || '' },
+      pathname: '/session-details',
+      query: { logId: log.id, eq: log._equipment || '', ex: log._exercise || '', type: slug },
     })
   }
 

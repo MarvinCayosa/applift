@@ -14,7 +14,7 @@ export default function EquipmentHero({ label, heroImage }) {
         src={heroImage}
         alt={label}
         className="absolute inset-0 w-full h-full object-cover"
-        style={heroImage.includes('dumbbell.png') ? { objectPosition: 'center 60%' } : {}}
+        style={heroImage.includes('dumbbell.png') ? { objectPosition: 'center 30%' } : {}}
       />
       {/* Gradient overlay */}
       <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/30 to-black" />

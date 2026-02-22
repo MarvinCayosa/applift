@@ -67,8 +67,8 @@ export default function ExerciseDetailPage() {
     if (!logId) return
 
     router.push({
-      pathname: `/equipment/${slug}/${exerciseSlug}/session`,
-      query: { logId }
+      pathname: '/session-details',
+      query: { logId, eq: slug, ex: exerciseSlug, type: slug }
     })
   }
 

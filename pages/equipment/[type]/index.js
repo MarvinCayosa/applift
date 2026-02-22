@@ -63,6 +63,7 @@ export default function EquipmentPage() {
               primaryColor={config.primary}
               primaryDark={config.primaryDark}
               loading={loading}
+              equipmentSlug={slug}
             />
           </section>
 

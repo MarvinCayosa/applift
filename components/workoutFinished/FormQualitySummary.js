@@ -34,11 +34,15 @@ export default function FormQualitySummary({ mlClassification, totalReps }) {
 
   const dominant = getDominantClass();
 
-  // Colors for different labels
+  // Colors for different labels — prediction 0=green, 1=yellow, 2=red
+  const PRED_2_LABELS = [
+    'Abrupt Initiation', 'Abrupt', 'Inclination Asymmetry', 'Inclination',
+    'Releasing Too Fast', 'Release Fast', 'Poor Form', 'Bad Form',
+  ];
   const getLabelColor = (label, index) => {
     if (label === 'Clean' || index === 0) return '#22c55e'; // Green
-    if (label.includes('Fast') || label.includes('Abrupt') || index === 2) return '#ef4444'; // Red
-    return '#f59e0b'; // Yellow/Orange
+    if (PRED_2_LABELS.some((l) => label.includes(l) || l.includes(label)) || index === 2) return '#ef4444'; // Red
+    return '#f59e0b'; // Yellow
   };
 
   return (

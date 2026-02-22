@@ -59,10 +59,16 @@ export default function ClassificationDistribution({ setsData, analysisData, sel
     return { totalReps, cleanReps, cleanPercentage: Math.round((cleanReps / totalReps) * 100), labels, distribution: classificationCounts, distributionPercent };
   }, [setsData, selectedSet]);
 
-  // Color mapping for labels
+  // Color mapping for labels — prediction 0=green, 1=yellow, 2=red
+  // Uses the prediction number when available, otherwise infers from label string
+  const PREDICTION_1_LABELS_WF = ['Uncontrolled Movement', 'Uncontrolled', 'Pulling Too Fast', 'Pull Fast'];
+  const PREDICTION_2_LABELS_WF = [
+    'Abrupt Initiation', 'Abrupt', 'Inclination Asymmetry', 'Inclination',
+    'Releasing Too Fast', 'Release Fast', 'Poor Form', 'Bad Form',
+  ];
   const getLabelColor = (label) => {
     if (label === 'Clean') return { hex: '#22c55e', text: 'text-green-400', dot: 'bg-green-400' };
-    if (label.includes('Fast') || label.includes('Abrupt') || label.includes('Bad')) {
+    if (PREDICTION_2_LABELS_WF.some((l) => label.includes(l) || l.includes(label))) {
       return { hex: '#ef4444', text: 'text-red-400', dot: 'bg-red-400' };
     }
     return { hex: '#f59e0b', text: 'text-yellow-400', dot: 'bg-yellow-400' };

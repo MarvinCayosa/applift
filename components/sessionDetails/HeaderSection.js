@@ -1,0 +1,216 @@
+/**
+ * HeaderSection
+ *
+ * Hero header for Session Details page.
+ * Shows exercise image background, back chevron, exercise name, date/time,
+ * weight badge (blue), sets/reps/rest stats card, recommendation badge,
+ * and timing & calories bottom card.
+ *
+ * Design-matched: exact colors, spacing, text sizes, card styling.
+ */
+
+import { useRouter } from 'next/router';
+import { formatSessionDate, formatDuration, getRepsPerSet } from '../../utils/sessionDetails/analyticsMappers';
+
+/* ── Gemini sparkle SVG (inline, no external asset) ── */
+function GeminiSparkle({ className = 'w-4 h-4' }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none">
+      <path d="M12 2L13.09 8.26L18 4L14.74 9.91L21 11L14.74 12.09L18 20L13.09 13.74L12 22L10.91 13.74L6 20L9.26 12.09L3 11L9.26 9.91L6 4L10.91 8.26L12 2Z"
+        fill="url(#geminiGrad)" />
+      <defs>
+        <linearGradient id="geminiGrad" x1="3" y1="2" x2="21" y2="22" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#4285F4" />
+          <stop offset="33%" stopColor="#EA4335" />
+          <stop offset="66%" stopColor="#FBBC04" />
+          <stop offset="100%" stopColor="#34A853" />
+        </linearGradient>
+      </defs>
+    </svg>
+  );
+}
+
+export default function HeaderSection({
+  exerciseName,
+  date,
+  weight,
+  weightUnit = 'kg',
+  sets,
+  reps,
+  restTimeSec,
+  totalTime,
+  calories,
+  isRecommendation,
+  isCustomSet,
+  exerciseImage,
+  primaryColor = '#a855f7',
+}) {
+  const router = useRouter();
+  const dateStr = formatSessionDate(date);
+  const repsPerSet = getRepsPerSet(reps, sets);
+
+  return (
+    <div className="relative w-full overflow-hidden">
+      {/* ── Background exercise image + gradient overlay ── */}
+      {exerciseImage ? (
+        <>
+          <img
+            src={exerciseImage}
+            alt=""
+            className="absolute inset-0 w-full h-full object-cover"
+            aria-hidden="true"
+          />
+          <div
+            className="absolute inset-0"
+            style={{
+              background:
+                'linear-gradient(to bottom, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.20) 40%, rgba(0,0,0,0.65) 70%, rgb(0,0,0) 100%)',
+            }}
+          />
+        </>
+      ) : (
+        <div className="absolute inset-0 bg-gradient-to-b from-zinc-900 to-black" />
+      )}
+
+      {/* ── Content ── */}
+      <div className="relative z-10 px-5 pt-4 pt-pwa-dynamic pb-5">
+        {/* ── Back chevron + Title + Date ── */}
+        <div className="flex items-start mb-5">
+          <button
+            onClick={() => router.back()}
+            className="-ml-1.5 p-1.5 shrink-0"
+            aria-label="Go back"
+          >
+            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+
+          <div className="flex-1 text-center pr-7">
+            <h1 className="text-[22px] font-bold text-white leading-tight tracking-tight">
+              {exerciseName || 'Session Details'}
+            </h1>
+            {dateStr && (
+              <p className="text-[13px] mt-1" style={{ color: 'rgb(205, 205, 205)' }}>{dateStr}</p>
+            )}
+          </div>
+        </div>
+
+        {/* ── Weight badge + Stats card row ── */}
+        <div className="flex items-stretch gap-2.5 mb-3 content-fade-up-1">
+          {/* Weight badge — equipment primary color tile */}
+          <div
+            className="flex flex-col items-center justify-center rounded-2xl p-4 shrink-0"
+            style={{
+              backgroundColor: primaryColor,
+              width: 120,
+              minHeight: 88,
+            }}
+          >
+            <div className="flex items-baseline gap-[2px]">
+              <span className="text-5xl font-bold text-white leading-none">{weight || '—'}</span>
+              <span className="text-[13px] text-white/90 font-semibold">{weightUnit}</span>
+            </div>
+            <span className="text-[11px] text-white/60 mt-0.5 font-medium">Weight</span>
+          </div>
+
+          {/* Stats card — semi-transparent dark */}
+          <div
+            className="flex-1 rounded-2xl backdrop-blur-md flex items-center justify-evenly"
+            style={{ backgroundColor: 'rgb(0 0 0 / 65%)' }}
+          >
+            <StatItem value={sets} label="Sets" />
+            <div className="w-px self-stretch my-5 bg-white/[0.08]" />
+            <StatItem value={repsPerSet} label="Reps" />
+            <div className="w-px self-stretch my-5 bg-white/[0.08]" />
+            <StatItem value={restTimeSec} label="Rest" suffix="sec" />
+          </div>
+        </div>
+
+        {/* ── Recommendation / Custom Set badge ── */}
+        {(isRecommendation || isCustomSet) && (
+          <div className="flex items-center justify-center gap-1.5 mb-3 content-fade-up-1">
+            {isRecommendation ? (
+              <>
+                <GeminiSparkle className="w-[14px] h-[14px]" />
+                <span className="text-[13px] text-gray-300 font-medium">Generated Recommendation</span>
+              </>
+            ) : (
+              <span className="text-[13px] text-gray-400 font-medium">Custom Set</span>
+            )}
+          </div>
+        )}
+
+        {/* ── Timing & Calories card ── */}
+        <div className="flex justify-center content-fade-up-2">
+        <div
+          className="inline-flex items-center gap-4 rounded-2xl py-3 px-5"
+          style={{ backgroundColor: 'rgb(1 1 1 / 72%)' }}
+        >
+          {/* Time */}
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-lg bg-white/[0.08] flex items-center justify-center">
+              <img
+                src="/images/icons/time.png"
+                alt=""
+                className="w-[18px] h-[18px] object-contain opacity-80"
+                onError={(e) => {
+                  e.target.style.display = 'none';
+                }}
+              />
+            </div>
+            <div>
+              <p className="text-[11px] text-gray-500 leading-none">Time</p>
+              <p className="text-[15px] font-bold text-white mt-0.5">
+                {formatDuration(totalTime).endsWith('sec') ? (
+                  <>
+                    {formatDuration(totalTime).slice(0, -3)}<sub className="text-[10px]">sec</sub>
+                  </>
+                ) : (
+                  formatDuration(totalTime)
+                )}
+              </p>
+            </div>
+          </div>
+
+          <div className="w-px h-9 bg-white/[0.08]" />
+
+          {/* Burn */}
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-lg bg-white/[0.08] flex items-center justify-center">
+              <img
+                src="/images/icons/burn.png"
+                alt=""
+                className="w-[18px] h-[18px] object-contain opacity-80"
+                onError={(e) => {
+                  e.target.style.display = 'none';
+                }}
+              />
+            </div>
+            <div>
+              <p className="text-[11px] text-gray-500 leading-none">Burn</p>
+              <p className="text-[15px] font-bold text-white mt-0.5">
+                {calories || 0}{' '}
+                <span className="text-[11px] text-gray-500 font-normal">kcal</span>
+              </p>
+            </div>
+          </div>
+        </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Stat column (Sets / Reps / Rest) ── */
+function StatItem({ value, label, suffix }) {
+  return (
+    <div className="flex flex-col items-center py-2">
+      <div className="flex items-baseline gap-[2px]">
+        <span className="text-[28px] font-bold text-white leading-none">{value ?? '—'}</span>
+        {suffix && <span className="text-[12px] text-gray-400 font-medium">{suffix}</span>}
+      </div>
+      <span className="text-[11px] text-gray-400 mt-1 font-medium">{label}</span>
+    </div>
+  );
+}

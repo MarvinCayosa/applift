@@ -1,12 +1,14 @@
 import { useRef, useState, useEffect } from 'react'
+import { useRouter } from 'next/router'
 
 /**
  * Horizontally‑scrollable row of recent‑exercise cards.
  * Each card shows: exercise name, sets×reps · time, date, weight.
  * The first exercise variant gets the primary colour; the second gets a darker shade.
  */
-export default function RecentExerciseCards({ exercises, exerciseLogs, primaryColor, primaryDark, loading }) {
+export default function RecentExerciseCards({ exercises, exerciseLogs, primaryColor, primaryDark, loading, equipmentSlug }) {
   const scrollRef = useRef(null)
+  const router = useRouter()
 
   // Build a flat, date‑sorted array of recent sessions
   const recent = []
@@ -24,6 +26,9 @@ export default function RecentExerciseCards({ exercises, exerciseLogs, primaryCo
       const totalTimeSec = log.results?.totalTime || 0
       const durSec = durationMs ? Math.round(durationMs / 1000) : totalTimeSec
       const weight = log.planned?.weight || log.exercise?.weight || 0
+      const logId = log.id || log.logId || log.sessionId || ''
+      const eqPath = log._equipment || log.exercise?.equipmentPath || log.exercise?.equipment || ''
+      const exPath = log._exercise || log.exercise?.namePath || log.exercise?.name || ''
 
       recent.push({
         exerciseKey: ex.key,
@@ -34,11 +39,14 @@ export default function RecentExerciseCards({ exercises, exerciseLogs, primaryCo
         durSec,
         weight,
         date,
+        logId,
+        eqPath,
+        exPath,
       })
     })
   })
   recent.sort((a, b) => b.date - a.date)
-  const items = recent.slice(0, 10) // cap to 10
+  const items = recent.slice(0, 5)
 
   const formatDuration = (sec) => {
     const m = Math.floor(sec / 60)
@@ -48,6 +56,14 @@ export default function RecentExerciseCards({ exercises, exerciseLogs, primaryCo
 
   const formatDate = (d) =>
     d.toLocaleDateString('en-US', { month: 'short', day: '2-digit' })
+
+  const handleOpen = (item) => {
+    if (!item.logId || !equipmentSlug) return
+    router.push({
+      pathname: '/session-details',
+      query: { logId: item.logId, eq: item.eqPath || '', ex: item.exPath || '', type: equipmentSlug },
+    })
+  }
 
   // Skeleton loading state
   if (loading) {
@@ -92,9 +108,11 @@ export default function RecentExerciseCards({ exercises, exerciseLogs, primaryCo
       {items.map((item, i) => {
         const bg = item.variant === 'primary' ? primaryColor : primaryDark
         return (
-          <div
+          <button
             key={i}
-            className="flex-shrink-0 rounded-2xl py-6 px-4 flex flex-col"
+            type="button"
+            onClick={() => handleOpen(item)}
+            className="flex-shrink-0 rounded-2xl py-6 px-4 flex flex-col text-left cursor-pointer active:scale-[0.98] transition-transform"
             style={{ backgroundColor: bg, width: '180px', minHeight: '160px' }}
           >
             {/* Exercise name + chevron */}
@@ -123,7 +141,7 @@ export default function RecentExerciseCards({ exercises, exerciseLogs, primaryCo
                 <span className="text-sm font-medium text-white/60 ml-0.5">kg</span>
               </p>
             </div>
-          </div>
+          </button>
         )
       })}
     </div>
