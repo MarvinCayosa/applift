@@ -428,9 +428,16 @@ export function WorkoutLoggingProvider({ children }) {
    * Flush queued set classifications from IndexedDB.
    * Called when internet reconnects during or after a workout.
    * Processes each queued set_classification job in order.
+   * 
+   * Returns:
+   * - uploaded: number of successfully classified sets
+   * - failed: number of failed classifications
+   * - classificationsBySet: { setNumber -> [repClassifications] }
+   * - sessionClassifications: { sessionId -> { setNumber -> [repClassifications], exercise } }
+   *   (grouped by session for proper GCS/Firestore updates)
    */
   const flushPendingSetClassifications = useCallback(async () => {
-    if (!user?.uid) return { uploaded: 0, failed: 0, classificationsBySet: {} };
+    if (!user?.uid) return { uploaded: 0, failed: 0, classificationsBySet: {}, sessionClassifications: {} };
 
     try {
       const pending = await getAllPendingJobs();
@@ -438,7 +445,7 @@ export function WorkoutLoggingProvider({ children }) {
 
       if (classificationJobs.length === 0) {
         setPendingSetUploads(0);
-        return { uploaded: 0, failed: 0, classificationsBySet: {} };
+        return { uploaded: 0, failed: 0, classificationsBySet: {}, sessionClassifications: {} };
       }
 
       console.log(`[WorkoutLogging] 🔄 Flushing ${classificationJobs.length} queued set classifications...`);
@@ -448,6 +455,8 @@ export function WorkoutLoggingProvider({ children }) {
       // Collect classification results keyed by setNumber so the caller
       // can merge them into the (possibly stale) deferred workout data.
       const classificationsBySet = {};
+      // Also group by sessionId for proper GCS/Firestore updates when recovering orphaned sessions
+      const sessionClassifications = {};
 
       const { updateJobStatus } = await import('../utils/offlineQueue');
 
@@ -456,6 +465,7 @@ export function WorkoutLoggingProvider({ children }) {
           await updateJobStatus(job.jobId, 'uploading');
 
           const { exercise, setNumber, reps } = job.payload;
+          const sessionId = job.sessionId;
           const result = await classifyReps(exercise, reps, token);
 
           if (result && result.classifications && result.classifications.length > 0) {
@@ -473,6 +483,12 @@ export function WorkoutLoggingProvider({ children }) {
             }));
 
             classificationsBySet[setNumber] = repClassifications;
+            
+            // Group by session for orphaned session recovery
+            if (!sessionClassifications[sessionId]) {
+              sessionClassifications[sessionId] = { sets: {}, exercise };
+            }
+            sessionClassifications[sessionId].sets[setNumber] = repClassifications;
 
             // Also try to store in streaming service (works if session is still alive)
             repClassifications.forEach(rc => {
@@ -496,11 +512,12 @@ export function WorkoutLoggingProvider({ children }) {
       }
 
       setPendingSetUploads(Math.max(0, pendingSetUploads - uploaded));
-      console.log(`[WorkoutLogging] ✅ Flushed: ${uploaded} uploaded, ${failed} failed, sets: ${Object.keys(classificationsBySet).join(', ')}`);
-      return { uploaded, failed, classificationsBySet };
+      const sessionIds = Object.keys(sessionClassifications);
+      console.log(`[WorkoutLogging] ✅ Flushed: ${uploaded} uploaded, ${failed} failed, sets: ${Object.keys(classificationsBySet).join(', ')}, sessions: ${sessionIds.join(', ')}`);
+      return { uploaded, failed, classificationsBySet, sessionClassifications };
     } catch (err) {
       console.warn('[WorkoutLogging] flushPendingSetClassifications error:', err);
-      return { uploaded: 0, failed: 0, classificationsBySet: {} };
+      return { uploaded: 0, failed: 0, classificationsBySet: {}, sessionClassifications: {} };
     }
   }, [user, pendingSetUploads]);
 

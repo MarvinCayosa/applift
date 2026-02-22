@@ -17,7 +17,8 @@ import { useBleConnectionWatcher } from '../hooks/useBleConnectionWatcher';
 import { useNetworkConnectionWatcher } from '../hooks/useNetworkConnectionWatcher';
 import { useWorkoutSessionState, SESSION_STATES } from '../hooks/useWorkoutSessionState';
 import { SessionCheckpointManager } from '../utils/sessionCheckpointManager';
-import { enqueueJob, clearSessionJobs, flushQueue, getAllPendingJobs, clearAllPendingJobs } from '../utils/offlineQueue';
+import { enqueueJob, clearSessionJobs, flushQueue, getAllPendingJobs, clearAllPendingJobs, updateJobStatus, purgeOldJobs } from '../utils/offlineQueue';
+import { classifyReps } from '../services/mlClassificationService';
 import LoadingScreen from '../components/LoadingScreen';
 
 export default function WorkoutMonitor() {
@@ -389,10 +390,12 @@ export default function WorkoutMonitor() {
 
     // 2. Flush queued set classifications — returns actual results
     let classificationsBySet = {};
+    let sessionClassifications = {};
     try {
       const flushResult = await flushPendingSetClassifications();
       classificationsBySet = flushResult.classificationsBySet || {};
-      console.log('[WorkoutMonitor] Flushed classifications for sets:', Object.keys(classificationsBySet));
+      sessionClassifications = flushResult.sessionClassifications || {};
+      console.log('[WorkoutMonitor] Flushed classifications for sets:', Object.keys(classificationsBySet), 'sessions:', Object.keys(sessionClassifications));
     } catch (_) {}
 
     // 3. Merge flush results into the (stale) workoutData snapshot
@@ -656,6 +659,215 @@ export default function WorkoutMonitor() {
     onReconnect: handleBleReconnect,
   });
 
+  // ── Comprehensive offline sync with classification merging ─────────────────
+  const comprehensiveOfflineSync = useCallback(async () => {
+    if (!user?.uid) return { uploaded: 0, failed: 0 };
+
+    try {
+      console.log('[OfflineSync] 🔄 Starting comprehensive offline sync...');
+      
+      // 1. Get all pending jobs
+      const pending = await getAllPendingJobs();
+      const gcsJobs = pending.filter(j => j.type === 'gcs_upload' && j.status === 'pending');
+      const classificationJobs = pending.filter(j => j.type === 'set_classification' && j.status === 'pending');
+      
+      // Group jobs by sessionId for coordinated processing
+      const sessionJobs = {};
+      
+      // Index GCS upload jobs by session
+      gcsJobs.forEach(job => {
+        const sessionId = job.sessionId;
+        if (!sessionJobs[sessionId]) sessionJobs[sessionId] = { gcsJobs: [], classificationJobs: [] };
+        sessionJobs[sessionId].gcsJobs.push(job);
+      });
+      
+      // Index classification jobs by session
+      classificationJobs.forEach(job => {
+        const sessionId = job.sessionId;
+        if (!sessionJobs[sessionId]) sessionJobs[sessionId] = { gcsJobs: [], classificationJobs: [] };
+        sessionJobs[sessionId].classificationJobs.push(job);
+      });
+
+      let totalUploaded = 0;
+      let totalFailed = 0;
+
+      // Process each session independently
+      for (const [sessionId, jobs] of Object.entries(sessionJobs)) {
+        try {
+          console.log(`[OfflineSync] Processing session ${sessionId}: ${jobs.gcsJobs.length} GCS jobs, ${jobs.classificationJobs.length} classification jobs`);
+          
+          // Find workout_data.json job for this session
+          const workoutDataJob = jobs.gcsJobs.find(job => 
+            job.payload.filePath && job.payload.filePath.includes('workout_data.json')
+          );
+          
+          if (!workoutDataJob) {
+            console.warn(`[OfflineSync] No workout_data.json found for session ${sessionId}, uploading jobs separately`);
+            // Fall back to regular upload for this session
+            for (const job of jobs.gcsJobs) {
+              try {
+                await uploadOfflineJob(job);
+                await updateJobStatus(job.jobId, 'done');
+                totalUploaded++;
+              } catch (err) {
+                console.warn(`[OfflineSync] Upload failed for ${job.jobId}:`, err);
+                await updateJobStatus(job.jobId, 'failed');
+                totalFailed++;
+              }
+            }
+            continue;
+          }
+
+          // Parse workout data content
+          let workoutData;
+          try {
+            workoutData = JSON.parse(workoutDataJob.payload.content);
+          } catch (err) {
+            console.warn(`[OfflineSync] Failed to parse workout data for session ${sessionId}:`, err);
+            totalFailed += jobs.gcsJobs.length;
+            continue;
+          }
+
+          // Process set classifications for this session
+          const token = await user.getIdToken();
+          const { updateJobStatus } = await import('../utils/offlineQueue');
+          let hasNewClassifications = false;
+
+          for (const job of jobs.classificationJobs) {
+            try {
+              await updateJobStatus(job.jobId, 'uploading');
+              
+              const { exercise, setNumber, reps } = job.payload;
+              const result = await classifyReps(exercise, reps, token);
+              
+              if (result && result.classifications && result.classifications.length > 0) {
+                // Find the target set in workout data
+                const targetSet = workoutData.sets?.find(s => s.setNumber === setNumber);
+                if (targetSet && targetSet.reps) {
+                  // Merge classifications into reps
+                  result.classifications.forEach((cls, idx) => {
+                    const repNumber = reps[idx]?.repNumber || idx + 1;
+                    const targetRep = targetSet.reps.find(r => r.repNumber === repNumber);
+                    if (targetRep) {
+                      targetRep.classification = {
+                        prediction: cls.prediction,
+                        label: cls.label,
+                        confidence: cls.confidence,
+                        probabilities: cls.probabilities,
+                        method: result.modelAvailable ? 'ml' : 'rules'
+                      };
+                      targetRep.confidence = cls.confidence;
+                      targetRep.classifiedAt = new Date().toISOString();
+                      hasNewClassifications = true;
+                    }
+                  });
+                }
+                await updateJobStatus(job.jobId, 'done');
+              } else {
+                console.warn(`[OfflineSync] Classification returned empty for Set ${setNumber}: ${result?.error || 'no classifications'}`);
+                await updateJobStatus(job.jobId, 'failed');
+                totalFailed++;
+              }
+            } catch (err) {
+              console.warn(`[OfflineSync] Failed to classify set ${job.jobId}:`, err);
+              await updateJobStatus(job.jobId, 'failed');
+              totalFailed++;
+            }
+          }
+
+          // Upload workout_data.json with merged classifications
+          try {
+            // Update the content with merged classifications
+            const updatedContent = JSON.stringify(workoutData);
+            const modifiedJob = {
+              ...workoutDataJob,
+              payload: {
+                ...workoutDataJob.payload,
+                content: updatedContent
+              }
+            };
+            
+            await uploadOfflineJob(modifiedJob);
+            await updateJobStatus(workoutDataJob.jobId, 'done');
+            totalUploaded++;
+            
+            if (hasNewClassifications) {
+              console.log(`[OfflineSync] ✅ Uploaded workout_data.json with merged classifications for session ${sessionId}`);
+            }
+          } catch (err) {
+            console.warn(`[OfflineSync] Failed to upload workout_data.json for session ${sessionId}:`, err);
+            await updateJobStatus(workoutDataJob.jobId, 'failed');
+            totalFailed++;
+          }
+
+          // Upload other GCS jobs for this session  
+          for (const job of jobs.gcsJobs) {
+            if (job === workoutDataJob) continue; // Already handled
+            try {
+              await uploadOfflineJob(job);
+              await updateJobStatus(job.jobId, 'done');
+              totalUploaded++;
+            } catch (err) {
+              console.warn(`[OfflineSync] Upload failed for ${job.jobId}:`, err);
+              await updateJobStatus(job.jobId, 'failed');
+              totalFailed++;
+            }
+          }
+
+          // Save to Firestore if we have workout metadata
+          if (hasNewClassifications && workoutData.workoutId) {
+            try {
+              const fsResp = await fetch('/api/imu-stream', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                  action: 'completeWorkout',
+                  userId: user.uid,
+                  workoutId: workoutData.workoutId,
+                  metadata: {
+                    gcsPath: workoutDataJob.payload.filePath,
+                    exercise: workoutData.exercise,
+                    equipment: workoutData.equipment,
+                    completedSets: workoutData.sets?.length || 0,
+                    completedReps: workoutData.sets?.reduce((total, set) => total + (set.reps?.length || 0), 0) || 0,
+                    status: 'completed',
+                    endTime: new Date().toISOString(),
+                  },
+                }),
+              });
+              if (fsResp.ok) {
+                console.log(`[OfflineSync] ✅ Firestore workout log saved for session ${sessionId}`);
+              } else {
+                console.warn(`[OfflineSync] Firestore save failed for session ${sessionId}, status: ${fsResp.status}`);
+              }
+            } catch (fsErr) {
+              console.warn(`[OfflineSync] Firestore save error for session ${sessionId}:`, fsErr.message);
+            }
+          }
+
+        } catch (sessionErr) {
+          console.warn(`[OfflineSync] Failed to process session ${sessionId}:`, sessionErr);
+          totalFailed += jobs.gcsJobs.length + jobs.classificationJobs.length;
+        }
+      }
+
+      // Clean up completed jobs
+      if (totalUploaded > 0) {
+        await purgeOldJobs(0); // Remove done jobs immediately after flush
+      }
+
+      console.log(`[OfflineSync] ✅ Comprehensive sync complete: ${totalUploaded} uploaded, ${totalFailed} failed`);
+      return { uploaded: totalUploaded, failed: totalFailed };
+      
+    } catch (err) {
+      console.warn('[OfflineSync] Comprehensive sync failed:', err);
+      return { uploaded: 0, failed: 0 };
+    }
+  }, [user, uploadOfflineJob]);
+
   // ── Offline upload helper (reusable by both flush and startup) ─────
   const uploadOfflineJob = useCallback(async (job) => {
     if (job.type !== 'gcs_upload') {
@@ -766,22 +978,19 @@ export default function WorkoutMonitor() {
       // 1. Migrate old localStorage fallback items into IndexedDB first
       await migrateLocalStorageFallbacks();
 
-      // 2. Flush IndexedDB queue
-      const result = await flushQueue(uploadOfflineJob, 'gcs_upload');
-
-      // 3. Flush any pending set classifications
-      await flushPendingSetClassifications();
+      // 2. Use comprehensive sync that merges classifications before uploading 
+      const result = await comprehensiveOfflineSync();
 
       if (result.uploaded > 0) {
-        setOfflineToast(`Connection restored — ${result.uploaded} file(s) synced.`);
+        setOfflineToast(`Connection restored — ${result.uploaded} file(s) synced with ML classifications.`);
         setTimeout(() => setOfflineToast(null), 4000);
       }
     } catch (err) {
-      console.warn('[OfflineSync] Flush failed:', err);
+      console.warn('[OfflineSync] Comprehensive sync failed:', err);
       setOfflineToast('Sync failed — will retry later.');
       setTimeout(() => setOfflineToast(null), 4000);
     }
-  }, [transition, flushPendingSetClassifications, migrateLocalStorageFallbacks, uploadOfflineJob]);
+  }, [transition, comprehensiveOfflineSync, migrateLocalStorageFallbacks]);
 
   const { isOnline } = useNetworkConnectionWatcher({
     onOffline: handleNetworkOffline,
@@ -797,10 +1006,10 @@ export default function WorkoutMonitor() {
   useEffect(() => {
     if (isOnline && user) {
       migrateLocalStorageFallbacks()
-        .then(() => flushQueue(uploadOfflineJob, 'gcs_upload'))
+        .then(() => comprehensiveOfflineSync())
         .then(r => {
           if (r.uploaded > 0) {
-            setOfflineToast(`Synced ${r.uploaded} offline file(s).`);
+            setOfflineToast(`Synced ${r.uploaded} offline file(s) with ML classifications.`);
             setTimeout(() => setOfflineToast(null), 4000);
           }
         })
