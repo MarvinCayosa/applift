@@ -309,6 +309,9 @@ export function useWorkoutSession({
   // Track last rep count for detecting new reps
   const lastRepCountRef = useRef(0);
 
+  // Flag to prevent set completion immediately after rollback
+  const postRollbackRef = useRef(false);
+
   // Handle IMU data callback
   const handleIMUData = useCallback((data) => {
     // Always update display values (even during countdown)
@@ -386,6 +389,9 @@ export function useWorkoutSession({
       if (newStats.repCount > lastRepCountRef.current) {
         console.log(`[WorkoutSession] Rep ${newStats.repCount} detected!`);
         lastRepCountRef.current = newStats.repCount;
+
+        // Clear the post-rollback flag now that a new rep has been detected
+        postRollbackRef.current = false;
         
         // Get the precise boundary info from RepCounter
         const repData = repCounterRef.current.exportData();
@@ -476,6 +482,12 @@ export function useWorkoutSession({
   // Check if set is complete (reps reached target)
   useEffect(() => {
     if (isRecording && !isPaused && !countdownActive && !isOnBreak) {
+      // Skip set completion check if we just rolled back from BLE disconnect
+      // This prevents immediate completion when repStats already >= target after rollback
+      if (postRollbackRef.current) {
+        console.log('[WorkoutSession] Skipping set completion check - post-rollback state');
+        return;
+      }
       if (repStats.repCount >= recommendedReps && repStats.repCount > 0) {
         // Track stats for this completed set
         const currentRepData = repCounterRef.current.exportData();
@@ -1022,6 +1034,9 @@ export function useWorkoutSession({
     setRepStats(rc.getStats());
     setElapsedTime(checkpoint.elapsedTime);
     lastRepCountRef.current = checkpoint.repCount;
+
+    // 5. Set post-rollback flag to prevent immediate set completion
+    postRollbackRef.current = true;
 
     // 5. Rebuild display chart from truncated full arrays
     setTimeData(fullTimeData.current.slice(-MAX_CHART));
