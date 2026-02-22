@@ -76,7 +76,8 @@ async function withStore(mode, callback) {
  * @returns {Promise<string>}  The generated jobId.
  */
 export async function enqueueJob(sessionId, type, payload, setNumber = null) {
-  const jobId = `${sessionId}:${type}:${setNumber ?? 'final'}:${Date.now()}`;
+  // Stable idempotent key — same set will overwrite previous entry, not duplicate
+  const jobId = `${sessionId}:${type}:${setNumber ?? 'final'}`;
 
   await withStore('readwrite', (store) => {
     store.put({
@@ -185,6 +186,22 @@ export async function clearSessionJobs(sessionId) {
   });
 
   console.log(`[OfflineQueue] Cleared ${jobs.length} jobs for session ${sessionId}`);
+}
+
+/**
+ * Clear ALL pending jobs from the queue.
+ * Use this on workout start to prevent stale jobs from previous sessions.
+ */
+export async function clearAllPendingJobs() {
+  const pending = await getAllPendingJobs();
+  if (pending.length === 0) return 0;
+
+  await withStore('readwrite', (store) => {
+    pending.forEach((j) => store.delete(j.jobId));
+  });
+
+  console.log(`[OfflineQueue] Cleared ${pending.length} stale pending jobs`);
+  return pending.length;
 }
 
 /**

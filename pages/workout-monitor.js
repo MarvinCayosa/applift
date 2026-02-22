@@ -17,7 +17,7 @@ import { useBleConnectionWatcher } from '../hooks/useBleConnectionWatcher';
 import { useNetworkConnectionWatcher } from '../hooks/useNetworkConnectionWatcher';
 import { useWorkoutSessionState, SESSION_STATES } from '../hooks/useWorkoutSessionState';
 import { SessionCheckpointManager } from '../utils/sessionCheckpointManager';
-import { enqueueJob, clearSessionJobs, flushQueue, getAllPendingJobs } from '../utils/offlineQueue';
+import { enqueueJob, clearSessionJobs, flushQueue, getAllPendingJobs, clearAllPendingJobs } from '../utils/offlineQueue';
 import LoadingScreen from '../components/LoadingScreen';
 
 export default function WorkoutMonitor() {
@@ -160,6 +160,9 @@ export default function WorkoutMonitor() {
     
     const initSession = async () => {
       console.log('🚀 Initializing streaming session on page load...');
+      
+      // Clear any stale pending jobs from previous sessions
+      await clearAllPendingJobs();
       
       const result = await startStreaming({
         exercise: workout,
