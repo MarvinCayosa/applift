@@ -244,9 +244,18 @@ export function WorkoutLoggingProvider({ children }) {
         if (result.details) console.error(`[WorkoutLogging]   Details: ${result.details}`);
         if (result.hint) console.error(`[WorkoutLogging]   Hint: ${result.hint}`);
 
-        // If error was a network error, queue it for retry
-        if (result.error.includes('Failed to fetch') || result.error.includes('NetworkError') || result.error.includes('Network offline') || result.error.includes('AbortError')) {
-          console.log(`[WorkoutLogging] 📦 Network error — queueing Set ${setNumber} for retry`);
+        // If classification failed for ANY network-related reason, queue for retry.
+        // Check both the error message AND current offline status.
+        const nowOffline = isNetworkOffline() || (typeof navigator !== 'undefined' && !navigator.onLine);
+        const isRetryable = nowOffline
+          || result.error.includes('Failed to fetch')
+          || result.error.includes('NetworkError')
+          || result.error.includes('Network offline')
+          || result.error.includes('AbortError')
+          || result.error.includes('aborted');
+
+        if (isRetryable) {
+          console.log(`[WorkoutLogging] 📦 Classification failed (offline=${nowOffline}) — queueing Set ${setNumber} for retry`);
           const sessionId = workoutId || 'unknown';
           await enqueueJob(sessionId, 'set_classification', {
             exercise,
@@ -293,6 +302,32 @@ export function WorkoutLoggingProvider({ children }) {
       console.error(`[WorkoutLogging] ❌ Background ML failed for Set ${setNumber}:`, error);
       console.error(`[WorkoutLogging]   Error name: ${error.name}`);
       console.error(`[WorkoutLogging]   Error message: ${error.message}`);
+
+      // If the failure looks network-related, queue the set for retry
+      const nowOffline = isNetworkOffline() || (typeof navigator !== 'undefined' && !navigator.onLine);
+      const msg = error.message || '';
+      if (nowOffline || msg.includes('Failed to fetch') || msg.includes('aborted') || msg.includes('NetworkError')) {
+        try {
+          const sessionId = workoutId || 'unknown';
+          const setData = getSetRepsForML(setNumber);
+          if (setData?.reps?.length > 0) {
+            await enqueueJob(sessionId, 'set_classification', {
+              exercise,
+              setNumber,
+              reps: setData.reps,
+              userId: user?.uid,
+              queuedAt: Date.now(),
+            }, setNumber);
+            setPendingSetUploads(prev => prev + 1);
+            setBackgroundMLStatus(prev => ({ ...prev, [setNumber]: 'queued' }));
+            console.log(`[WorkoutLogging] 📦 Queued Set ${setNumber} for retry after thrown error`);
+            return;
+          }
+        } catch (queueErr) {
+          console.warn('[WorkoutLogging] Failed to queue set for retry:', queueErr);
+        }
+      }
+
       setBackgroundMLStatus(prev => ({ ...prev, [setNumber]: 'error' }));
     }
   }, [user, workoutId]);
@@ -395,7 +430,7 @@ export function WorkoutLoggingProvider({ children }) {
    * Processes each queued set_classification job in order.
    */
   const flushPendingSetClassifications = useCallback(async () => {
-    if (!user?.uid) return { uploaded: 0, failed: 0 };
+    if (!user?.uid) return { uploaded: 0, failed: 0, classificationsBySet: {} };
 
     try {
       const pending = await getAllPendingJobs();
@@ -403,13 +438,16 @@ export function WorkoutLoggingProvider({ children }) {
 
       if (classificationJobs.length === 0) {
         setPendingSetUploads(0);
-        return { uploaded: 0, failed: 0 };
+        return { uploaded: 0, failed: 0, classificationsBySet: {} };
       }
 
       console.log(`[WorkoutLogging] 🔄 Flushing ${classificationJobs.length} queued set classifications...`);
       const token = await user.getIdToken();
       let uploaded = 0;
       let failed = 0;
+      // Collect classification results keyed by setNumber so the caller
+      // can merge them into the (possibly stale) deferred workout data.
+      const classificationsBySet = {};
 
       const { updateJobStatus } = await import('../utils/offlineQueue');
 
@@ -421,16 +459,26 @@ export function WorkoutLoggingProvider({ children }) {
           const result = await classifyReps(exercise, reps, token);
 
           if (result && result.classifications && result.classifications.length > 0) {
-            result.classifications.forEach((cls, idx) => {
-              const repNumber = reps[idx]?.repNumber || idx + 1;
-              storeRepClassification(setNumber, repNumber, {
+            // Build per-rep classification objects
+            const repClassifications = result.classifications.map((cls, idx) => ({
+              repNumber: reps[idx]?.repNumber || idx + 1,
+              classification: {
                 prediction: cls.prediction,
                 label: cls.label,
                 confidence: cls.confidence,
                 probabilities: cls.probabilities,
                 method: result.modelAvailable ? 'ml' : 'rules'
-              }, cls.confidence);
+              },
+              confidence: cls.confidence,
+            }));
+
+            classificationsBySet[setNumber] = repClassifications;
+
+            // Also try to store in streaming service (works if session is still alive)
+            repClassifications.forEach(rc => {
+              storeRepClassification(setNumber, rc.repNumber, rc.classification, rc.confidence);
             });
+
             setBackgroundMLStatus(prev => ({ ...prev, [setNumber]: 'complete' }));
           }
 
@@ -444,11 +492,11 @@ export function WorkoutLoggingProvider({ children }) {
       }
 
       setPendingSetUploads(Math.max(0, pendingSetUploads - uploaded));
-      console.log(`[WorkoutLogging] ✅ Flushed: ${uploaded} uploaded, ${failed} failed`);
-      return { uploaded, failed };
+      console.log(`[WorkoutLogging] ✅ Flushed: ${uploaded} uploaded, ${failed} failed, sets: ${Object.keys(classificationsBySet).join(', ')}`);
+      return { uploaded, failed, classificationsBySet };
     } catch (err) {
       console.warn('[WorkoutLogging] flushPendingSetClassifications error:', err);
-      return { uploaded: 0, failed: 0 };
+      return { uploaded: 0, failed: 0, classificationsBySet: {} };
     }
   }, [user, pendingSetUploads]);
 

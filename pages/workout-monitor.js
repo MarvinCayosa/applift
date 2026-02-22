@@ -564,15 +564,46 @@ export default function WorkoutMonitor() {
 
     // ── If we were WAITING_FOR_INTERNET, internet is back → proceed with analyzing ──
     if (sessionState === SESSION_STATES.WAITING_FOR_INTERNET) {
-      // Flush queued set classifications first
+      // 1. Flush GCS uploads first (workout_data.json, metadata.json that
+      //    failed during endStreaming when we were offline)
       try {
-        await flushPendingSetClassifications();
+        await migrateLocalStorageFallbacks();
+        await flushQueue(uploadOfflineJob);
+      } catch (_) {}
+
+      // 2. Flush queued set classifications — returns actual results
+      let classificationsBySet = {};
+      try {
+        const flushResult = await flushPendingSetClassifications();
+        classificationsBySet = flushResult.classificationsBySet || {};
+        console.log('[WorkoutMonitor] Flushed classifications for sets:', Object.keys(classificationsBySet));
       } catch (_) {}
 
       const deferred = deferredWorkoutResultRef.current;
       if (deferred) {
         const { finalStats, result, chartData } = deferred;
         deferredWorkoutResultRef.current = null;
+
+        // 3. Merge flush results into the (stale) workoutData snapshot.
+        //    storeRepClassification() can't help because endStreaming()
+        //    already called resetState(), so in-memory data is gone.
+        if (result?.workoutData?.sets && Object.keys(classificationsBySet).length > 0) {
+          for (const [setNumStr, repClassifications] of Object.entries(classificationsBySet)) {
+            const setNum = Number(setNumStr);
+            const targetSet = result.workoutData.sets.find(s => s.setNumber === setNum);
+            if (targetSet && targetSet.reps) {
+              for (const rc of repClassifications) {
+                const targetRep = targetSet.reps.find(r => r.repNumber === rc.repNumber);
+                if (targetRep) {
+                  targetRep.classification = rc.classification;
+                  targetRep.confidence = rc.confidence;
+                  targetRep.classifiedAt = new Date().toISOString();
+                }
+              }
+            }
+          }
+          console.log('[WorkoutMonitor] Merged classifications into deferred workoutData');
+        }
 
         // Now show analyzing screen
         setIsAnalyzing(true);
@@ -608,7 +639,7 @@ export default function WorkoutMonitor() {
       setOfflineToast('Sync failed — will retry later.');
       setTimeout(() => setOfflineToast(null), 4000);
     }
-  }, [sessionState, transition, flushPendingSetClassifications]);
+  }, [sessionState, transition, flushPendingSetClassifications, migrateLocalStorageFallbacks, uploadOfflineJob]);
 
   const { isOnline } = useNetworkConnectionWatcher({
     onOffline: handleNetworkOffline,
