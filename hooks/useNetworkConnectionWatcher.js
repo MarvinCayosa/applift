@@ -85,6 +85,9 @@ export function useNetworkConnectionWatcher({ onOffline, onOnline, activeProbe =
 
     const goOnline = () => {
       if (isOnlineRef.current) return; // already online
+      // Reset offline flags so services no longer short-circuit their fetches
+      _isKnownOffline = false;
+      _consecutiveFailures = 0;
       console.log('[NetworkWatcher] ✅ Online restored');
       isOnlineRef.current = true;
       setIsOnline(true);
@@ -123,7 +126,8 @@ export function useNetworkConnectionWatcher({ onOffline, onOnline, activeProbe =
           // Any 2xx/3xx means the network round-trip succeeded.
           if (!resp.ok) throw new Error('probe non-ok');
           probeFailures = 0;
-          _consecutiveFailures = 0; // reset module-level counter too
+          _consecutiveFailures = 0; // reset module-level counter
+          _isKnownOffline = false;  // CRITICAL: reset so classifyReps / uploadToGCS don't short-circuit
           goOnline();
         } catch (_) {
           probeFailures++;

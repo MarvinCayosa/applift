@@ -157,13 +157,19 @@ export default function WorkoutMonitor() {
     // Only initialize once when we have all workout params available
     if (hasInitializedStreaming.current) return;
     if (!workout || !equipment) return;
-    
+
+    // Lock IMMEDIATELY (before any await) so concurrent effect firings are blocked.
+    // The state-update effect (lines ~134-150) changes recommendedSets etc. on first
+    // render, which would re-trigger this effect. Without the early lock, two async
+    // calls both pass the guard and double-initialize the streaming session.
+    hasInitializedStreaming.current = true;
+
     const initSession = async () => {
       console.log('🚀 Initializing streaming session on page load...');
-      
+
       // Clear any stale pending jobs from previous sessions
       await clearAllPendingJobs();
-      
+
       const result = await startStreaming({
         exercise: workout,
         equipment: equipment,
@@ -173,17 +179,19 @@ export default function WorkoutMonitor() {
         weightUnit: weightUnit || workoutWeightUnit,
         setType: setType || workoutSetType
       });
-      
+
       if (result?.success) {
         console.log('✅ Streaming session initialized (unfinished):', result.workoutId);
-        hasInitializedStreaming.current = true;
       } else {
         console.warn('⚠️ Failed to initialize streaming session on load');
+        // Release lock so a subsequent render can retry
+        hasInitializedStreaming.current = false;
       }
     };
-    
+
     initSession();
-  }, [workout, equipment, plannedSets, plannedReps, weight, weightUnit, setType, startStreaming, recommendedSets, recommendedReps, workoutWeight, workoutWeightUnit, workoutSetType]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workout, equipment, startStreaming]);
   
   // Use the workout session hook for all algorithm logic
   const {
@@ -464,12 +472,41 @@ export default function WorkoutMonitor() {
     setIsAnalyzing(true);
     transition(SESSION_STATES.IDLE);
 
-    const mergedSetData = buildMergedSetData(finalStats, result);
-    const { avgConcentricVal, avgEccentricVal } = computePhaseAverages(mergedSetData);
-    storeWorkoutResults(finalStats, mergedSetData, avgConcentricVal, avgEccentricVal, result);
+    try {
+      const mergedSetData = buildMergedSetData(finalStats, result);
+      const { avgConcentricVal, avgEccentricVal } = computePhaseAverages(mergedSetData);
+      storeWorkoutResults(finalStats, mergedSetData, avgConcentricVal, avgEccentricVal, result);
 
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    navigateToFinished(finalStats, mergedSetData, avgConcentricVal, avgEccentricVal, result, chartData);
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      navigateToFinished(finalStats, mergedSetData, avgConcentricVal, avgEccentricVal, result, chartData);
+    } catch (navErr) {
+      console.error('[WorkoutMonitor] Navigation to workout-finished failed:', navErr);
+      // Fallback: navigate without chart data so the user is never stranded on this page
+      setIsAnalyzing(false);
+      router.push({
+        pathname: '/workout-finished',
+        query: {
+          workoutName: workout,
+          equipment: equipment,
+          totalReps: finalStats?.totalReps ?? 0,
+          calories: Math.round((finalStats?.totalReps ?? 0) * 5),
+          totalTime: finalStats?.totalTime ?? 0,
+          avgConcentric: '0.0',
+          avgEccentric: '0.0',
+          chartData: '[]',
+          timeData: '[]',
+          setsData: JSON.stringify(finalStats?.setData ?? []),
+          recommendedSets,
+          recommendedReps,
+          weight: workoutWeight,
+          weightUnit: workoutWeightUnit,
+          setType: workoutSetType,
+          status: result?.status || 'completed',
+          workoutId: result?.workoutId || workoutId,
+          gcsPath: result?.workoutData?.gcsPath || result?.metadata?.gcsPath || '',
+        }
+      });
+    }
   }
 
   /** Merge classification data from streaming service into local set data */
@@ -713,7 +750,14 @@ export default function WorkoutMonitor() {
       }
 
       // Deferred data is ready — process it
-      await processDeferredWorkout();
+      try {
+        await processDeferredWorkout();
+      } catch (err) {
+        console.error('[WorkoutMonitor] processDeferredWorkout threw unexpectedly:', err);
+        // Don't leave user stranded — fall through to reload the page as last resort
+        setIsAnalyzing(false);
+        transition(SESSION_STATES.IDLE);
+      }
       return;
     }
 
