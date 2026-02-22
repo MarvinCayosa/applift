@@ -16,6 +16,7 @@ import { useUserProfile } from '../utils/userProfileStore';
 import { useWorkoutStreak } from '../utils/useWorkoutStreak';
 import { useAuth } from '../context/AuthContext';
 import { useWorkoutLogs } from '../utils/useWorkoutLogs';
+import { useMovementQuality } from '../hooks/useMovementQuality';
 import ActivityOverview from '../components/ActivityOverview';
 import WorkoutStreak from '../components/WorkoutStreak';
 import { useBluetooth } from '../context/BluetoothProvider';
@@ -104,6 +105,9 @@ export default function Dashboard() {
     includeStats: true,
     includeCalendar: true,
   });
+
+  // Fetch movement quality analytics from Firestore
+  const { qualityData: movementQualityData, loading: qualityLoading } = useMovementQuality(logs, hasWorkouts);
   
   const router = useRouter();
   const currentPath = router.pathname;
@@ -766,22 +770,21 @@ export default function Dashboard() {
   // Calculate trend data from real workout logs
   const calculateTrendData = () => {
     const today = new Date();
-    const dayOfWeek = today.getDay();
+    const dayOfWeek = today.getDay(); // 0=Sunday, 6=Saturday
     
-    // Calculate Monday of this week
-    const thisMonday = new Date(today);
-    const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-    thisMonday.setDate(today.getDate() - daysFromMonday);
-    thisMonday.setHours(0, 0, 0, 0);
+    // Calculate Sunday of this week (week starts on Sunday)
+    const thisSunday = new Date(today);
+    thisSunday.setDate(today.getDate() - dayOfWeek);
+    thisSunday.setHours(0, 0, 0, 0);
     
-    // Calculate Monday of last week (7 days before this Monday)
-    const lastMonday = new Date(thisMonday);
-    lastMonday.setDate(thisMonday.getDate() - 7);
+    // Calculate Sunday of last week (7 days before this Sunday)
+    const lastSunday = new Date(thisSunday);
+    lastSunday.setDate(thisSunday.getDate() - 7);
     
-    // End of this week is Sunday 23:59:59
-    const thisSunday = new Date(thisMonday);
-    thisSunday.setDate(thisMonday.getDate() + 6);
-    thisSunday.setHours(23, 59, 59, 999);
+    // End of this week is Saturday 23:59:59
+    const thisSaturday = new Date(thisSunday);
+    thisSaturday.setDate(thisSunday.getDate() + 6);
+    thisSaturday.setHours(23, 59, 59, 999);
     
     let thisWeekLoad = 0;
     let lastWeekLoad = 0;
@@ -798,12 +801,12 @@ export default function Dashboard() {
       const reps = log.results?.totalReps || log.totalReps || 0;
       const load = weight * reps;
       
-      // This week: from this Monday 00:00 to this Sunday 23:59:59
-      if (createdAt >= thisMonday && createdAt <= thisSunday) {
+      // This week: from this Sunday 00:00 to this Saturday 23:59:59
+      if (createdAt >= thisSunday && createdAt <= thisSaturday) {
         thisWeekLoad += load;
       } 
-      // Last week: from last Monday 00:00 to last Sunday 23:59:59
-      else if (createdAt >= lastMonday && createdAt < thisMonday) {
+      // Last week: from last Sunday 00:00 to this Saturday 23:59:59
+      else if (createdAt >= lastSunday && createdAt < thisSunday) {
         lastWeekLoad += load;
       }
     });
@@ -823,6 +826,24 @@ export default function Dashboard() {
   };
 
   const loadTrendData = calculateTrendData();
+
+  // Normalize equipment names to handle variations - shared by multiple functions
+  const normalizeEquipment = (name) => {
+    if (!name) return null;
+    const normalized = name.trim().toLowerCase();
+    // Handle common variations
+    if (normalized === 'dumbell' || normalized === 'dumbbell') {
+      return 'Dumbbell';
+    }
+    if (normalized === 'barbell') {
+      return 'Barbell';
+    }
+    if (normalized === 'weight-stack' || normalized === 'weight stack' || normalized === 'weightstack' || normalized === 'stack') {
+      return 'Weight Stack';
+    }
+    // Return title case
+    return name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
+  };
 
   // Build equipment distribution from real data
   const buildEquipmentDistribution = () => {
@@ -872,22 +893,6 @@ export default function Dashboard() {
   };
 
   const equipmentDistributionData = buildEquipmentDistribution();
-
-  // Build movement quality data from real workout logs
-  // If no workouts, return null to show empty state
-  const buildMovementQualityData = () => {
-    if (!hasWorkouts || logs.length === 0) {
-      return null; // No data - component will show empty state
-    }
-    
-    // Group workouts by equipment type and calculate quality metrics
-    // For now, we don't have actual movement quality data from IMU
-    // This returns null to indicate "no data available yet"
-    // Once ML model provides classification, this can be populated
-    return null;
-  };
-
-  const movementQualityData = buildMovementQualityData();
 
   // Equipment icon mapper
   const getEquipmentIcon = (equipment) => {
@@ -1051,7 +1056,7 @@ export default function Dashboard() {
                   {/* Card 2: Recent Workouts */}
                   <article className="min-w-[calc(100vw-24px)] w-[calc(100vw-24px)] max-w-[384px] shrink-0 snap-center rounded-3xl bg-white/10 p-5 shadow-2xl h-[320px] flex flex-col">
                     <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-sm font-semibold text-white/90">Recent Workouts</h3>
+                      <h3 className="text-xl font-semibold text-white/90">Recent Workouts</h3>
                       <button
                         onClick={() => router.push('/statistics')}
                         className="text-white/40 hover:text-white/60 transition-colors"
@@ -1241,8 +1246,8 @@ export default function Dashboard() {
           <section className="mb-4 md:mb-5 content-fade-up-4">
             <MovementQuality
               equipmentData={movementQualityData}
-              hasData={logs.length > 0}
-              loading={workoutsLoading}
+              hasData={movementQualityData !== null}
+              loading={workoutsLoading || qualityLoading}
               animate={true}
               onFilterChange={(filter) => console.log('Filter changed:', filter)}
             />

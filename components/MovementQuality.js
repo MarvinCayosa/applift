@@ -28,10 +28,10 @@ export default function MovementQuality({
 
   // Empty data structure - no mock data
   const emptyData = {
-    all: { score: 0, angularVelocity: 0, smoothness: 0, romConsistency: 0 },
-    dumbbell: { score: 0, angularVelocity: 0, smoothness: 0, romConsistency: 0 },
-    barbell: { score: 0, angularVelocity: 0, smoothness: 0, romConsistency: 0 },
-    weightStack: { score: 0, angularVelocity: 0, smoothness: 0, romConsistency: 0 }
+    all: { score: 0, fatigue: 0, consistency: 0, smoothness: 0 },
+    dumbbell: { score: 0, fatigue: 0, consistency: 0, smoothness: 0 },
+    barbell: { score: 0, fatigue: 0, consistency: 0, smoothness: 0 },
+    weightStack: { score: 0, fatigue: 0, consistency: 0, smoothness: 0 }
   };
 
   // Use provided data or empty
@@ -140,22 +140,22 @@ export default function MovementQuality({
     }
   ];
 
-  // Metric items for the breakdown - each with unique color matching equipment scheme
+  // Metric items for the breakdown - updated to new formula
   const metrics = [
     {
-      label: 'Angular Velocity',
-      value: currentData.angularVelocity,
-      color: '#3B82F6' // Blue (matches dumbbell)
+      label: 'Fatigue',
+      value: currentData.fatigue,
+      color: '#3B82F6' // Blue
+    },
+    {
+      label: 'Consistency', 
+      value: currentData.consistency,
+      color: '#FBBF24' // Yellow
     },
     {
       label: 'Smoothness',
       value: currentData.smoothness,
-      color: '#FBBF24' // Yellow (matches barbell)
-    },
-    {
-      label: 'ROM Consistency',
-      value: currentData.romConsistency,
-      color: '#EF4444' // Red (matches weight stack/cable)
+      color: '#EF4444' // Red
     }
   ];
 
@@ -195,7 +195,7 @@ export default function MovementQuality({
           {/* Header */}
           <div className="flex items-center justify-between gap-3 mb-4 relative z-10">
             <div>
-              <h3 className="text-sm font-semibold text-white">Movement Quality</h3>
+              <h3 className="text-xl font-semibold text-white">Movement Quality</h3>
               <p className="text-[10px] text-white/40">Weekly aggregated result</p>
             </div>
           </div>
@@ -207,7 +207,7 @@ export default function MovementQuality({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
               </svg>
             </div>
-            <p className="text-sm text-white/40">No movement data yet</p>
+            <p className="text-sm text-white/40">No data available</p>
             <p className="text-[10px] text-white/30 mt-1">Complete workouts with IMU sensors to track quality</p>
           </div>
         </div>
@@ -232,7 +232,7 @@ export default function MovementQuality({
         <div className="flex items-center justify-between gap-3 mb-4 relative z-10">
           {/* Title - No icon */}
           <div>
-            <h3 className="text-sm font-semibold text-white">Movement Quality</h3>
+            <h3 className="text-xl font-semibold text-white">Movement Quality</h3>
             <p className="text-[10px] text-white/40">Weekly aggregated result</p>
           </div>
 

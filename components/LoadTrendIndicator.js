@@ -100,8 +100,8 @@ export default function LoadTrendIndicator({
         </div>
       </div>
 
-      {/* Bars section - inner darker card */}
-      <div className="bg-white/[0.06] rounded-2xl p-4 space-y-4">
+      {/* Bars section */}
+      <div className="space-y-4">
         {/* This Week */}
         <div>
           <div className="flex items-center justify-between mb-2">
@@ -151,7 +151,13 @@ export default function LoadTrendIndicator({
           style={{ backgroundColor: style.bgColor }}
         >
           <svg className="w-4 h-4" style={{ color: style.color }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+            {trend === 'up' ? (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+            ) : trend === 'down' ? (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6" />
+            ) : (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 12h8M9 12h4" />
+            )}
           </svg>
           <span className="text-sm font-bold" style={{ color: style.color }}>
             {formatPercentage()}
