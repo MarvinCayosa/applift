@@ -743,7 +743,7 @@ const uploadWorkoutData = async () => {
     console.log('[IMUStreaming] Uploaded workout data to:', filePath);
   } catch (error) {
     console.error('[IMUStreaming] Failed to upload workout data:', error);
-    storeLocally(filePath, content);
+    await storeLocally(filePath, content, 'application/json');
   }
 };
 
@@ -759,62 +759,121 @@ const uploadMetadata = async () => {
     await uploadToGCS(filePath, content, 'application/json');
   } catch (error) {
     console.error('[IMUStreaming] Failed to upload metadata:', error);
-    storeLocally(filePath, content);
+    await storeLocally(filePath, content, 'application/json');
   }
 };
 
 /**
- * Upload content to GCS via API
+ * Upload content to GCS via API.
+ * Short-circuits instantly if we already know the network is down.
+ * Falls through to storeLocally on failure.
  */
 const uploadToGCS = async (filePath, content, contentType) => {
-  // Get signed URL from API
-  const response = await fetch('/api/imu-stream', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${authToken}`
-    },
-    body: JSON.stringify({
-      action: 'upload',
-      userId,
-      filePath,
-      contentType
-    })
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to get upload URL: ${response.status}`);
+  // ── Instant skip when we already know we're offline ──────────────
+  try {
+    const { isNetworkOffline } = await import('../hooks/useNetworkConnectionWatcher');
+    if (isNetworkOffline()) {
+      console.log('[IMUStreaming] Known offline — skipping upload for:', filePath);
+      throw new Error('Network offline — skipping upload');
+    }
+  } catch (e) {
+    if (e.message.includes('Network offline')) throw e;
+    // import failed — continue normally
   }
 
-  const { signedUrl } = await response.json();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 4000); // 4s timeout
 
-  // Upload to GCS
-  const uploadResponse = await fetch(signedUrl, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': contentType
-    },
-    body: content
-  });
+  try {
+    // Get signed URL from API
+    const response = await fetch('/api/imu-stream', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`
+      },
+      body: JSON.stringify({
+        action: 'upload',
+        userId,
+        filePath,
+        contentType
+      }),
+      signal: controller.signal,
+    });
 
-  if (!uploadResponse.ok) {
-    throw new Error(`Upload failed: ${uploadResponse.status}`);
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      throw new Error(`Failed to get upload URL: ${response.status}`);
+    }
+
+    const { signedUrl } = await response.json();
+
+    // Upload to GCS (separate timeout for the actual upload)
+    const uploadController = new AbortController();
+    const uploadTimeoutId = setTimeout(() => uploadController.abort(), 10000);
+
+    const uploadResponse = await fetch(signedUrl, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': contentType
+      },
+      body: content,
+      signal: uploadController.signal,
+    });
+
+    clearTimeout(uploadTimeoutId);
+
+    if (!uploadResponse.ok) {
+      throw new Error(`Upload failed: ${uploadResponse.status}`);
+    }
+
+    // Successful upload — signal network OK
+    try {
+      const { signalFetchOk } = await import('../hooks/useNetworkConnectionWatcher');
+      signalFetchOk();
+    } catch (_) {}
+
+    return filePath;
+  } catch (error) {
+    clearTimeout(timeoutId);
+
+    // Signal network failure for instant offline detection
+    if (error.name === 'AbortError' || error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
+      try {
+        const { signalFetchFailed } = await import('../hooks/useNetworkConnectionWatcher');
+        signalFetchFailed();
+      } catch (_) {}
+    }
+
+    throw error;
   }
-
-  return filePath;
 };
 
 /**
- * Store data locally as fallback
+ * Store data locally via IndexedDB offline queue for later upload.
+ * Falls back to localStorage if IndexedDB is unavailable.
  */
-const storeLocally = (filePath, content) => {
+const storeLocally = async (filePath, content, contentType = 'application/json') => {
   try {
-    const key = `imu_fallback_${workoutId}_${Date.now()}`;
-    const data = { filePath, content, timestamp: Date.now() };
-    localStorage.setItem(key, JSON.stringify(data));
-    console.log('[IMUStreaming] Stored locally:', key);
+    const { enqueueJob } = await import('../utils/offlineQueue');
+    await enqueueJob(workoutId || 'unknown', 'gcs_upload', {
+      filePath,
+      content,
+      contentType,
+      userId,
+    });
+    console.log('[IMUStreaming] Queued for later upload:', filePath);
   } catch (error) {
-    console.error('[IMUStreaming] Failed to store locally:', error);
+    // Fallback to localStorage if IndexedDB fails
+    try {
+      const key = `imu_fallback_${workoutId}_${Date.now()}`;
+      const data = { filePath, content, contentType, userId, timestamp: Date.now() };
+      localStorage.setItem(key, JSON.stringify(data));
+      console.warn('[IMUStreaming] IndexedDB failed, used localStorage:', key);
+    } catch (lsError) {
+      console.error('[IMUStreaming] Failed to store locally:', lsError);
+    }
   }
 };
 

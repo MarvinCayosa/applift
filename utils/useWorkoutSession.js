@@ -980,6 +980,58 @@ export function useWorkoutSession({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  /**
+   * Truncate all session data to a checkpoint (for BLE disconnect rollback).
+   * Removes any partial rep data after the last completed rep.
+   *
+   * @param {object} checkpoint – From SessionCheckpointManager
+   * @param {number} checkpoint.repCount    – Completed reps to keep
+   * @param {number} checkpoint.sampleIndex – Sample buffer length to keep
+   * @param {number} checkpoint.elapsedTime – Timer to restore
+   */
+  const truncateToCheckpoint = useCallback((checkpoint) => {
+    if (!checkpoint) return false;
+
+    const MAX_CHART = MAX_CHART_POINTS || 100;
+    const rc = repCounterRef.current;
+
+    // 1. Truncate RepCounter
+    const exportedData = rc.exportData();
+    if (exportedData.reps.length > checkpoint.repCount || exportedData.samples.length > checkpoint.sampleIndex) {
+      rc.truncateTo(checkpoint.repCount, checkpoint.sampleIndex);
+    }
+
+    // 2. Truncate full chart arrays
+    const chartLen = checkpoint.fullChartLen || checkpoint.sampleIndex;
+    if (fullTimeData.current.length > chartLen) {
+      fullTimeData.current.length = chartLen;
+    }
+    if (fullRawAccelData.current.length > chartLen) {
+      fullRawAccelData.current.length = chartLen;
+    }
+    if (fullFilteredAccelData.current.length > chartLen) {
+      fullFilteredAccelData.current.length = chartLen;
+    }
+
+    // 3. Truncate raw data log
+    if (rawDataLog.current.length > checkpoint.sampleIndex) {
+      rawDataLog.current.length = checkpoint.sampleIndex;
+    }
+
+    // 4. Update React state
+    setRepStats(rc.getStats());
+    setElapsedTime(checkpoint.elapsedTime);
+    lastRepCountRef.current = checkpoint.repCount;
+
+    // 5. Rebuild display chart from truncated full arrays
+    setTimeData(fullTimeData.current.slice(-MAX_CHART));
+    setRawAccelData(fullRawAccelData.current.slice(-MAX_CHART));
+    setFilteredAccelData(fullFilteredAccelData.current.slice(-MAX_CHART));
+
+    console.log('[WorkoutSession] Truncated to checkpoint — repCount:', checkpoint.repCount, 'samples:', checkpoint.sampleIndex);
+    return true;
+  }, []);
+
   return {
     // State
     isRecording,
@@ -1016,6 +1068,7 @@ export function useWorkoutSession({
     skipSet,
     resetCurrentSet,
     formatTime,
+    truncateToCheckpoint,
     
     // Refs for advanced use
     repCounterRef,

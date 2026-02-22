@@ -1,17 +1,32 @@
 import Head from 'next/head';
 import { useRouter } from 'next/router';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import AccelerationChart from '../components/workoutMonitor/AccelerationChart';
 import WorkoutNotification from '../components/workoutMonitor/WorkoutNotification';
+import DeviceDisconnectedModal from '../components/workoutMonitor/DeviceDisconnectedModal';
+import OfflineBanner from '../components/workoutMonitor/OfflineBanner';
+import CancelConfirmModal from '../components/workoutMonitor/CancelConfirmModal';
+import ResumeCountdown from '../components/workoutMonitor/ResumeCountdown';
+import WaitingForInternetModal from '../components/workoutMonitor/WaitingForInternetModal';
 import ConnectPill from '../components/ConnectPill';
 import { useBluetooth } from '../context/BluetoothProvider';
 import { useWorkoutSession } from '../utils/useWorkoutSession';
 import { useWorkoutLogging } from '../context/WorkoutLoggingContext';
+import { useAuth } from '../context/AuthContext';
+import { useBleConnectionWatcher } from '../hooks/useBleConnectionWatcher';
+import { useNetworkConnectionWatcher } from '../hooks/useNetworkConnectionWatcher';
+import { useWorkoutSessionState, SESSION_STATES } from '../hooks/useWorkoutSessionState';
+import { SessionCheckpointManager } from '../utils/sessionCheckpointManager';
+import { enqueueJob, clearSessionJobs, flushQueue, getAllPendingJobs } from '../utils/offlineQueue';
 import LoadingScreen from '../components/LoadingScreen';
 
 export default function WorkoutMonitor() {
   const router = useRouter();
+  const { user } = useAuth();
   const { equipment, workout, plannedSets, plannedReps, weight, weightUnit, setType, restTime } = router.query;
+
+  // Ref to track online status for use inside callbacks (avoids stale closure)
+  const isOnlineRef = useRef(true);
   
   // Workout logging context - streaming version
   const { 
@@ -25,7 +40,10 @@ export default function WorkoutMonitor() {
     isStreaming,
     workoutId,
     currentLog,
-    workoutConfig 
+    workoutConfig,
+    pendingSetUploads,
+    flushPendingSetClassifications,
+    checkHasPendingUploads,
   } = useWorkoutLogging();
   
   // Track last rep count for detecting new reps
@@ -34,6 +52,18 @@ export default function WorkoutMonitor() {
   
   // Analyzing loading screen state
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  // Stored workout completion data for deferred navigation (when offline at workout end)
+  const deferredWorkoutResultRef = useRef(null);
+
+  // ── Session state machine ────────────────────────────────────────────
+  const { sessionState, transition, isState } = useWorkoutSessionState();
+
+  // ── Checkpoint manager (persists across renders) ─────────────────────
+  const checkpointManagerRef = useRef(new SessionCheckpointManager());
+
+  // ── Offline toast state ──────────────────────────────────────────────
+  const [offlineToast, setOfflineToast] = useState(null); // null | string
   
   // Helper function to get the correct background image based on equipment and workout
   const getWorkoutImage = () => {
@@ -180,6 +210,7 @@ export default function WorkoutMonitor() {
     skipSet,
     resetCurrentSet,
     formatTime,
+    truncateToCheckpoint,
     repCounterRef,
     rawDataLog
   } = useWorkoutSession({
@@ -199,6 +230,21 @@ export default function WorkoutMonitor() {
         console.log('🏋️ Rep detected:', repInfo);
         await handleRepDetected(repInfo);
       }
+
+      // ── Save checkpoint after every completed rep ──
+      const rc = repCounterRef?.current;
+      if (rc) {
+        const exported = rc.exportData();
+        const lastRep = exported.reps.length > 0 ? exported.reps[exported.reps.length - 1] : null;
+        checkpointManagerRef.current.saveCheckpoint({
+          repCount: rc.getStats().repCount,
+          sampleIndex: exported.samples.length,
+          elapsedTime,
+          fullChartLen: exported.samples.length, // chart arrays grow 1:1 with samples
+          lastCompletedRepEndTimestamp: lastRep?.actualEndTime ?? lastRep?.endTime ?? Date.now(),
+          lastCompletedRepEndSampleIndex: lastRep?.actualEndIndex ?? exported.samples.length - 1,
+        });
+      }
     },
     // Handle set completion - move to next set folder in GCS
     onSetComplete: async (setNumber) => {
@@ -208,7 +254,41 @@ export default function WorkoutMonitor() {
       }
     },
     onWorkoutComplete: async ({ workoutStats: finalStats, repData, chartData }) => {
-      // Show analyzing screen
+      // ── CHECK ONLINE + PENDING UPLOADS BEFORE ANALYZING ──
+      let currentlyOnline = isOnlineRef.current;
+      let hasPending = false;
+      try {
+        const pending = await getAllPendingJobs();
+        hasPending = pending.some(j => j.type === 'set_classification' && (j.status === 'pending' || j.status === 'uploading'));
+      } catch (_) {}
+
+      if (!currentlyOnline || hasPending) {
+        // DO NOT show analyzing screen — show "Waiting for internet" modal instead
+        console.log('[WorkoutMonitor] Offline or pending uploads — deferring analysis');
+
+        // *** FIX: Call handleSetComplete for the LAST set before finishing ***
+        if (isStreaming) {
+          console.log('🏁 Workout complete - triggering ML for final set:', finalStats.completedSets);
+          await handleSetComplete();
+        }
+
+        // Build the deferred result so we can navigate once online
+        const result = await finishWorkout();
+
+        // Store deferred navigation data
+        deferredWorkoutResultRef.current = {
+          finalStats,
+          result,
+          repData,
+          chartData,
+        };
+
+        // Transition to WAITING_FOR_INTERNET state
+        transition(SESSION_STATES.WAITING_FOR_INTERNET);
+        return;
+      }
+
+      // ── ONLINE PATH: Show analyzing screen and proceed normally ──
       setIsAnalyzing(true);
       
       // *** FIX: Call handleSetComplete for the LAST set before finishing ***
@@ -224,109 +304,419 @@ export default function WorkoutMonitor() {
       
       // Finish streaming and determine completion status
       const result = await finishWorkout();
-      
-      // *** CRITICAL: Merge classification data from streaming service ***
-      // finalStats.setData doesn't have ML classifications
-      // result.workoutData.sets DOES have classifications from background ML
-      const mergedSetData = finalStats.setData.map((localSet, setIdx) => {
-        const streamingSet = result?.workoutData?.sets?.find(
-          s => s.setNumber === localSet.setNumber
-        ) || result?.workoutData?.sets?.[setIdx];
-        
-        if (!streamingSet || !streamingSet.reps) {
-          console.log(`[WorkoutComplete] No streaming data for Set ${localSet.setNumber}, keeping local`);
-          return localSet;
-        }
-        
-        // Merge classification data into each rep
-        const mergedRepsData = localSet.repsData?.map((localRep, repIdx) => {
-          const streamingRep = streamingSet.reps.find(
-            r => r.repNumber === repIdx + 1
-          ) || streamingSet.reps[repIdx];
-          
-          if (streamingRep?.classification) {
-            console.log(`[WorkoutComplete] Merging classification for Set ${localSet.setNumber} Rep ${repIdx + 1}:`, streamingRep.classification);
-            return {
-              ...localRep,
-              classification: streamingRep.classification,
-              chartData: streamingRep.samples?.map(s => s.filteredMag) || localRep.chartData
-            };
-          }
-          return localRep;
-        }) || [];
-        
-        return {
-          ...localSet,
-          repsData: mergedRepsData
-        };
-      });
-      
-      console.log('[WorkoutComplete] Merged set data with classifications:', mergedSetData);
-      
-      // Calculate real avg concentric/eccentric from per-rep phase data
-      let totalLiftingTime = 0;
-      let totalLoweringTime = 0;
-      let phaseRepCount = 0;
-      mergedSetData.forEach(set => {
-        (set.repsData || []).forEach(rep => {
-          // FIX: Swap the values since liftingTime and loweringTime are backwards in analysis
-          const lt = rep.loweringTime || 0;  // Use loweringTime for actual lifting
-          const lo = rep.liftingTime || 0;   // Use liftingTime for actual lowering
-          if (lt + lo > 0) {
-            totalLiftingTime += lt;
-            totalLoweringTime += lo;
-            phaseRepCount++;
-          }
-        });
-      });
-      const avgConcentricVal = phaseRepCount > 0 ? (totalLiftingTime / phaseRepCount) : 0;
-      const avgEccentricVal = phaseRepCount > 0 ? (totalLoweringTime / phaseRepCount) : 0;
-      
-      // Store workout results in sessionStorage for workout-finished page
-      if (typeof window !== 'undefined') {
-        sessionStorage.setItem('workoutResults', JSON.stringify({
-          totalSets: finalStats.completedSets,
-          totalReps: finalStats.totalReps,
-          totalTime: finalStats.totalTime,
-          calories: Math.round(finalStats.totalReps * 5),
-          avgConcentric: avgConcentricVal.toFixed(1),
-          avgEccentric: avgEccentricVal.toFixed(1),
-          setData: mergedSetData, // Use merged data with classifications
-          // Include streaming result status
-          status: result?.status || 'completed',
-          workoutId: result?.workoutId || workoutId,
-        }));
+
+      // Re-check — finishWorkout may have taken several seconds and the
+      // network watcher may have flagged us offline during that time.
+      currentlyOnline = isOnlineRef.current;
+
+      if (!currentlyOnline) {
+        // Internet dropped during finishWorkout — switch to waiting modal
+        setIsAnalyzing(false);
+        deferredWorkoutResultRef.current = { finalStats, result, repData, chartData };
+        transition(SESSION_STATES.WAITING_FOR_INTERNET);
+        return;
       }
       
-      // Wait a bit for the analyzing animation to show
+      // *** CRITICAL: Merge classification data from streaming service ***
+      const mergedSetData = buildMergedSetData(finalStats, result);
+      
+      // Calculate real avg concentric/eccentric from per-rep phase data
+      const { avgConcentricVal, avgEccentricVal } = computePhaseAverages(mergedSetData);
+      
+      // Store workout results in sessionStorage for workout-finished page
+      storeWorkoutResults(finalStats, mergedSetData, avgConcentricVal, avgEccentricVal, result);
+      
+      // Wait for the analyzing animation
       await new Promise(resolve => setTimeout(resolve, 2000));
       
       // Navigate to workout finished page with set-grouped data
-      router.push({
-        pathname: '/workout-finished',
-        query: {
-          workoutName: workout,
-          equipment: equipment,
-          totalReps: finalStats.totalReps,
-          calories: Math.round(finalStats.totalReps * 5),
-          totalTime: finalStats.totalTime,
-          avgConcentric: avgConcentricVal.toFixed(1),
-          avgEccentric: avgEccentricVal.toFixed(1),
-          chartData: JSON.stringify(chartData.filteredAccelData),
-          timeData: JSON.stringify(chartData.timeData),
-          setsData: JSON.stringify(mergedSetData), // Use merged data with classifications
-          recommendedSets: recommendedSets,
-          recommendedReps: recommendedReps,
-          weight: workoutWeight,
-          weightUnit: workoutWeightUnit,
-          setType: workoutSetType,
-          status: result?.status || 'completed',
-          workoutId: result?.workoutId || workoutId,
-          gcsPath: result?.workoutData?.gcsPath || result?.metadata?.gcsPath || '',
-        }
-      });
+      navigateToFinished(finalStats, mergedSetData, avgConcentricVal, avgEccentricVal, result, chartData);
     }
   });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // HELPER FUNCTIONS (extracted for reuse in deferred navigation)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /** Merge classification data from streaming service into local set data */
+  function buildMergedSetData(finalStats, result) {
+    return finalStats.setData.map((localSet, setIdx) => {
+      const streamingSet = result?.workoutData?.sets?.find(
+        s => s.setNumber === localSet.setNumber
+      ) || result?.workoutData?.sets?.[setIdx];
+
+      if (!streamingSet || !streamingSet.reps) {
+        return localSet;
+      }
+
+      const mergedRepsData = localSet.repsData?.map((localRep, repIdx) => {
+        const streamingRep = streamingSet.reps.find(
+          r => r.repNumber === repIdx + 1
+        ) || streamingSet.reps[repIdx];
+
+        if (streamingRep?.classification) {
+          return {
+            ...localRep,
+            classification: streamingRep.classification,
+            chartData: streamingRep.samples?.map(s => s.filteredMag) || localRep.chartData
+          };
+        }
+        return localRep;
+      }) || [];
+
+      return { ...localSet, repsData: mergedRepsData };
+    });
+  }
+
+  /** Compute average concentric/eccentric from per-rep phase data */
+  function computePhaseAverages(mergedSetData) {
+    let totalLiftingTime = 0;
+    let totalLoweringTime = 0;
+    let phaseRepCount = 0;
+    mergedSetData.forEach(set => {
+      (set.repsData || []).forEach(rep => {
+        const lt = rep.loweringTime || 0;
+        const lo = rep.liftingTime || 0;
+        if (lt + lo > 0) {
+          totalLiftingTime += lt;
+          totalLoweringTime += lo;
+          phaseRepCount++;
+        }
+      });
+    });
+    return {
+      avgConcentricVal: phaseRepCount > 0 ? (totalLiftingTime / phaseRepCount) : 0,
+      avgEccentricVal: phaseRepCount > 0 ? (totalLoweringTime / phaseRepCount) : 0,
+    };
+  }
+
+  /** Store workout results in sessionStorage */
+  function storeWorkoutResults(finalStats, mergedSetData, avgConcentricVal, avgEccentricVal, result) {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('workoutResults', JSON.stringify({
+        totalSets: finalStats.completedSets,
+        totalReps: finalStats.totalReps,
+        totalTime: finalStats.totalTime,
+        calories: Math.round(finalStats.totalReps * 5),
+        avgConcentric: avgConcentricVal.toFixed(1),
+        avgEccentric: avgEccentricVal.toFixed(1),
+        setData: mergedSetData,
+        status: result?.status || 'completed',
+        workoutId: result?.workoutId || workoutId,
+      }));
+    }
+  }
+
+  /** Navigate to workout-finished page */
+  function navigateToFinished(finalStats, mergedSetData, avgConcentricVal, avgEccentricVal, result, chartData) {
+    router.push({
+      pathname: '/workout-finished',
+      query: {
+        workoutName: workout,
+        equipment: equipment,
+        totalReps: finalStats.totalReps,
+        calories: Math.round(finalStats.totalReps * 5),
+        totalTime: finalStats.totalTime,
+        avgConcentric: avgConcentricVal.toFixed(1),
+        avgEccentric: avgEccentricVal.toFixed(1),
+        chartData: JSON.stringify(chartData.filteredAccelData),
+        timeData: JSON.stringify(chartData.timeData),
+        setsData: JSON.stringify(mergedSetData),
+        recommendedSets: recommendedSets,
+        recommendedReps: recommendedReps,
+        weight: workoutWeight,
+        weightUnit: workoutWeightUnit,
+        setType: workoutSetType,
+        status: result?.status || 'completed',
+        workoutId: result?.workoutId || workoutId,
+        gcsPath: result?.workoutData?.gcsPath || result?.metadata?.gcsPath || '',
+      }
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // SESSION STATE MACHINE INTEGRATION
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // Transition to ACTIVE when recording starts
+  useEffect(() => {
+    if (isRecording && !isPaused && sessionState === SESSION_STATES.IDLE) {
+      transition(SESSION_STATES.ACTIVE);
+    }
+  }, [isRecording, isPaused]);
+
+  // ── BLE Connection Watcher ─────────────────────────────────────────
+  const handleBleDisconnect = useCallback(() => {
+    if (!isRecording) return;
+
+    // Pause session immediately
+    if (!isPaused) togglePause();
+
+    // Transition state machine
+    transition(SESSION_STATES.PAUSED_BLE_DISCONNECTED);
+  }, [isRecording, isPaused, togglePause, transition]);
+
+  const handleBleReconnect = useCallback(() => {
+    // Rollback to last checkpoint: discard partial rep data from chart + counter
+    const cpManager = checkpointManagerRef.current;
+    const checkpoint = cpManager.getCheckpoint();
+
+    if (checkpoint) {
+      const rolledBack = truncateToCheckpoint(checkpoint);
+      if (rolledBack) {
+        console.log('[WorkoutMonitor] Rolled back to checkpoint after BLE reconnect');
+      }
+    }
+
+    // Show resume countdown
+    transition(SESSION_STATES.RESUMING_COUNTDOWN);
+  }, [transition, truncateToCheckpoint]);
+
+  const {
+    isReconnecting,
+    reconnectFailed,
+    attemptReconnect,
+  } = useBleConnectionWatcher({
+    connected,
+    isRecording,
+    device,
+    connectToDevice,
+    onDisconnect: handleBleDisconnect,
+    onReconnect: handleBleReconnect,
+  });
+
+  // ── Offline upload helper (reusable by both flush and startup) ─────
+  const uploadOfflineJob = useCallback(async (job) => {
+    if (job.type !== 'gcs_upload') return;
+
+    const { filePath, content, contentType, userId: jobUserId } = job.payload;
+    const token = user ? await user.getIdToken() : null;
+    if (!token) throw new Error('No auth token for offline sync');
+
+    const resp = await fetch('/api/imu-stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ action: 'upload', userId: jobUserId, filePath, contentType: contentType || 'application/json' }),
+    });
+    if (!resp.ok) throw new Error(`Signed URL failed: ${resp.status}`);
+    const { signedUrl } = await resp.json();
+
+    const up = await fetch(signedUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': contentType || 'application/json' },
+      body: content,
+    });
+    if (!up.ok) throw new Error(`GCS upload failed: ${up.status}`);
+    console.log('[OfflineSync] ✅ Uploaded:', filePath);
+  }, [user]);
+
+  // ── Migrate old localStorage imu_fallback_* → IndexedDB queue ─────
+  const migrateLocalStorageFallbacks = useCallback(async () => {
+    if (typeof localStorage === 'undefined') return;
+
+    const keysToMigrate = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('imu_fallback_')) keysToMigrate.push(key);
+    }
+
+    if (keysToMigrate.length === 0) return;
+    console.log(`[OfflineSync] Migrating ${keysToMigrate.length} localStorage fallback(s) to IndexedDB`);
+
+    for (const key of keysToMigrate) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) continue;
+        const data = JSON.parse(raw);
+        await enqueueJob(data.userId || 'migrated', 'gcs_upload', {
+          filePath: data.filePath,
+          content: data.content,
+          contentType: data.contentType || 'application/json',
+          userId: data.userId || '',
+        });
+        localStorage.removeItem(key);
+        console.log('[OfflineSync] Migrated:', key);
+      } catch (err) {
+        console.warn('[OfflineSync] Failed to migrate', key, err);
+      }
+    }
+  }, []);
+
+  // ── Network Connection Watcher ─────────────────────────────────────
+  const handleNetworkOffline = useCallback(() => {
+    console.log('[WorkoutMonitor] Network offline detected, isRecording:', isRecording, 'state:', sessionState);
+
+    // Act on offline for ANY non-IDLE state (including when isRecording is
+    // already false during the completion flow — that was the old bug).
+    if (sessionState === SESSION_STATES.IDLE) return;
+
+    // Only transition if we're not already handling a BLE disconnect, cancel, or waiting
+    if (sessionState === SESSION_STATES.ACTIVE) {
+      transition(SESSION_STATES.ACTIVE_OFFLINE);
+    }
+  }, [sessionState, transition]);
+
+  const handleNetworkOnline = useCallback(async () => {
+    // Restore from ACTIVE_OFFLINE → ACTIVE
+    if (sessionState === SESSION_STATES.ACTIVE_OFFLINE) {
+      transition(SESSION_STATES.ACTIVE);
+    }
+
+    // ── If we were WAITING_FOR_INTERNET, internet is back → proceed with analyzing ──
+    if (sessionState === SESSION_STATES.WAITING_FOR_INTERNET) {
+      // Flush queued set classifications first
+      try {
+        await flushPendingSetClassifications();
+      } catch (_) {}
+
+      const deferred = deferredWorkoutResultRef.current;
+      if (deferred) {
+        const { finalStats, result, chartData } = deferred;
+        deferredWorkoutResultRef.current = null;
+
+        // Now show analyzing screen
+        setIsAnalyzing(true);
+        transition(SESSION_STATES.IDLE);
+
+        const mergedSetData = buildMergedSetData(finalStats, result);
+        const { avgConcentricVal, avgEccentricVal } = computePhaseAverages(mergedSetData);
+        storeWorkoutResults(finalStats, mergedSetData, avgConcentricVal, avgEccentricVal, result);
+
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        navigateToFinished(finalStats, mergedSetData, avgConcentricVal, avgEccentricVal, result, chartData);
+        return;
+      }
+    }
+
+    // Flush queued offline jobs + migrate any old localStorage fallbacks
+    try {
+      // 1. Migrate old localStorage fallback items into IndexedDB first
+      await migrateLocalStorageFallbacks();
+
+      // 2. Flush IndexedDB queue
+      const result = await flushQueue(uploadOfflineJob);
+
+      // 3. Flush any pending set classifications
+      await flushPendingSetClassifications();
+
+      if (result.uploaded > 0) {
+        setOfflineToast(`Connection restored — ${result.uploaded} file(s) synced.`);
+        setTimeout(() => setOfflineToast(null), 4000);
+      }
+    } catch (err) {
+      console.warn('[OfflineSync] Flush failed:', err);
+      setOfflineToast('Sync failed — will retry later.');
+      setTimeout(() => setOfflineToast(null), 4000);
+    }
+  }, [sessionState, transition, flushPendingSetClassifications]);
+
+  const { isOnline } = useNetworkConnectionWatcher({
+    onOffline: handleNetworkOffline,
+    onOnline: handleNetworkOnline,
+  });
+
+  // Keep the online ref in sync for use inside callbacks
+  useEffect(() => {
+    isOnlineRef.current = isOnline;
+  }, [isOnline]);
+
+  // On mount, try to flush any leftover offline jobs from previous sessions
+  useEffect(() => {
+    if (isOnline && user) {
+      migrateLocalStorageFallbacks()
+        .then(() => flushQueue(uploadOfflineJob))
+        .then(r => {
+          if (r.uploaded > 0) {
+            setOfflineToast(`Synced ${r.uploaded} offline file(s).`);
+            setTimeout(() => setOfflineToast(null), 4000);
+          }
+        })
+        .catch(() => {});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Resume countdown done handler ──────────────────────────────────
+  const handleResumeCountdownDone = useCallback(() => {
+    // Unpause and return to active
+    if (isPaused) togglePause();
+
+    if (isOnline) {
+      transition(SESSION_STATES.ACTIVE);
+    } else {
+      transition(SESSION_STATES.ACTIVE_OFFLINE);
+    }
+  }, [isPaused, isOnline, togglePause, transition]);
+
+  // ── Cancel workout handlers ────────────────────────────────────────
+  const handleRequestCancel = useCallback(() => {
+    transition(SESSION_STATES.CANCEL_CONFIRM);
+  }, [transition]);
+
+  const handleKeepWorkout = useCallback(() => {
+    // Return to the state we were in before cancel was requested
+    if (deferredWorkoutResultRef.current) {
+      // We were waiting for internet when cancel was requested
+      transition(SESSION_STATES.WAITING_FOR_INTERNET);
+    } else if (!connected) {
+      transition(SESSION_STATES.PAUSED_BLE_DISCONNECTED);
+    } else if (!isOnline) {
+      transition(SESSION_STATES.ACTIVE_OFFLINE);
+    } else {
+      transition(SESSION_STATES.ACTIVE);
+    }
+  }, [connected, isOnline, transition]);
+
+  const handleDiscardWorkout = useCallback(async () => {
+    // Stop everything
+    stopSession();
+
+    if (isStreaming) {
+      await cancelWorkout();
+    }
+
+    // Clear offline queue for this session
+    if (workoutId) {
+      await clearSessionJobs(workoutId);
+    }
+
+    // Clear checkpoint
+    checkpointManagerRef.current.clear();
+
+    // Clear any deferred workout data
+    deferredWorkoutResultRef.current = null;
+
+    transition(SESSION_STATES.IDLE);
+    router.back();
+  }, [stopSession, isStreaming, cancelWorkout, workoutId, transition, router]);
+
+  // ── Waiting for Internet handlers ──────────────────────────────────
+  const handleKeepWaiting = useCallback(() => {
+    // Stay on the monitor page — the WAITING_FOR_INTERNET state persists,
+    // the modal stays visible. When internet returns, handleNetworkOnline
+    // will automatically proceed.
+    // If user wants to dismiss the modal temporarily, keep the state.
+  }, []);
+
+  const handleWaitingCancel = useCallback(async () => {
+    // Discard everything — same as cancel workout
+    stopSession();
+
+    if (isStreaming) {
+      await cancelWorkout();
+    }
+
+    if (workoutId) {
+      await clearSessionJobs(workoutId);
+    }
+
+    checkpointManagerRef.current.clear();
+    deferredWorkoutResultRef.current = null;
+    setIsAnalyzing(false);
+
+    transition(SESSION_STATES.IDLE);
+    router.back();
+  }, [stopSession, isStreaming, cancelWorkout, workoutId, transition, router]);
   
   // Start recording with streaming
   const startRecording = async () => {
@@ -367,14 +757,9 @@ export default function WorkoutMonitor() {
     }
   };
   
-  // Handle stop recording
+  // Handle stop recording — now routes through cancel confirmation
   const stopRecording = async () => {
-    stopSession();
-    
-    // Cancel the workout if stopped manually
-    if (isStreaming) {
-      await cancelWorkout();
-    }
+    handleRequestCancel();
   };
 
   // Handle skip set - save partial reps as incomplete and advance
@@ -405,6 +790,64 @@ export default function WorkoutMonitor() {
           <LoadingScreen message="Analyzing your session..." showLogo={true} />
         </div>
       )}
+
+      {/* ── Error-handling overlays ─────────────────────────────────── */}
+
+      {/* BLE Disconnected Modal */}
+      <DeviceDisconnectedModal
+        visible={isState(SESSION_STATES.PAUSED_BLE_DISCONNECTED)}
+        isReconnecting={isReconnecting}
+        reconnectFailed={reconnectFailed}
+        onReconnect={attemptReconnect}
+        onCancel={handleRequestCancel}
+      />
+
+      {/* Resume Countdown (after BLE reconnects) */}
+      <ResumeCountdown
+        active={isState(SESSION_STATES.RESUMING_COUNTDOWN)}
+        onDone={handleResumeCountdownDone}
+      />
+
+      {/* Cancel Confirmation Modal */}
+      <CancelConfirmModal
+        visible={isState(SESSION_STATES.CANCEL_CONFIRM)}
+        onKeep={handleKeepWorkout}
+        onDiscard={handleDiscardWorkout}
+      />
+
+      {/* Waiting for Internet Modal (workout complete but offline) */}
+      <WaitingForInternetModal
+        visible={isState(SESSION_STATES.WAITING_FOR_INTERNET)}
+        pendingCount={pendingSetUploads}
+        onKeepWaiting={handleKeepWaiting}
+        onCancel={handleWaitingCancel}
+      />
+
+      {/* Offline Banner (non-blocking) */}
+      <OfflineBanner
+        visible={isState(SESSION_STATES.ACTIVE_OFFLINE)}
+        onCancel={handleRequestCancel}
+      />
+
+      {/* Connection-restored toast */}
+      {offlineToast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[130] animate-fadeIn">
+          <div
+            className="px-5 py-2.5 rounded-full text-sm font-medium text-white"
+            style={{
+              background: 'rgba(30, 30, 35, 0.92)',
+              backdropFilter: 'blur(16px)',
+              WebkitBackdropFilter: 'blur(16px)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+            }}
+          >
+            {offlineToast}
+          </div>
+        </div>
+      )}
+
+      {/* ── End error-handling overlays ─────────────────────────────── */}
 
       {/* Countdown Overlay */}
       {showCountdown && (

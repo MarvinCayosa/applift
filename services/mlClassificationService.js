@@ -367,7 +367,20 @@ export function classifyWithRules(features, exercise) {
  */
 export async function classifyReps(exercise, reps, authToken) {
   console.log(`[ClassificationService] 🔄 Starting classification for ${exercise}, ${reps?.length || 0} reps`);
-  
+
+  // ── Instant skip when we already know the network is down ──────────
+  try {
+    const { isNetworkOffline } = await import('../hooks/useNetworkConnectionWatcher');
+    if (isNetworkOffline()) {
+      console.log('[ClassificationService] Known offline — skipping ML API call');
+      return { exercise, modelAvailable: false, classifications: [], error: 'Network offline' };
+    }
+  } catch (_) { /* import failed — continue normally */ }
+
+  // Fast timeout — if we're offline, fail within 4s not 2 minutes
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 4000);
+
   try {
     const response = await fetch('/api/classify-rep', {
       method: 'POST',
@@ -378,8 +391,11 @@ export async function classifyReps(exercise, reps, authToken) {
       body: JSON.stringify({
         exercise,
         reps
-      })
+      }),
+      signal: controller.signal,
     });
+
+    clearTimeout(timeoutId);
     
     console.log(`[ClassificationService] 📬 Response status: ${response.status}`);
     
@@ -414,6 +430,8 @@ export async function classifyReps(exercise, reps, authToken) {
     console.log(`[ClassificationService] ✅ Success: ${result.classifications?.length || 0} classifications, modelAvailable=${result.modelAvailable}`);
     return result;
   } catch (error) {
+    clearTimeout(timeoutId);
+
     console.error('==========================================');
     console.error('[ClassificationService] NETWORK ERROR');
     console.error('==========================================');
@@ -421,6 +439,14 @@ export async function classifyReps(exercise, reps, authToken) {
     console.error(`  Error: ${error.message}`);
     console.error('  Could not reach /api/classify-rep endpoint');
     console.error('==========================================');
+
+    // Signal offline immediately so network watcher picks it up
+    if (error.name === 'AbortError' || error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
+      try {
+        const { signalFetchFailed } = await import('../hooks/useNetworkConnectionWatcher');
+        signalFetchFailed();
+      } catch (_) {}
+    }
     
     return {
       exercise,

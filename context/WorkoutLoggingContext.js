@@ -43,6 +43,8 @@ import {
   exportWorkoutAsCSV
 } from '../services/imuStreamingService';
 import { classifyReps } from '../services/mlClassificationService';
+import { isNetworkOffline } from '../hooks/useNetworkConnectionWatcher';
+import { enqueueJob, getAllPendingJobs } from '../utils/offlineQueue';
 
 const WorkoutLoggingContext = createContext(null);
 
@@ -67,6 +69,7 @@ export function WorkoutLoggingProvider({ children }) {
   // Background ML inference tracking
   const backgroundMLTasks = useRef(new Map()); // setNumber -> Promise
   const [backgroundMLStatus, setBackgroundMLStatus] = useState({}); // setNumber -> 'pending' | 'complete' | 'error'
+  const [pendingSetUploads, setPendingSetUploads] = useState(0); // number of queued offline sets
 
   /**
    * Start streaming session (called when recording begins)
@@ -173,8 +176,9 @@ export function WorkoutLoggingProvider({ children }) {
   }, []);
 
   /**
-   * Run background ML inference for a completed set
-   * This runs asynchronously without blocking the UI
+   * Run background ML inference for a completed set.
+   * If online → call classify API immediately.
+   * If offline → store set batch in IndexedDB for later upload.
    */
   const runBackgroundMLForSet = useCallback(async (setNumber, exercise) => {
     if (!user?.uid) {
@@ -198,6 +202,28 @@ export function WorkoutLoggingProvider({ children }) {
       setData.reps.forEach((rep, idx) => {
         console.log(`[WorkoutLogging]   Rep ${idx + 1}: ${rep.samples?.length || 0} samples`);
       });
+
+      // ── CHECK NETWORK STATUS BEFORE ATTEMPTING CLASSIFICATION ──
+      const offline = isNetworkOffline() || (typeof navigator !== 'undefined' && !navigator.onLine);
+
+      if (offline) {
+        // STORE-AND-FORWARD: Queue set data in IndexedDB for later upload
+        console.log(`[WorkoutLogging] 📦 Offline — queueing Set ${setNumber} for later classification`);
+        
+        const sessionId = workoutId || 'unknown';
+        await enqueueJob(sessionId, 'set_classification', {
+          exercise,
+          setNumber,
+          reps: setData.reps,
+          userId: user.uid,
+          queuedAt: Date.now(),
+        }, setNumber);
+
+        setPendingSetUploads(prev => prev + 1);
+        setBackgroundMLStatus(prev => ({ ...prev, [setNumber]: 'queued' }));
+        console.log(`[WorkoutLogging] ✅ Set ${setNumber} queued for offline upload`);
+        return;
+      }
       
       // Get auth token
       const token = await user.getIdToken();
@@ -217,6 +243,23 @@ export function WorkoutLoggingProvider({ children }) {
         console.error(`[WorkoutLogging] ❌ ML API returned error for Set ${setNumber}: ${result.error}`);
         if (result.details) console.error(`[WorkoutLogging]   Details: ${result.details}`);
         if (result.hint) console.error(`[WorkoutLogging]   Hint: ${result.hint}`);
+
+        // If error was a network error, queue it for retry
+        if (result.error.includes('Failed to fetch') || result.error.includes('NetworkError') || result.error.includes('Network offline') || result.error.includes('AbortError')) {
+          console.log(`[WorkoutLogging] 📦 Network error — queueing Set ${setNumber} for retry`);
+          const sessionId = workoutId || 'unknown';
+          await enqueueJob(sessionId, 'set_classification', {
+            exercise,
+            setNumber,
+            reps: setData.reps,
+            userId: user.uid,
+            queuedAt: Date.now(),
+          }, setNumber);
+          setPendingSetUploads(prev => prev + 1);
+          setBackgroundMLStatus(prev => ({ ...prev, [setNumber]: 'queued' }));
+          return;
+        }
+
         setBackgroundMLStatus(prev => ({ ...prev, [setNumber]: 'error' }));
         return;
       }
@@ -252,7 +295,7 @@ export function WorkoutLoggingProvider({ children }) {
       console.error(`[WorkoutLogging]   Error message: ${error.message}`);
       setBackgroundMLStatus(prev => ({ ...prev, [setNumber]: 'error' }));
     }
-  }, [user]);
+  }, [user, workoutId]);
 
   /**
    * Handle set completion
@@ -347,16 +390,104 @@ export function WorkoutLoggingProvider({ children }) {
   }, []);
 
   /**
+   * Flush queued set classifications from IndexedDB.
+   * Called when internet reconnects during or after a workout.
+   * Processes each queued set_classification job in order.
+   */
+  const flushPendingSetClassifications = useCallback(async () => {
+    if (!user?.uid) return { uploaded: 0, failed: 0 };
+
+    try {
+      const pending = await getAllPendingJobs();
+      const classificationJobs = pending.filter(j => j.type === 'set_classification' && j.status === 'pending');
+
+      if (classificationJobs.length === 0) {
+        setPendingSetUploads(0);
+        return { uploaded: 0, failed: 0 };
+      }
+
+      console.log(`[WorkoutLogging] 🔄 Flushing ${classificationJobs.length} queued set classifications...`);
+      const token = await user.getIdToken();
+      let uploaded = 0;
+      let failed = 0;
+
+      const { updateJobStatus } = await import('../utils/offlineQueue');
+
+      for (const job of classificationJobs) {
+        try {
+          await updateJobStatus(job.jobId, 'uploading');
+
+          const { exercise, setNumber, reps } = job.payload;
+          const result = await classifyReps(exercise, reps, token);
+
+          if (result && result.classifications && result.classifications.length > 0) {
+            result.classifications.forEach((cls, idx) => {
+              const repNumber = reps[idx]?.repNumber || idx + 1;
+              storeRepClassification(setNumber, repNumber, {
+                prediction: cls.prediction,
+                label: cls.label,
+                confidence: cls.confidence,
+                probabilities: cls.probabilities,
+                method: result.modelAvailable ? 'ml' : 'rules'
+              }, cls.confidence);
+            });
+            setBackgroundMLStatus(prev => ({ ...prev, [setNumber]: 'complete' }));
+          }
+
+          await updateJobStatus(job.jobId, 'done');
+          uploaded++;
+        } catch (err) {
+          console.warn(`[WorkoutLogging] Failed to flush set classification ${job.jobId}:`, err);
+          await updateJobStatus(job.jobId, 'failed');
+          failed++;
+        }
+      }
+
+      setPendingSetUploads(Math.max(0, pendingSetUploads - uploaded));
+      console.log(`[WorkoutLogging] ✅ Flushed: ${uploaded} uploaded, ${failed} failed`);
+      return { uploaded, failed };
+    } catch (err) {
+      console.warn('[WorkoutLogging] flushPendingSetClassifications error:', err);
+      return { uploaded: 0, failed: 0 };
+    }
+  }, [user, pendingSetUploads]);
+
+  /**
+   * Check if there are any pending set classification uploads.
+   * @returns {Promise<boolean>}
+   */
+  const checkHasPendingUploads = useCallback(async () => {
+    try {
+      const pending = await getAllPendingJobs();
+      const classificationJobs = pending.filter(j => j.type === 'set_classification' && (j.status === 'pending' || j.status === 'uploading'));
+      const count = classificationJobs.length;
+      setPendingSetUploads(count);
+      return count > 0;
+    } catch (_) {
+      return pendingSetUploads > 0;
+    }
+  }, [pendingSetUploads]);
+
+  /**
    * End the workout
-   * Determines completion status and saves final metadata
+   * Determines completion status and saves final metadata.
+   * Adapts timeouts when offline — fails fast instead of hanging.
    */
   const finishWorkout = useCallback(async () => {
     if (!isStreaming) return null;
 
+    // Use our own offline flag — navigator.onLine is unreliable on localhost
+    let online = typeof navigator !== 'undefined' ? navigator.onLine : true;
     try {
-      // Wait for background ML to complete (max 15 seconds - Cloud Run may need time)
-      console.log('[WorkoutLogging] ⏳ Waiting for all ML tasks to complete before finishing...');
-      await waitForBackgroundML(15000);
+      const { isNetworkOffline } = await import('../hooks/useNetworkConnectionWatcher');
+      if (isNetworkOffline()) online = false;
+    } catch (_) {}
+
+    try {
+      // Wait for background ML — very short timeout when offline
+      const mlTimeout = online ? 8000 : 1000;
+      console.log(`[WorkoutLogging] ⏳ Waiting for ML tasks (timeout: ${mlTimeout}ms, online: ${online})...`);
+      await waitForBackgroundML(mlTimeout);
       
       const result = await endStreaming(true);
       
@@ -366,22 +497,36 @@ export function WorkoutLoggingProvider({ children }) {
       console.log(`[WorkoutLogging] Workout finished: ${result.status}`);
       console.log(`[WorkoutLogging] ${result.completedSets}/${result.plannedSets} sets, ${result.completedReps}/${result.plannedReps} reps`);
       
-      // Save to Firestore via API
-      if (user) {
-        const token = await user.getIdToken();
-        await fetch('/api/imu-stream', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            action: 'completeWorkout',
-            userId: user.uid,
-            workoutId: result.workoutId,
-            metadata: result.metadata
-          })
-        });
+      // Re-check online status (may have changed during endStreaming)
+      try {
+        const { isNetworkOffline } = await import('../hooks/useNetworkConnectionWatcher');
+        if (isNetworkOffline()) online = false;
+      } catch (_) {}
+
+      // Save to Firestore via API (skip when offline)
+      if (user && online) {
+        try {
+          const token = await user.getIdToken();
+          const controller = new AbortController();
+          const tid = setTimeout(() => controller.abort(), 6000);
+          await fetch('/api/imu-stream', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              action: 'completeWorkout',
+              userId: user.uid,
+              workoutId: result.workoutId,
+              metadata: result.metadata
+            }),
+            signal: controller.signal,
+          });
+          clearTimeout(tid);
+        } catch (fsErr) {
+          console.warn('[WorkoutLogging] Firestore save failed (will sync later):', fsErr.message);
+        }
       }
       
       return result;
@@ -478,6 +623,7 @@ export function WorkoutLoggingProvider({ children }) {
     completedSets,
     totalReps,
     backgroundMLStatus, // Track background ML inference status per set
+    pendingSetUploads,  // Number of queued offline set classifications
     
     // Core Actions
     startStreaming,
@@ -495,6 +641,8 @@ export function WorkoutLoggingProvider({ children }) {
     setRepClassification,  // Store ML classification result
     getWorkoutData,        // Get complete workout JSON
     exportAsCSV,           // Export as CSV string
+    flushPendingSetClassifications, // Flush queued offline set classifications
+    checkHasPendingUploads,        // Check if pending uploads exist
     
     // Legacy compatibility (for existing code)
     currentLog: workoutId ? { logId: workoutId, sessionId: workoutId, status: workoutStatus } : null,

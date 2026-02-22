@@ -436,4 +436,50 @@ export class RepCounter {
       stats: this.getStats()
     };
   }
+
+  /**
+   * Truncate internal state to a known checkpoint.
+   * Used by SessionCheckpointManager for deterministic rollback after
+   * a BLE disconnect/reconnect.
+   *
+   * @param {number} repCount     – Number of fully completed reps to keep.
+   * @param {number} sampleIndex  – Number of samples to keep.
+   */
+  truncateTo(repCount, sampleIndex) {
+    // 1. Truncate reps
+    this.reps = this.reps.slice(0, repCount);
+    this.repCount = repCount;
+
+    // 2. Truncate sample buffer
+    this.allSamples = this.allSamples.slice(0, sampleIndex);
+
+    // 3. Rebuild accelBuffer/timeBuffer from remaining samples
+    this.accelBuffer = this.allSamples.map(s => s.filteredMagnitude || s.accelMag || 0);
+    this.timeBuffer = this.allSamples.map(s => s.relativeTime ?? s.timestamp ?? 0);
+
+    // 4. Reset detection state so it can resume cleanly
+    this.state = 'IDLE';
+    this.currentRep = null;
+    this.inRepPhase = false;
+    this.lastPeakIndex = -1;
+    this.lastValleyIndex = -1;
+    this.lastDetectedValleyIndex = -1;
+    this.lastDetectedPeakIndex = -1;
+    this.repStartTime = 0;
+
+    // 5. Re-establish previous rep end references from last kept rep
+    if (this.reps.length > 0) {
+      const lastRep = this.reps[this.reps.length - 1];
+      this.previousRepEndIndex = lastRep.actualEndIndex ?? sampleIndex - 1;
+      this.lastRepEndTime = lastRep.actualEndTime ?? 0;
+      this.repTimes = this.reps.map(r => r.duration);
+    } else {
+      this.previousRepEndValley = null;
+      this.previousRepEndIndex = null;
+      this.lastRepEndTime = 0;
+      this.repTimes = [];
+    }
+
+    console.log(`[RepCounter] Truncated to repCount=${repCount}, samples=${sampleIndex}`);
+  }
 }
