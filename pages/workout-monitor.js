@@ -373,7 +373,7 @@ export default function WorkoutMonitor() {
     // 1. Flush GCS uploads (workout_data.json / metadata.json queued while offline)
     try {
       await migrateLocalStorageFallbacks();
-      await flushQueue(uploadOfflineJob);
+      await flushQueue(uploadOfflineJob, 'gcs_upload');
     } catch (_) {}
 
     // 2. Flush queued set classifications — returns actual results
@@ -591,7 +591,9 @@ export default function WorkoutMonitor() {
 
   // ── Offline upload helper (reusable by both flush and startup) ─────
   const uploadOfflineJob = useCallback(async (job) => {
-    if (job.type !== 'gcs_upload') return;
+    if (job.type !== 'gcs_upload') {
+      throw new Error(`uploadOfflineJob: unsupported job type "${job.type}"`);
+    }
 
     const { filePath, content, contentType, userId: jobUserId } = job.payload;
     const token = user ? await user.getIdToken() : null;
@@ -691,7 +693,7 @@ export default function WorkoutMonitor() {
       await migrateLocalStorageFallbacks();
 
       // 2. Flush IndexedDB queue
-      const result = await flushQueue(uploadOfflineJob);
+      const result = await flushQueue(uploadOfflineJob, 'gcs_upload');
 
       // 3. Flush any pending set classifications
       await flushPendingSetClassifications();
@@ -721,7 +723,7 @@ export default function WorkoutMonitor() {
   useEffect(() => {
     if (isOnline && user) {
       migrateLocalStorageFallbacks()
-        .then(() => flushQueue(uploadOfflineJob))
+        .then(() => flushQueue(uploadOfflineJob, 'gcs_upload'))
         .then(r => {
           if (r.uploaded > 0) {
             setOfflineToast(`Synced ${r.uploaded} offline file(s).`);

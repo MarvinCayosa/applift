@@ -218,14 +218,17 @@ export async function purgeOldJobs(maxAgeMs = 86400000) {
  * Jobs are processed sequentially. Failed jobs stay queued.
  *
  * @param {(job: object) => Promise<void>} uploadFn
+ * @param {string} [typeFilter] - Only process jobs of this type (e.g. 'gcs_upload'). If omitted, all jobs are processed.
  * @returns {Promise<{ uploaded: number, failed: number }>}
  */
-export async function flushQueue(uploadFn) {
+export async function flushQueue(uploadFn, typeFilter) {
   const pending = await getAllPendingJobs();
   let uploaded = 0;
   let failed = 0;
 
   for (const job of pending) {
+    // Skip jobs that don't match the requested type filter
+    if (typeFilter && job.type !== typeFilter) continue;
     try {
       await updateJobStatus(job.jobId, 'uploading');
       await uploadFn(job);
