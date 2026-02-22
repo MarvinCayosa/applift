@@ -21,6 +21,7 @@ import ExecutionQualityCard from '../../components/sessionDetails/ExecutionQuali
 import ExecutionConsistencyCard from '../../components/sessionDetails/ExecutionConsistencyCard';
 import FatigueCarousel from '../../components/sessionDetails/FatigueCarousel';
 import MovementPhasesSection from '../../components/sessionDetails/MovementPhasesSection';
+import WorkoutProgressCard from '../../components/sessionDetails/WorkoutProgressCard';
 import SessionDetailsSkeleton from '../../components/sessionDetails/SessionDetailsSkeleton';
 import BottomNav from '../../components/BottomNav';
 import { equipmentConfig } from '../../components/equipment';
@@ -130,7 +131,16 @@ export default function SessionDetailsPage() {
             </div>
           )}
 
-          {/* Execution Quality + Consistency — 2 column */}
+          {/* Workout Progress - Total Reps */}
+          <WorkoutProgressCard
+            setsData={vm.mergedSetsData}
+            plannedSets={vm.plannedSets}
+            plannedRepsPerSet={vm.plannedRepsPerSet}
+            totalReps={vm.totalReps}
+            totalSets={vm.totalSets}
+          />
+
+          {/* Execution Quality + Consistency — 2-column row */}
           <div className="grid grid-cols-2 gap-3">
             <ExecutionQualityCard
               setsData={vm.mergedSetsData}
@@ -140,11 +150,10 @@ export default function SessionDetailsPage() {
             <ExecutionConsistencyCard
               setsData={vm.mergedSetsData}
               analysisScore={vm.consistencyScore}
-              inconsistentRepIndex={vm.inconsistentRepIndex}
             />
           </div>
 
-          {/* Fatigue + Velocity carousel */}
+          {/* Fatigue + Velocity Loss — swipeable carousel */}
           <FatigueCarousel
             setsData={vm.mergedSetsData}
             fatigueScore={vm.fatigueScore}

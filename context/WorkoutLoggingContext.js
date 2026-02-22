@@ -32,6 +32,7 @@ import {
   addIMUSample,
   onRepDetected,
   onSetComplete,
+  onSetSkipped,
   endStreaming,
   cancelStreaming,
   getStreamingState,
@@ -287,6 +288,38 @@ export function WorkoutLoggingProvider({ children }) {
   }, [isStreaming, workoutConfig, runBackgroundMLForSet]);
 
   /**
+   * Handle set skipped (incomplete)
+   * Tags the set as incomplete in GCS, then advances to next set.
+   * Also triggers ML inference for whatever reps were completed.
+   */
+  const handleSetSkipped = useCallback(async (completedReps, plannedReps) => {
+    if (!isStreaming) return null;
+
+    try {
+      const result = await onSetSkipped(completedReps, plannedReps);
+      
+      if (result) {
+        setCompletedSets(result.completedSet);
+        setCurrentSet(result.completedSet + 1);
+        setCurrentRep(0);
+        console.log(`[WorkoutLogging] Set ${result.completedSet} skipped (${completedReps}/${plannedReps} reps), total reps: ${result.totalReps}`);
+        
+        // Still run ML on whatever reps were completed (non-blocking)
+        if (workoutConfig?.exercise && completedReps > 0) {
+          const mlTask = runBackgroundMLForSet(result.completedSet, workoutConfig.exercise);
+          backgroundMLTasks.current.set(result.completedSet, mlTask);
+        }
+      }
+      
+      return result;
+    } catch (error) {
+      console.error('[WorkoutLogging] Failed to skip set:', error);
+      setStreamError(error.message);
+      return null;
+    }
+  }, [isStreaming, workoutConfig, runBackgroundMLForSet]);
+
+  /**
    * Wait for all background ML tasks to complete (with timeout)
    */
   const waitForBackgroundML = useCallback(async (timeoutMs = 15000) => {
@@ -451,6 +484,7 @@ export function WorkoutLoggingProvider({ children }) {
     streamIMUSample,
     handleRepDetected,
     handleSetComplete,
+    handleSetSkipped,
     finishWorkout,
     cancelWorkout,
     resetWorkout,

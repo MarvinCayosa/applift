@@ -173,74 +173,109 @@ export default function ExerciseDetailPage() {
                   const date = log.timestamps?.started?.toDate?.()
                     || log.timestamps?.created?.toDate?.()
                     || (log.startTime ? new Date(log.startTime) : new Date())
-                  const sets = log.results?.totalSets || log.results?.completedSets || 0
-                  const reps = log.results?.totalReps || log.results?.completedReps || 0
+
+                  // Planned values
+                  const plannedSets = log.planned?.sets || log.results?.totalSets || log.results?.completedSets || 0
+                  const plannedRepsPerSet = log.planned?.reps || 0
+                  const totalPlannedReps = plannedSets * plannedRepsPerSet
+
+                  // Actual completed
+                  const completedReps = log.results?.totalReps || log.results?.completedReps || 0
+
+                  // Completion state
+                  const isCompleted = totalPlannedReps > 0
+                    ? completedReps >= totalPlannedReps
+                    : true // if no planned data, assume completed
+
                   const weight = log.planned?.weight || log.exercise?.weight || 0
+                  const weightUnit = log.planned?.weightUnit || 'kg'
                   const durMs = log.results?.durationMs || 0
                   const durSec = log.results?.totalTime || 0
-                  const calories = log.results?.calories || 0
-                  const avgConc = log.results?.avgConcentric || 0
-                  const avgEcc = log.results?.avgEccentric || 0
+                  const duration = formatDuration(durMs, durSec)
+
+                  // Date: "Feb 02" format
+                  const dateStr = `${date.toLocaleDateString('en-US', { month: 'short' })} ${date.getDate().toString().padStart(2, '0')}`
+
+                  // Rep display: "4/6" or "6/6"
+                  const repDisplay = totalPlannedReps > 0
+                    ? `${completedReps}/${totalPlannedReps}`
+                    : `${completedReps}`
 
                   return (
                     <div
                       key={log.id || idx}
                       onClick={() => handleSessionClick(log)}
-                      className="bg-white/[0.05] rounded-2xl p-4 space-y-3 cursor-pointer active:scale-[0.98] transition-transform"
+                      className="rounded-2xl p-5 cursor-pointer active:scale-[0.98] transition-transform"
+                      style={{ backgroundColor: bgColor }}
                     >
-                      {/* Header row */}
+                      {/* Row 1: Exercise name + chevron */}
+                      <div className="flex items-start justify-between">
+                        <h3 className="text-[22px] font-bold text-white leading-tight pr-3">
+                          {exerciseCfg.name}
+                        </h3>
+                        <svg
+                          className="w-5 h-5 text-white/50 mt-1 flex-shrink-0"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </div>
+
+                      {/* Divider */}
+                      <div className="w-full h-px bg-white/30 my-3" />
+
+                      {/* Row 2: sets×reps · duration + completion badge — ALL ONE LINE */}
                       <div className="flex items-center justify-between">
-                        <p className="text-sm font-semibold text-white">
-                          {date.toLocaleDateString('en-US', {
-                            weekday: 'short',
-                            month: 'short',
-                            day: 'numeric',
-                          })}
+                        <p className="text-[15px] text-white/80 font-medium">
+                          {plannedSets}×{plannedRepsPerSet || completedReps}{duration !== '0:00' ? ` · ${duration}` : ''}
                         </p>
-                        <div className="flex items-center gap-2">
-                          <span
-                            className="text-[10px] font-medium px-2.5 py-0.5 rounded-full"
-                            style={{ backgroundColor: bgColor, color: '#fff' }}
-                          >
-                            {formatDuration(durMs, durSec)}
+                        {totalPlannedReps > 0 && (
+                          <div className="flex items-center gap-1.5">
+                            {isCompleted ? (
+                              /* Bootstrap bi-check-circle-fill */
+                              <svg
+                                className="flex-shrink-0"
+                                style={{ width: 18, height: 18, color: 'rgba(255,255,255,0.7)' }}
+                                viewBox="0 0 16 16"
+                                fill="currentColor"
+                              >
+                                <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z" />
+                              </svg>
+                            ) : (
+                              /* Bootstrap bi-exclamation-circle-fill */
+                              <svg
+                                className="flex-shrink-0"
+                                style={{ width: 18, height: 18, color: '#EAB308' }}
+                                viewBox="0 0 16 16"
+                                fill="currentColor"
+                              >
+                                <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zM8 4a.905.905 0 0 0-.9.995l.35 3.507a.552.552 0 0 0 1.1 0l.35-3.507A.905.905 0 0 0 8 4zm.002 6a1 1 0 1 0 0 2 1 1 0 0 0 0-2z" />
+                              </svg>
+                            )}
+                            <span
+                              className="text-[15px] font-bold"
+                              style={{ color: isCompleted ? 'rgba(255,255,255,0.7)' : '#EAB308' }}
+                            >
+                              {repDisplay}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Row 3: Date + Weight — bottom row */}
+                      <div className="flex items-end justify-between mt-4">
+                        <p className="text-[14px] text-white/60 font-medium">{dateStr}</p>
+                        <div className="flex items-baseline">
+                          <span className="text-[40px] font-bold text-white leading-none" style={{ letterSpacing: '-1px' }}>
+                            {weight}
                           </span>
-                          <svg className="w-4 h-4 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                          </svg>
+                          <span className="text-[14px] font-bold text-white/70 ml-1">
+                            {weightUnit}
+                          </span>
                         </div>
                       </div>
-
-                      {/* Metrics grid */}
-                      <div className="grid grid-cols-4 gap-2 text-center">
-                        <div>
-                          <p className="text-lg font-bold text-white leading-tight">{sets}</p>
-                          <p className="text-[10px] text-white/40">Sets</p>
-                        </div>
-                        <div>
-                          <p className="text-lg font-bold text-white leading-tight">{reps}</p>
-                          <p className="text-[10px] text-white/40">Reps</p>
-                        </div>
-                        <div>
-                          <p className="text-lg font-bold text-white leading-tight">
-                            {weight}<span className="text-[10px] text-white/40 ml-0.5">kg</span>
-                          </p>
-                          <p className="text-[10px] text-white/40">Weight</p>
-                        </div>
-                        <div>
-                          <p className="text-lg font-bold text-white leading-tight">
-                            {calories || '—'}
-                          </p>
-                          <p className="text-[10px] text-white/40">Kcal</p>
-                        </div>
-                      </div>
-
-                      {/* Tempo row (if available) */}
-                      {(avgConc > 0 || avgEcc > 0) && (
-                        <div className="flex gap-4 text-xs text-white/50 border-t border-white/5 pt-2">
-                          <span>Concentric: <span className="text-white/80 font-medium">{avgConc.toFixed(2)}s</span></span>
-                          <span>Eccentric: <span className="text-white/80 font-medium">{avgEcc.toFixed(2)}s</span></span>
-                        </div>
-                      )}
                     </div>
                   )
                 })}

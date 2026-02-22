@@ -49,15 +49,20 @@ export default function RepByRepCard({ setsData, parsedSetsData, recommendedSets
                 key={setNum}
                 onClick={() => hasData && handleSetChange(setNum)}
                 disabled={!hasData}
-                className={`px-3 sm:px-4 lg:px-5 py-1.5 sm:py-2 lg:py-2.5 rounded-full text-xs sm:text-sm lg:text-base font-semibold transition-all ${
+                className={`px-3 sm:px-4 lg:px-5 py-1.5 sm:py-2 lg:py-2.5 rounded-full text-xs sm:text-sm lg:text-base font-semibold transition-all flex items-center gap-1 ${
                   activeSet === setNum && hasData
                     ? 'bg-purple-500 text-white'
-                    : hasData
-                      ? 'text-gray-300 hover:text-white hover:bg-gray-700/50'
-                      : 'text-gray-600 cursor-not-allowed'
+                    : hasData && setData?.incomplete
+                      ? 'text-yellow-400 hover:text-yellow-300 hover:bg-yellow-500/10 bg-yellow-500/5'
+                      : hasData
+                        ? 'text-gray-300 hover:text-white hover:bg-gray-700/50'
+                        : 'text-gray-600 cursor-not-allowed'
                 }`}
               >
                 Set {setNum}
+                {hasData && setData?.incomplete && (
+                  <span className="text-[9px] text-yellow-400 opacity-80">!</span>
+                )}
               </button>
             );
           })}
@@ -66,6 +71,17 @@ export default function RepByRepCard({ setsData, parsedSetsData, recommendedSets
 
       {/* Rep Carousel for Active Set - Takes remaining height with fade-in-up animation on set switch */}
       <div className="flex-1 overflow-hidden">
+        {/* Incomplete set banner */}
+        {activeSetData?.incomplete && (
+          <div className="flex items-center gap-2 px-3 py-2 mb-2 rounded-xl bg-yellow-500/10 border border-yellow-500/20">
+            <svg className="w-4 h-4 text-yellow-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span className="text-xs text-yellow-400 font-medium">
+              Incomplete — {activeSetData.completedReps || activeSetData.reps}/{activeSetData.plannedReps || '?'} reps completed
+            </span>
+          </div>
+        )}
         {parsedSetsData.map((set) => 
           activeSet === set.setNumber ? (
             <div 

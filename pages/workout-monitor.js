@@ -18,7 +18,8 @@ export default function WorkoutMonitor() {
     startStreaming, 
     streamIMUSample, 
     handleRepDetected, 
-    handleSetComplete, 
+    handleSetComplete,
+    handleSetSkipped,
     finishWorkout,
     cancelWorkout,
     isStreaming,
@@ -176,6 +177,8 @@ export default function WorkoutMonitor() {
     stopBreak,
     exportToCSV: getCSV,
     resetReps,
+    skipSet,
+    resetCurrentSet,
     formatTime,
     repCounterRef,
     rawDataLog
@@ -372,6 +375,22 @@ export default function WorkoutMonitor() {
     if (isStreaming) {
       await cancelWorkout();
     }
+  };
+
+  // Handle skip set - save partial reps as incomplete and advance
+  const handleSkipSet = async () => {
+    const skippedSetData = skipSet();
+    
+    // Tag the set as incomplete in GCS
+    if (isStreaming && skippedSetData) {
+      console.log('⏭️ Set skipped:', skippedSetData);
+      await handleSetSkipped(skippedSetData.completedReps, skippedSetData.plannedReps);
+    }
+  };
+
+  // Handle reset current set - clear reps and start over
+  const handleResetSet = () => {
+    resetCurrentSet();
   };
 
   return (
@@ -628,32 +647,71 @@ export default function WorkoutMonitor() {
                         <span>{formatTime(elapsedTime)}</span>
                       </button>
                     ) : (
-                      <button
-                        onClick={togglePause}
-                        className="w-full py-4 rounded-full font-bold text-white text-xl transition-all flex items-center justify-between px-6"
-                        style={{
-                          background: 'linear-gradient(135deg, #c084fc 0%, #a855f7 50%, #9333ea 100%)',
-                          boxShadow: '0 8px 24px rgba(147, 51, 234, 0.4)'
-                        }}
-                      >
-                        <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
-                          <svg className="w-6 h-6 text-white ml-1" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M8 5v14l11-7z"/>
-                          </svg>
-                        </div>
-                        <span>{formatTime(elapsedTime)}</span>
+                      <div className="w-full space-y-2">
+                        {/* Main resume/stop bar */}
                         <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            stopRecording();
+                          onClick={togglePause}
+                          className="w-full py-4 rounded-full font-bold text-white text-xl transition-all flex items-center justify-between px-6"
+                          style={{
+                            background: 'linear-gradient(135deg, #c084fc 0%, #a855f7 50%, #9333ea 100%)',
+                            boxShadow: '0 8px 24px rgba(147, 51, 234, 0.4)'
                           }}
-                          className="w-12 h-12 rounded-full bg-red-500/80 hover:bg-red-500 flex items-center justify-center transition-all"
                         >
-                          <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
-                            <rect x="6" y="6" width="12" height="12"/>
-                          </svg>
+                          <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
+                            <svg className="w-6 h-6 text-white ml-1" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M8 5v14l11-7z"/>
+                            </svg>
+                          </div>
+                          <span>{formatTime(elapsedTime)}</span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              stopRecording();
+                            }}
+                            className="w-12 h-12 rounded-full bg-red-500/80 hover:bg-red-500 flex items-center justify-center transition-all"
+                          >
+                            <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                              <rect x="6" y="6" width="12" height="12"/>
+                            </svg>
+                          </button>
                         </button>
-                      </button>
+                        
+                        {/* Skip Set + Reset Set buttons row */}
+                        <div className="flex gap-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleResetSet();
+                            }}
+                            className="flex-1 py-2.5 rounded-full font-semibold text-white text-sm transition-all flex items-center justify-center gap-2"
+                            style={{
+                              background: 'rgba(255, 255, 255, 0.1)',
+                              border: '1px solid rgba(255, 255, 255, 0.2)',
+                            }}
+                          >
+                            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                            Reset Set
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSkipSet();
+                            }}
+                            className="flex-1 py-2.5 rounded-full font-semibold text-white text-sm transition-all flex items-center justify-center gap-2"
+                            style={{
+                              background: 'rgba(234, 179, 8, 0.15)',
+                              border: '1px solid rgba(234, 179, 8, 0.4)',
+                            }}
+                          >
+                            <svg className="w-4 h-4 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                            </svg>
+                            <span className="text-yellow-400">Skip Set</span>
+                          </button>
+                        </div>
+                      </div>
                     )}
                   </>
                 )}

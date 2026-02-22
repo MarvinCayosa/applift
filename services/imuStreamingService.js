@@ -559,6 +559,69 @@ export const onSetComplete = async () => {
 };
 
 /**
+ * Called when a set is skipped (incomplete)
+ * Tags the set as incomplete in GCS data, then moves to next set.
+ * @param {number} completedReps - Number of reps actually completed
+ * @param {number} plannedReps - Number of reps that were planned
+ */
+export const onSetSkipped = async (completedReps, plannedReps) => {
+  if (!isStreaming) return;
+
+  // Clear the buffer
+  console.log(`[IMUStreaming] Set ${currentSetNumber} skipped (${completedReps}/${plannedReps} reps), discarding ${currentRepBuffer.length} unused buffer samples`);
+  currentRepBuffer = [];
+
+  // Mark set as incomplete in workout data
+  const currentSetData = workoutData.sets[currentSetNumber - 1];
+  if (currentSetData) {
+    currentSetData.endTime = new Date().toISOString();
+    currentSetData.totalReps = completedReps;
+    currentSetData.incomplete = true;
+    currentSetData.completedReps = completedReps;
+    currentSetData.plannedReps = plannedReps;
+  }
+
+  // Mark set as incomplete in metadata
+  if (!workoutMetadata.sets[currentSetNumber]) {
+    workoutMetadata.sets[currentSetNumber] = {
+      reps: completedReps,
+      startTime: new Date().toISOString()
+    };
+  }
+  workoutMetadata.sets[currentSetNumber].endTime = new Date().toISOString();
+  workoutMetadata.sets[currentSetNumber].incomplete = true;
+  workoutMetadata.sets[currentSetNumber].completedReps = completedReps;
+  workoutMetadata.sets[currentSetNumber].plannedReps = plannedReps;
+
+  workoutMetadata.completedSets = currentSetNumber;
+  workoutMetadata.completedReps += completedReps;
+
+  console.log(`[IMUStreaming] Set ${currentSetNumber} marked incomplete: ${completedReps}/${plannedReps} reps`);
+
+  // Move to next set
+  currentSetNumber++;
+  currentRepNumber = 0;
+  currentRepBuffer = [];
+  repStartTime = null;
+
+  // Add new set to workout data
+  workoutData.sets.push({
+    setNumber: currentSetNumber,
+    startTime: new Date().toISOString(),
+    endTime: null,
+    reps: []
+  });
+
+  // Update metadata in GCS
+  await uploadMetadata();
+
+  return {
+    completedSet: currentSetNumber - 1,
+    totalReps: workoutMetadata.completedReps
+  };
+};
+
+/**
  * End the streaming session
  * Determines if workout was completed or incomplete
  * Uploads complete workout JSON to GCS
@@ -842,6 +905,7 @@ export default {
   addIMUSample,
   onRepDetected,
   onSetComplete,
+  onSetSkipped,
   endStreaming,
   cancelStreaming,
   getStreamingState,

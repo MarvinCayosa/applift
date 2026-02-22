@@ -179,7 +179,7 @@ export default function ExecutionQualityCard({ setsData, gcsData, selectedSet = 
 
       {/* Donut Chart (Recharts) */}
       <div className="flex-1 flex items-center justify-center relative">
-        <div style={{ width: '100%', height: 140 }}>
+        <div style={{ width: '100%', height: 120 }}>
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
@@ -188,8 +188,8 @@ export default function ExecutionQualityCard({ setsData, gcsData, selectedSet = 
                 data={chartData}
                 cx="50%"
                 cy="50%"
-                innerRadius={42}
-                outerRadius={62}
+                innerRadius={32}
+                outerRadius={48}
                 paddingAngle={4}
                 dataKey="value"
                 onMouseEnter={onPieEnter}
@@ -223,8 +223,8 @@ export default function ExecutionQualityCard({ setsData, gcsData, selectedSet = 
         </div>
         {/* Center check icon */}
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="w-10 h-10 rounded-full bg-white/[0.07] flex items-center justify-center">
-            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="w-8 h-8 rounded-full bg-white/[0.07] flex items-center justify-center">
+            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
             </svg>
           </div>

@@ -54,9 +54,19 @@ export default function FatigueVelocityCarousel({
     filteredSets.forEach(set => {
       if (set.repsData && Array.isArray(set.repsData)) {
         set.repsData.forEach(rep => {
-          velocities.push(parseFloat(rep.peakVelocity) || 0);
-          durations.push(parseFloat(rep.time) || 0);
-          smoothnessScores.push(rep.smoothnessScore || 70);
+          // Handle multiple field names for velocity
+          const velocity = parseFloat(rep.peakVelocity) || parseFloat(rep.velocity) || 0;
+          // Handle multiple field names for duration (time, duration, durationMs)
+          const duration = parseFloat(rep.time) || parseFloat(rep.duration) || (rep.durationMs ? rep.durationMs / 1000 : 0);
+          // Handle smoothnessScore with proper fallback
+          const smoothness = rep.smoothnessScore ?? rep.smoothness ?? null;
+          
+          velocities.push(velocity);
+          durations.push(duration);
+          // Only add smoothness if we have real data (not default 70)
+          if (smoothness !== null && smoothness !== undefined) {
+            smoothnessScores.push(smoothness);
+          }
         });
       }
     });
@@ -67,31 +77,39 @@ export default function FatigueVelocityCarousel({
         fatigueScore: propsFatigueScore || 0,
         fatigueLevel: propsFatigueLevel || 'Low',
         totalReps,
-        indicators: []
+        indicators: [],
+        hasInsufficientData: true
       };
     }
 
     const third = Math.max(1, Math.floor(totalReps / 3));
     const mean = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
 
-    const avgVelFirst = mean(velocities.slice(0, third));
-    const avgVelLast = mean(velocities.slice(-third));
+    // Velocity drop calculation - only if we have non-zero velocities
+    const hasVelocityData = velocities.some(v => v > 0);
+    const avgVelFirst = hasVelocityData ? mean(velocities.slice(0, third)) : 0;
+    const avgVelLast = hasVelocityData ? mean(velocities.slice(-third)) : 0;
     const velocityDrop = avgVelFirst > 0 ? ((avgVelFirst - avgVelLast) / avgVelFirst) * 100 : 0;
 
-    const avgDurFirst = mean(durations.slice(0, third));
-    const avgDurLast = mean(durations.slice(-third));
+    // Duration increase calculation - only if we have non-zero durations
+    const hasDurationData = durations.some(d => d > 0);
+    const avgDurFirst = hasDurationData ? mean(durations.slice(0, third)) : 0;
+    const avgDurLast = hasDurationData ? mean(durations.slice(-third)) : 0;
     const durationIncrease = avgDurFirst > 0 ? ((avgDurLast - avgDurFirst) / avgDurFirst) * 100 : 0;
 
-    const avgSmoothFirst = mean(smoothnessScores.slice(0, third));
-    const avgSmoothLast = mean(smoothnessScores.slice(-third));
+    // Smoothness drop calculation - only if we have real smoothness data
+    const hasSmoothnessData = smoothnessScores.length >= 3;
+    const avgSmoothFirst = hasSmoothnessData ? mean(smoothnessScores.slice(0, third)) : 0;
+    const avgSmoothLast = hasSmoothnessData ? mean(smoothnessScores.slice(-third)) : 0;
     const smoothnessDrop = avgSmoothFirst > 0 ? ((avgSmoothFirst - avgSmoothLast) / avgSmoothFirst) * 100 : 0;
 
     let fatigueScore = selectedSet === 'all' ? propsFatigueScore : null;
     if (fatigueScore == null) {
       const D = Math.max(0, velocityDrop) / 100;
       const T = Math.max(0, durationIncrease) / 100;
-      const J = Math.max(0, smoothnessDrop) / 100;
-      fatigueScore = Math.min(100, (0.35 * D + 0.25 * T + 0.20 * J + 0.20 * J) * 100);
+      const S = Math.max(0, smoothnessDrop) / 100;
+      // Updated formula: 0.35*D + 0.25*T + 0.40*S (more weight on smoothness/control)
+      fatigueScore = Math.min(100, (0.35 * D + 0.25 * T + 0.40 * S) * 100);
     }
 
     let fatigueLevel = selectedSet === 'all' ? propsFatigueLevel : null;
@@ -104,16 +122,35 @@ export default function FatigueVelocityCarousel({
     }
 
     const indicators = [
-      { label: 'Velocity', value: Math.max(0, velocityDrop).toFixed(1), unit: '%', status: velocityDrop < 10 ? 'good' : velocityDrop < 20 ? 'warn' : 'bad' },
-      { label: 'Slowdown', value: Math.max(0, durationIncrease).toFixed(1), unit: '%', status: durationIncrease < 15 ? 'good' : durationIncrease < 30 ? 'warn' : 'bad' },
-      { label: 'Control', value: Math.max(0, smoothnessDrop).toFixed(1), unit: '%', status: smoothnessDrop < 10 ? 'good' : smoothnessDrop < 25 ? 'warn' : 'bad' }
+      { 
+        label: 'Velocity', 
+        value: hasVelocityData ? Math.max(0, velocityDrop).toFixed(1) : '--', 
+        unit: hasVelocityData ? '%' : '', 
+        status: !hasVelocityData ? 'neutral' : velocityDrop < 10 ? 'good' : velocityDrop < 20 ? 'warn' : 'bad',
+        hasData: hasVelocityData
+      },
+      { 
+        label: 'Slowdown', 
+        value: hasDurationData ? Math.max(0, durationIncrease).toFixed(1) : '--', 
+        unit: hasDurationData ? '%' : '', 
+        status: !hasDurationData ? 'neutral' : durationIncrease < 15 ? 'good' : durationIncrease < 30 ? 'warn' : 'bad',
+        hasData: hasDurationData
+      },
+      { 
+        label: 'Control', 
+        value: hasSmoothnessData ? Math.max(0, smoothnessDrop).toFixed(1) : '--', 
+        unit: hasSmoothnessData ? '%' : '', 
+        status: !hasSmoothnessData ? 'neutral' : smoothnessDrop < 10 ? 'good' : smoothnessDrop < 25 ? 'warn' : 'bad',
+        hasData: hasSmoothnessData
+      }
     ];
 
     return {
       fatigueScore: Math.round(fatigueScore * 10) / 10,
       fatigueLevel,
       totalReps,
-      indicators
+      indicators,
+      hasInsufficientData: false
     };
   }, [setsData, propsFatigueScore, propsFatigueLevel, selectedSet]);
 
@@ -141,25 +178,70 @@ export default function FatigueVelocityCarousel({
       return { velocities: [], baselineVelocity: 0, velocityDrop: 0, maxVelocity: 0, effectiveReps: 0, totalReps: 0 };
     }
 
-    const baselineSampleSize = Math.min(2, velocities.length);
-    const baselineVelocity = velocities.slice(0, baselineSampleSize).reduce((s, v) => s + v.velocity, 0) / baselineSampleSize;
-    const lastVelocity = velocities[velocities.length - 1]?.velocity || 0;
-    const velocityDrop = baselineVelocity > 0 ? ((baselineVelocity - lastVelocity) / baselineVelocity) * 100 : 0;
+    // Get all velocity values for statistical analysis
+    const allVels = velocities.map(v => v.velocity).filter(v => v > 0);
+    
+    // Calculate median and IQR for outlier detection
+    const sorted = [...allVels].sort((a, b) => a - b);
+    const median = sorted.length % 2 === 0 
+      ? (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2 
+      : sorted[Math.floor(sorted.length / 2)];
+    const q1 = sorted[Math.floor(sorted.length * 0.25)];
+    const q3 = sorted[Math.floor(sorted.length * 0.75)];
+    const iqr = q3 - q1;
+    
+    // Extreme threshold: > Q3 + 1.5*IQR OR > 2x median (abrupt spike)
+    const extremeUpperThreshold = Math.max(q3 + 1.5 * iqr, median * 2);
+    // Also flag very low values as potential sensor issues
+    const extremeLowerThreshold = Math.max(0.1, q1 - 1.5 * iqr);
+    
+    // Filter out extreme outliers for baseline calculation
+    const nonExtremeVels = allVels.filter(v => v <= extremeUpperThreshold && v >= extremeLowerThreshold);
+    
+    // Baseline: average of first 2-3 non-extreme reps
+    const baselineSampleSize = Math.min(2, nonExtremeVels.length);
+    const firstNonExtreme = [];
+    for (const v of velocities) {
+      if (v.velocity <= extremeUpperThreshold && v.velocity >= extremeLowerThreshold) {
+        firstNonExtreme.push(v.velocity);
+        if (firstNonExtreme.length >= baselineSampleSize) break;
+      }
+    }
+    const baselineVelocity = firstNonExtreme.length > 0 
+      ? firstNonExtreme.reduce((s, v) => s + v, 0) / firstNonExtreme.length 
+      : (allVels[0] || 0);
+    
+    // For velocity drop: compare baseline to average of last portion (excluding extremes)
+    const lastThird = nonExtremeVels.slice(-Math.max(1, Math.floor(nonExtremeVels.length / 3)));
+    const avgLastVelocity = lastThird.length > 0 
+      ? lastThird.reduce((s, v) => s + v, 0) / lastThird.length 
+      : 0;
+    
+    const velocityDrop = baselineVelocity > 0 ? ((baselineVelocity - avgLastVelocity) / baselineVelocity) * 100 : 0;
     const maxVelocity = Math.max(...velocities.map(v => v.velocity), 0.5);
 
-    // Enrich with drop info
+    // Enrich with drop info and extreme detection
     const enriched = velocities.map(v => {
       const dropFromBaseline = baselineVelocity > 0 ? ((baselineVelocity - v.velocity) / baselineVelocity) * 100 : 0;
-      return { ...v, dropPercent: Math.round(dropFromBaseline * 10) / 10, isEffective: dropFromBaseline < thresholdPercent };
+      const isExtreme = v.velocity > extremeUpperThreshold || (v.velocity > 0 && v.velocity < extremeLowerThreshold);
+      const isEffective = !isExtreme && dropFromBaseline < thresholdPercent;
+      return { 
+        ...v, 
+        dropPercent: Math.round(dropFromBaseline * 10) / 10, 
+        isEffective,
+        isExtreme,
+        extremeType: isExtreme ? (v.velocity > extremeUpperThreshold ? 'spike' : 'low') : null
+      };
     });
 
     return {
       velocities: enriched,
       baselineVelocity: Math.round(baselineVelocity * 100) / 100,
-      velocityDrop: Math.round(velocityDrop * 10) / 10,
+      velocityDrop: Math.max(0, Math.round(velocityDrop * 10) / 10), // Clamp to 0 minimum
       maxVelocity,
       effectiveReps: enriched.filter(v => v.isEffective).length,
-      totalReps: velocities.length
+      totalReps: velocities.length,
+      hasExtremeValues: enriched.some(v => v.isExtreme)
     };
   }, [setsData, selectedSet, thresholdPercent]);
 
@@ -177,6 +259,7 @@ export default function FatigueVelocityCarousel({
   const getStatusColor = (status) => {
     if (status === 'good') return { dot: 'bg-green-400', text: 'text-green-400', bg: 'bg-green-500/10' };
     if (status === 'warn') return { dot: 'bg-yellow-400', text: 'text-yellow-400', bg: 'bg-yellow-500/10' };
+    if (status === 'neutral') return { dot: 'bg-white/30', text: 'text-white/50', bg: 'bg-white/5' };
     return { dot: 'bg-red-400', text: 'text-red-400', bg: 'bg-red-500/10' };
   };
 
@@ -210,17 +293,17 @@ export default function FatigueVelocityCarousel({
           {/* 2-column: Ring gauge | Indicators */}
           <div className="flex gap-3">
             {/* Left: Circular ring gauge */}
-            <div className={`flex-shrink-0 rounded-2xl ${fatigueColor.bg} flex flex-col items-center justify-center`} style={{ width: '130px', height: '148px' }}>
-              <div className="relative" style={{ width: '96px', height: '96px' }}>
+            <div className={`flex-shrink-0 rounded-2xl ${fatigueColor.bg} flex flex-col items-center justify-center`} style={{ width: '110px', height: '130px' }}>
+              <div className="relative" style={{ width: '76px', height: '76px' }}>
                 <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
                   {/* Track */}
-                  <circle cx="50" cy="50" r={ringRadius} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="7" />
+                  <circle cx="50" cy="50" r={ringRadius} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="8" />
                   {/* Progress */}
                   <circle
                     cx="50" cy="50" r={ringRadius}
                     fill="none"
                     stroke={fatigueColor.ring}
-                    strokeWidth="7"
+                    strokeWidth="8"
                     strokeLinecap="round"
                     strokeDasharray={ringCircumference}
                     strokeDashoffset={ringCircumference * (1 - ringProgress)}
@@ -313,16 +396,19 @@ export default function FatigueVelocityCarousel({
                     const barH = Math.max(4, heightFrac * plotH);
                     const y = barPadding.top + plotH - barH;
 
+                    // Color logic: yellow for extreme, cyan for effective, gray for fatigued
+                    const isExtreme = data.isExtreme;
                     const isEffective = data.isEffective;
-                    const barColor = isEffective ? '#22d3ee' : '#475569';
-                    const barOpacity = isEffective ? 0.9 : 0.5;
+                    const barColor = isExtreme ? '#facc15' : isEffective ? '#22d3ee' : '#475569';
+                    const barOpacity = isExtreme ? 0.85 : isEffective ? 0.9 : 0.5;
+                    const textColor = isExtreme ? '#facc15' : isEffective ? '#22d3ee' : '#64748b';
 
                     return (
                       <g key={idx}>
                         {/* Bar with rounded top */}
                         <rect x={x} y={y} width={barW} height={barH} fill={barColor} opacity={barOpacity} rx="4" ry="4" />
                         {/* Velocity value on top of bar */}
-                        <text x={x + barW / 2} y={y - 4} fill={isEffective ? '#22d3ee' : '#64748b'} fontSize="8" fontWeight="600" textAnchor="middle">
+                        <text x={x + barW / 2} y={y - 4} fill={textColor} fontSize="8" fontWeight="600" textAnchor="middle">
                           {data.velocity.toFixed(2)}
                         </text>
                         {/* Rep number at bottom */}
@@ -344,6 +430,12 @@ export default function FatigueVelocityCarousel({
                     <div className="w-2 h-2 rounded-sm bg-slate-600 opacity-50" />
                     <span className="text-[8px] text-gray-500">Fatigued</span>
                   </div>
+                  {velocityMetrics.hasExtremeValues && (
+                    <div className="flex items-center gap-1">
+                      <div className="w-2 h-2 rounded-sm bg-yellow-400 opacity-85" />
+                      <span className="text-[8px] text-gray-500">Abrupt</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </>

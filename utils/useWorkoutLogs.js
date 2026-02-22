@@ -185,6 +185,11 @@ export function useWorkoutLogs(options = {}) {
     const reps = log.results?.totalReps || log.totalReps || 0;
     // Get sets - handle both formats, with fallback to planned sets
     const sets = log.results?.totalSets || (log.sets ? Object.keys(log.sets).length : 0) || log.planned?.sets || 0;
+    // Get planned values for completion check
+    const plannedSets = log.planned?.sets || sets;
+    const plannedReps = (log.planned?.sets || 1) * (log.planned?.reps || 10);
+    // Check if workout is incomplete (fewer sets or reps than planned)
+    const isIncomplete = sets < plannedSets || reps < plannedReps;
     // Get duration
     const duration = log.results?.totalTime || 0;
     // Get date - handle both timestamp formats
@@ -194,12 +199,18 @@ export function useWorkoutLogs(options = {}) {
     
     return {
       id: log.id,
+      logId: log.id, // alias for clarity in navigation
       exercise: exerciseName,
+      rawExercise: log._exercise || rawExercise.toLowerCase().replace(/\s+/g, '-'), // kebab-case for URL
+      rawEquipment: log._equipment || rawEquipment.toLowerCase().replace(/\s+/g, '-'), // kebab-case for URL
       equipment,
       weight,
       weightUnit,
       reps,
       sets,
+      plannedSets,
+      plannedReps,
+      isIncomplete,
       duration,
       date: formatRelativeDate(timestamp),
       createdAt: timestamp,

@@ -10,25 +10,8 @@
  */
 
 import { useRouter } from 'next/router';
+import Image from 'next/image';
 import { formatSessionDate, formatDuration, getRepsPerSet } from '../../utils/sessionDetails/analyticsMappers';
-
-/* ── Gemini sparkle SVG (inline, no external asset) ── */
-function GeminiSparkle({ className = 'w-4 h-4' }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none">
-      <path d="M12 2L13.09 8.26L18 4L14.74 9.91L21 11L14.74 12.09L18 20L13.09 13.74L12 22L10.91 13.74L6 20L9.26 12.09L3 11L9.26 9.91L6 4L10.91 8.26L12 2Z"
-        fill="url(#geminiGrad)" />
-      <defs>
-        <linearGradient id="geminiGrad" x1="3" y1="2" x2="21" y2="22" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#4285F4" />
-          <stop offset="33%" stopColor="#EA4335" />
-          <stop offset="66%" stopColor="#FBBC04" />
-          <stop offset="100%" stopColor="#34A853" />
-        </linearGradient>
-      </defs>
-    </svg>
-  );
-}
 
 export default function HeaderSection({
   exerciseName,
@@ -132,7 +115,7 @@ export default function HeaderSection({
           <div className="flex items-center justify-center gap-1.5 mb-3 content-fade-up-1">
             {isRecommendation ? (
               <>
-                <GeminiSparkle className="w-[14px] h-[14px]" />
+                <Image src="/images/gemini.png" alt="Gemini" width={14} height={14} className="opacity-90" />
                 <span className="text-[13px] text-gray-300 font-medium">Generated Recommendation</span>
               </>
             ) : (
@@ -161,7 +144,7 @@ export default function HeaderSection({
             </div>
             <div>
               <p className="text-[11px] text-gray-500 leading-none">Time</p>
-              <p className="text-[15px] font-bold text-white mt-0.5">
+              <p className="text-2xl font-bold text-white mt-0.5">
                 {formatDuration(totalTime).endsWith('sec') ? (
                   <>
                     {formatDuration(totalTime).slice(0, -3)}<sub className="text-[10px]">sec</sub>
@@ -189,7 +172,7 @@ export default function HeaderSection({
             </div>
             <div>
               <p className="text-[11px] text-gray-500 leading-none">Burn</p>
-              <p className="text-[15px] font-bold text-white mt-0.5">
+              <p className="text-2xl font-bold text-white mt-0.5">
                 {calories || 0}{' '}
                 <span className="text-[11px] text-gray-500 font-normal">kcal</span>
               </p>

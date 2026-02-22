@@ -4,6 +4,132 @@ import { useIMUData } from './useIMUData';
 
 const MAX_CHART_POINTS = 100; // Last 5 seconds at 20Hz
 
+// ═══════════════════════════════════════════════════════════════════════════
+// LOCAL METRIC COMPUTATION HELPERS
+// Compute smoothnessScore and peakVelocity locally so they're available
+// immediately without waiting for server analysis.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Compute smoothness score from rep samples (LDLJ-inspired algorithm)
+ * Based on: normalized jerk + direction changes + excess peaks
+ * Higher score = smoother movement
+ */
+function computeLocalSmoothnessScore(samples) {
+  if (!samples || samples.length < 4) return 70; // Default if insufficient data
+  
+  const signal = samples.map(s => s.filteredMagnitude || s.accelMag || 0);
+  const timestamps = samples.map(s => s.relativeTime ?? s.timestamp ?? 0);
+  
+  // Duration in seconds
+  const duration = timestamps.length > 1 
+    ? (timestamps[timestamps.length - 1] - timestamps[0]) / 1000
+    : samples.length * 0.05; // Estimate 50ms per sample at 20Hz
+  
+  if (duration <= 0) return 70;
+  
+  const dt = duration / (timestamps.length - 1);
+  
+  // Range of motion
+  const rom = Math.max(...signal) - Math.min(...signal);
+  const safeRom = rom < 0.1 ? 0.1 : rom;
+  
+  // METRIC 1: Normalized Jerk (derivative of acceleration)
+  const velocity = [];
+  for (let i = 1; i < signal.length; i++) {
+    velocity.push((signal[i] - signal[i - 1]) / dt);
+  }
+  
+  const jerk = [];
+  for (let i = 1; i < velocity.length; i++) {
+    jerk.push(Math.abs((velocity[i] - velocity[i - 1]) / dt));
+  }
+  
+  const meanJerk = jerk.length > 0 ? jerk.reduce((a, b) => a + b, 0) / jerk.length : 0;
+  const normalizedJerk = meanJerk / safeRom;
+  
+  // METRIC 2: Direction Changes
+  let directionChanges = 0;
+  for (let i = 1; i < velocity.length; i++) {
+    if ((velocity[i] > 0 && velocity[i - 1] < 0) || (velocity[i] < 0 && velocity[i - 1] > 0)) {
+      directionChanges++;
+    }
+  }
+  const directionRate = directionChanges / duration;
+  
+  // METRIC 3: Peak Count (excess peaks indicate irregular movement)
+  let peakCount = 0;
+  for (let i = 1; i < signal.length - 1; i++) {
+    if ((signal[i] > signal[i-1] && signal[i] > signal[i+1]) ||
+        (signal[i] < signal[i-1] && signal[i] < signal[i+1])) {
+      peakCount++;
+    }
+  }
+  const excessPeaks = Math.max(0, peakCount - 2); // Expected: 1 peak and 1 valley
+  
+  // Combine into irregularity score (calibrated weights)
+  const jerkContrib = Math.min(40, Math.max(0, normalizedJerk - 1.5) * 13.3);
+  const dirContrib = Math.min(35, Math.max(0, directionRate - 0.5) * 10);
+  const peakContrib = Math.min(25, excessPeaks * 3.3);
+  
+  const irregularityScore = jerkContrib + dirContrib + peakContrib;
+  const smoothnessScore = Math.max(0, Math.min(100, 100 - irregularityScore));
+  
+  return Math.round(smoothnessScore);
+}
+
+/**
+ * Compute peak velocity from rep samples using accelerometer integration
+ * Physics: integrate (acceleration - gravity) to get velocity
+ * Returns velocity in m/s
+ */
+function computeLocalPeakVelocity(samples) {
+  if (!samples || samples.length < 3) return 0;
+  
+  const accelMag = samples.map(s => s.accelMag || s.filteredMagnitude || 0);
+  const timestamps = samples.map(s => s.relativeTime ?? s.timestamp ?? 0);
+  
+  // Estimate gravity baseline from first few samples
+  const baselineSamples = Math.min(3, Math.floor(accelMag.length / 4));
+  const gravityBaseline = baselineSamples > 0 
+    ? accelMag.slice(0, baselineSamples).reduce((a, b) => a + b, 0) / baselineSamples
+    : 9.81;
+  
+  // Net acceleration (subtract gravity)
+  const netAccel = accelMag.map(a => a - gravityBaseline);
+  
+  // Duration estimate
+  const duration = timestamps.length > 1 && timestamps.some(t => t > 0)
+    ? (timestamps[timestamps.length - 1] - timestamps[0]) / 1000
+    : samples.length * 0.05;
+  
+  if (duration <= 0) return 0;
+  
+  const dt = duration / (netAccel.length - 1);
+  
+  // Trapezoidal integration: acceleration -> velocity
+  const velocityProfile = [0];
+  for (let i = 1; i < netAccel.length; i++) {
+    const v = velocityProfile[i - 1] + 0.5 * (netAccel[i] + netAccel[i - 1]) * dt;
+    velocityProfile.push(v);
+  }
+  
+  // Remove drift (linear trend)
+  if (velocityProfile.length > 2) {
+    const firstV = velocityProfile[0];
+    const lastV = velocityProfile[velocityProfile.length - 1];
+    const driftPerSample = (lastV - firstV) / (velocityProfile.length - 1);
+    for (let i = 0; i < velocityProfile.length; i++) {
+      velocityProfile[i] -= firstV + driftPerSample * i;
+    }
+  }
+  
+  // Peak velocity = max absolute velocity
+  const peakVelocity = Math.max(...velocityProfile.map(v => Math.abs(v)));
+  
+  return Math.round(peakVelocity * 100) / 100; // Round to 2 decimals
+}
+
 /**
  * Compute eccentric/concentric phase timings from IMU samples using primary movement axis.
  * Matches the algorithm in main_csv.py:
@@ -368,11 +494,18 @@ export function useWorkoutSession({
           // (matching main_csv.py algorithm)
           const phaseTimings = computeLocalPhaseTimings(repSamples);
           
+          // Compute local smoothness and velocity metrics immediately
+          const localSmoothnessScore = computeLocalSmoothnessScore(repSamples);
+          const localPeakVelocity = computeLocalPeakVelocity(repSamples);
+          
           return {
             repNumber: rep.repNumber,
             time: rep.duration,
+            duration: rep.duration, // Also store as 'duration' for compatibility
+            durationMs: rep.duration * 1000, // Store in ms too
             rom: rep.peakAcceleration * 10,
-            peakVelocity: rep.peakVelocity || rep.peakAcceleration / 2,
+            peakVelocity: localPeakVelocity || rep.peakVelocity || rep.peakAcceleration / 2,
+            smoothnessScore: localSmoothnessScore, // NEW: Local computation
             isClean: rep.duration >= 2.0 && rep.duration <= 4.0,
             chartData: repChartData,
             liftingTime: phaseTimings.liftingTime,
@@ -693,6 +826,153 @@ export function useWorkoutSession({
     setRepStats(repCounterRef.current.getStats());
   };
 
+  /**
+   * Skip the current set — saves whatever reps have been done as an incomplete set,
+   * then triggers a break (or workout complete if it was the last set).
+   * Returns the incomplete set data.
+   */
+  const skipSet = () => {
+    if (!isRecording) return null;
+
+    // Pause first
+    setIsPaused(true);
+    isPausedRef.current = true;
+
+    const currentRepData = repCounterRef.current.exportData();
+    const repDurations = currentRepData.reps.map(rep => rep.duration);
+    const allSamples = currentRepData.samples;
+
+    // Build repsData for whatever reps were completed
+    const setRepsData = currentRepData.reps.map((rep, index) => {
+      const repSamples = allSamples.filter(s => s.repNumber === rep.repNumber);
+      const repChartData = repSamples.map(s => s.filteredMagnitude || s.accelMag || 0);
+      const phaseTimings = computeLocalPhaseTimings(repSamples);
+      
+      // Compute local smoothness and velocity metrics immediately
+      const localSmoothnessScore = computeLocalSmoothnessScore(repSamples);
+      const localPeakVelocity = computeLocalPeakVelocity(repSamples);
+
+      return {
+        repNumber: rep.repNumber,
+        time: rep.duration,
+        duration: rep.duration, // Also store as 'duration' for compatibility
+        durationMs: rep.duration * 1000, // Store in ms too
+        rom: rep.peakAcceleration * 10,
+        peakVelocity: localPeakVelocity || rep.peakVelocity || rep.peakAcceleration / 2,
+        smoothnessScore: localSmoothnessScore, // NEW: Local computation
+        isClean: rep.duration >= 2.0 && rep.duration <= 4.0,
+        chartData: repChartData,
+        liftingTime: phaseTimings.liftingTime,
+        loweringTime: phaseTimings.loweringTime,
+        samples: repSamples
+      };
+    });
+
+    // Build set data with incomplete flag
+    const currentSetData = {
+      setNumber: currentSet,
+      reps: repStats.repCount,
+      duration: elapsedTime,
+      repsData: setRepsData,
+      chartData: [...fullFilteredAccelData.current],
+      timeData: [...fullTimeData.current],
+      incomplete: true,
+      completedReps: repStats.repCount,
+      plannedReps: recommendedReps
+    };
+
+    const updatedSetData = [...workoutStats.setData, currentSetData];
+    const updatedTotalReps = workoutStats.totalReps + repStats.repCount;
+    const updatedAllRepDurations = [...workoutStats.allRepDurations, ...repDurations];
+
+    if (currentSet >= recommendedSets) {
+      // Last set — finish workout
+      const actualWorkoutDuration = workoutStartTime.current > 0
+        ? Math.round((Date.now() - workoutStartTime.current) / 1000)
+        : workoutStats.totalTime + elapsedTime;
+
+      setWorkoutStats({
+        totalReps: updatedTotalReps,
+        allRepDurations: updatedAllRepDurations,
+        completedSets: currentSet,
+        totalTime: actualWorkoutDuration,
+        setData: updatedSetData
+      });
+
+      setIsRecording(false);
+      setIsPaused(false);
+
+      if (onWorkoutCompleteRef.current) {
+        onWorkoutCompleteRef.current({
+          workoutStats: {
+            totalReps: updatedTotalReps,
+            allRepDurations: updatedAllRepDurations,
+            completedSets: currentSet,
+            totalTime: actualWorkoutDuration,
+            setData: updatedSetData
+          },
+          repData: currentRepData,
+          chartData: {
+            rawAccelData: fullRawAccelData.current,
+            filteredAccelData: fullFilteredAccelData.current,
+            timeData: fullTimeData.current
+          }
+        });
+      }
+    } else {
+      // More sets — take a break
+      const updatedTotalTime = workoutStats.totalTime + elapsedTime;
+
+      setWorkoutStats({
+        totalReps: updatedTotalReps,
+        allRepDurations: updatedAllRepDurations,
+        completedSets: workoutStats.completedSets + 1,
+        totalTime: updatedTotalTime,
+        setData: updatedSetData
+      });
+
+      startBreak();
+
+      if (onSetCompleteRef.current) {
+        onSetCompleteRef.current(currentSet);
+      }
+    }
+
+    return currentSetData;
+  };
+
+  /**
+   * Reset the current set — clears reps, chart data and timer for the current set only.
+   * Does NOT cancel the workout or affect previous sets.
+   */
+  const resetCurrentSet = () => {
+    if (!isRecording) return;
+
+    // Pause recording while we reset
+    setIsPaused(true);
+    isPausedRef.current = true;
+
+    // Reset rep counter
+    repCounterRef.current.reset();
+    setRepStats(repCounterRef.current.getStats());
+    lastRepCountRef.current = 0;
+
+    // Clear chart data for this set
+    setTimeData([]);
+    setRawAccelData([]);
+    setFilteredAccelData([]);
+    fullTimeData.current = [];
+    fullRawAccelData.current = [];
+    fullFilteredAccelData.current = [];
+    recordingStartTime.current = 0;
+    rawDataLog.current = [];
+    resetFilters();
+    setElapsedTime(0);
+
+    // Resume recording (user can press play to start again)
+    // Keep paused so user can decide when to start
+  };
+
   // Format elapsed time as MM:SS
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
@@ -733,6 +1013,8 @@ export function useWorkoutSession({
     stopBreak,
     exportToCSV,
     resetReps,
+    skipSet,
+    resetCurrentSet,
     formatTime,
     
     // Refs for advanced use

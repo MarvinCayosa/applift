@@ -5,6 +5,7 @@ import FatigueVelocityCarousel from '../components/workoutFinished/FatigueVeloci
 import LiftPhases from '../components/workoutFinished/LiftPhases';
 import ConsistencyScore from '../components/workoutFinished/ConsistencyScore';
 import ClassificationDistribution from '../components/workoutFinished/ClassificationDistribution';
+import TotalRepsCard from '../components/workoutFinished/TotalRepsCard';
 import { useWorkoutLogging } from '../context/WorkoutLoggingContext';
 import { useWorkoutStreak } from '../utils/useWorkoutStreak';
 import { useWorkoutAnalysis, transformAnalysisForUI } from '../hooks/useWorkoutAnalysis';
@@ -435,6 +436,13 @@ export default function WorkoutFinished() {
           }}
         />
 
+        {/* Total Reps Progress Card */}
+        <TotalRepsCard
+          setsData={mergedSetsData}
+          recommendedSets={recommendedSets}
+          recommendedReps={recommendedReps}
+        />
+
         {/* Global Set Filter */}
         {setsCount > 1 && (
           <div className="flex gap-1.5 justify-end">
@@ -448,19 +456,30 @@ export default function WorkoutFinished() {
             >
               All
             </button>
-            {Array.from({ length: setsCount }, (_, i) => i + 1).map(setNum => (
-              <button
-                key={setNum}
-                onClick={() => setSelectedSet(String(setNum))}
-                className={`px-3 py-1 text-xs font-medium rounded-full transition-all ${
-                  selectedSet === String(setNum)
-                    ? 'bg-purple-500 text-white'
-                    : 'bg-white/10 text-gray-400 hover:bg-white/20'
-                }`}
-              >
-                Set {setNum}
-              </button>
-            ))}
+            {Array.from({ length: setsCount }, (_, i) => i + 1).map(setNum => {
+              const setData = mergedSetsData?.[setNum - 1];
+              const isIncomplete = setData?.incomplete === true;
+              return (
+                <button
+                  key={setNum}
+                  onClick={() => setSelectedSet(String(setNum))}
+                  className={`px-3 py-1 text-xs font-medium rounded-full transition-all flex items-center gap-1 ${
+                    selectedSet === String(setNum)
+                      ? 'bg-purple-500 text-white'
+                      : isIncomplete
+                        ? 'bg-yellow-500/15 text-yellow-400 border border-yellow-500/30 hover:bg-yellow-500/25'
+                        : 'bg-white/10 text-gray-400 hover:bg-white/20'
+                  }`}
+                >
+                  Set {setNum}
+                  {isIncomplete && (
+                    <span className="text-[9px] opacity-80">
+                      ({setData.completedReps || setData.reps}/{setData.plannedReps || parseInt(recommendedReps) || '?'})
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         )}
 

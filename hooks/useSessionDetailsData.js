@@ -168,8 +168,14 @@ export default function useSessionDetailsData({ logId, equipment, exercise }) {
       (log.timestamps?.created ? new Date(log.timestamps.created) : null);
 
     // Basic session info
-    const sets = log.results?.totalSets || log.results?.completedSets || analysisUI?.totalSets || 0;
-    const reps = log.results?.totalReps || log.results?.completedReps || analysisUI?.totalReps || 0;
+    const totalSets = log.results?.totalSets || log.results?.completedSets || analysisUI?.totalSets || 0;
+    const totalReps = log.results?.totalReps || log.results?.completedReps || analysisUI?.totalReps || 0;
+    // Planned values (what was intended)
+    const plannedSets = log.planned?.sets || totalSets;
+    const plannedRepsPerSet = log.planned?.reps || (totalSets > 0 ? Math.ceil(totalReps / totalSets) : 10);
+    // For backwards compatibility, keep sets/reps as they were used (now using planned for header display)
+    const sets = plannedSets;
+    const reps = plannedRepsPerSet;
     const weight = log.planned?.weight || log.exercise?.weight || 0;
     const weightUnit = log.planned?.weightUnit || 'kg';
     const calories = log.results?.calories || analysisUI?.calories || 0;
@@ -276,7 +282,7 @@ export default function useSessionDetailsData({ logId, equipment, exercise }) {
         : [];
 
     // Determine if this is a recommendation or custom set
-    const isRecommendation = log.setType === 'recommendation' || log.isRecommendation === true;
+    const isRecommendation = log.setType === 'recommended' || log.setType === 'recommendation' || log.isRecommendation === true;
     const isCustomSet = log.setType === 'custom' || log.isCustomSet === true;
 
     return {
@@ -289,6 +295,11 @@ export default function useSessionDetailsData({ logId, equipment, exercise }) {
       sets,
       reps,
       restTimeSec,
+      // Planned vs actual values for progress tracking
+      plannedSets,
+      plannedRepsPerSet,
+      totalSets,
+      totalReps,
       isRecommendation,
       isCustomSet,
 

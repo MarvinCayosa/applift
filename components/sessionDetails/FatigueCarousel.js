@@ -155,32 +155,32 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
           <h3 className="text-[15px] font-bold text-white mb-4">Fatigue Analysis</h3>
 
           <div className="flex gap-3">
-            {/* Donut tile — large */}
+            {/* Donut tile — large, no background */}
             <div
-              className={`flex-shrink-0 rounded-2xl ${fatigueColor.bg} flex flex-col items-center justify-center`}
-              style={{ width: 150, height: 168 }}
+              className="flex-shrink-0 flex flex-col items-center justify-center"
+              style={{ width: 180, height: 180 }}
             >
-              <div className="relative" style={{ width: 120, height: 120 }}>
-                <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90">
-                  <circle cx="60" cy="60" r={R} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="8" />
+              <div className="relative" style={{ width: 160, height: 160 }}>
+                <svg viewBox="0 0 160 160" className="w-full h-full -rotate-90">
+                  <circle cx="80" cy="80" r="70" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="12" />
                   <circle
-                    cx="60" cy="60" r={R}
+                    cx="80" cy="80" r="70"
                     fill="none"
                     stroke={fatigueColor.ring}
-                    strokeWidth="8"
+                    strokeWidth="12"
                     strokeLinecap="round"
-                    strokeDasharray={C}
-                    strokeDashoffset={C * (1 - ringProg)}
+                    strokeDasharray={2 * Math.PI * 70}
+                    strokeDashoffset={2 * Math.PI * 70 * (1 - ringProg)}
                     className="transition-all duration-700"
                   />
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className={`text-[36px] font-bold leading-none ${fatigueColor.text}`}>
+                  <span className={`text-[48px] font-bold leading-none ${fatigueColor.text}`}>
                     {Math.round(fatigue.score)}
                   </span>
+                  <span className={`text-[16px] font-semibold mt-1 ${fatigueColor.text} capitalize`}>{fatigue.level}</span>
                 </div>
               </div>
-              <span className={`text-[13px] font-semibold mt-0.5 ${fatigueColor.text} lowercase`}>{fatigue.level}</span>
             </div>
 
             {/* 3 indicator cards */}

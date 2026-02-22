@@ -64,7 +64,7 @@ export default function WorkoutSummaryCard({
           });
           
           datasets.push({
-            label: `Set ${set.setNumber || idx + 1}`,
+            label: `Set ${set.setNumber || idx + 1}${set.incomplete ? ' ⚠' : ''}`,
             data: setData,
             borderColor: color.border,
             backgroundColor: function(context) {
@@ -276,6 +276,14 @@ export default function WorkoutSummaryCard({
             <span className="text-xl font-bold text-white">x</span>
             <span className="text-2xl font-bold text-white">{setsData?.length ? Math.round(totalReps / setsData.length) : totalReps || 0}</span>
           </div>
+          {/* Incomplete sets indicator */}
+          {setsData?.some(s => s.incomplete) && (
+            <div className="flex items-center gap-1 mt-0.5">
+              <span className="text-[9px] text-yellow-400 font-medium">
+                {setsData.filter(s => s.incomplete).length} incomplete
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Time Duration */}
