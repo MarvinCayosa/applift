@@ -377,9 +377,12 @@ export async function classifyReps(exercise, reps, authToken) {
     }
   } catch (_) { /* import failed — continue normally */ }
 
-  // Fast timeout — if we're offline, fail within 4s not 2 minutes
+  // Client timeout — must be long enough for the serverless function to
+  // finish (warm-up ping + per-rep Cloud Run calls + retries).
+  // isNetworkOffline() above already handles the known-offline fast path,
+  // so this only needs to guard against truly hung requests.
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 4000);
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
 
   try {
     const response = await fetch('/api/classify-rep', {
