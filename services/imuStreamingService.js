@@ -941,6 +941,35 @@ export const getStreamingState = () => ({
 export const getCompleteWorkoutData = () => ({ ...workoutData });
 
 /**
+ * Clear the current rep buffer (for BLE disconnect rollback)
+ * Discards any incomplete rep data that was being recorded
+ * Also resets the currentRepNumber to match the last completed rep count
+ * 
+ * @param {number} [lastCompletedRepCount] - Optional: reset currentRepNumber to this value
+ * @returns {number} - Number of samples that were cleared
+ */
+export const clearCurrentRepBuffer = (lastCompletedRepCount = null) => {
+  const clearedSamples = currentRepBuffer.length;
+  currentRepBuffer = [];
+  repStartTime = null;
+  
+  // Reset currentRepNumber to match the last completed rep if provided
+  if (lastCompletedRepCount !== null) {
+    currentRepNumber = lastCompletedRepCount;
+    console.log(`[IMUStreaming] Reset currentRepNumber to ${currentRepNumber}`);
+  }
+  
+  console.log(`[IMUStreaming] Cleared ${clearedSamples} samples from current rep buffer (BLE disconnect rollback)`);
+  return clearedSamples;
+};
+
+/**
+ * Get the current rep buffer length (for debugging)
+ * @returns {number}
+ */
+export const getCurrentRepBufferLength = () => currentRepBuffer.length;
+
+/**
  * Export workout as CSV (all sets/reps in one file)
  * Format: set,rep,timestamp,timestamp_ms,accelX,accelY,accelZ,...
  */
@@ -974,5 +1003,7 @@ export default {
   getSetRepsForML,
   storeRepClassification,
   getCompleteWorkoutData,
-  exportWorkoutAsCSV
+  exportWorkoutAsCSV,
+  clearCurrentRepBuffer,
+  getCurrentRepBufferLength
 };

@@ -19,6 +19,7 @@ import { useWorkoutSessionState, SESSION_STATES } from '../hooks/useWorkoutSessi
 import { SessionCheckpointManager } from '../utils/sessionCheckpointManager';
 import { enqueueJob, clearSessionJobs, flushQueue, getAllPendingJobs, clearAllPendingJobs, updateJobStatus, purgeOldJobs } from '../utils/offlineQueue';
 import { classifyReps } from '../services/mlClassificationService';
+import { clearCurrentRepBuffer } from '../services/imuStreamingService';
 import LoadingScreen from '../components/LoadingScreen';
 
 export default function WorkoutMonitor() {
@@ -623,28 +624,45 @@ export default function WorkoutMonitor() {
   const handleBleDisconnect = useCallback(() => {
     if (!isRecording) return;
 
-    // Pause session immediately
+    console.log('[WorkoutMonitor] ⚠️ BLE disconnected during recording - rolling back partial rep data');
+
+    // 1. Pause session immediately
     if (!isPaused) togglePause();
 
-    // Transition state machine
-    transition(SESSION_STATES.PAUSED_BLE_DISCONNECTED);
-  }, [isRecording, isPaused, togglePause, transition]);
-
-  const handleBleReconnect = useCallback(() => {
-    // Rollback to last checkpoint: discard partial rep data from chart + counter
+    // 2. Get the last checkpoint (saved after each completed rep)
     const cpManager = checkpointManagerRef.current;
     const checkpoint = cpManager.getCheckpoint();
 
+    // 3. Immediately rollback to checkpoint - discard partial rep data
+    //    This clears any incomplete rep from chart, counter, and buffers
     if (checkpoint) {
+      // Clear the IMU streaming buffer (partial rep samples)
+      const clearedSamples = clearCurrentRepBuffer(checkpoint.repCount);
+      console.log(`[WorkoutMonitor] Cleared ${clearedSamples} partial rep samples from IMU buffer`);
+
+      // Rollback rep counter, chart data, and states to last completed rep
       const rolledBack = truncateToCheckpoint(checkpoint);
       if (rolledBack) {
-        console.log('[WorkoutMonitor] Rolled back to checkpoint after BLE reconnect');
+        console.log(`[WorkoutMonitor] ✅ Rolled back to checkpoint: ${checkpoint.repCount} reps, ${checkpoint.sampleIndex} samples`);
       }
+    } else {
+      // No checkpoint yet - just clear the streaming buffer
+      clearCurrentRepBuffer(0);
+      console.log('[WorkoutMonitor] No checkpoint available - cleared IMU buffer only');
     }
+
+    // 4. Transition state machine
+    transition(SESSION_STATES.PAUSED_BLE_DISCONNECTED);
+  }, [isRecording, isPaused, togglePause, transition, truncateToCheckpoint]);
+
+  const handleBleReconnect = useCallback(() => {
+    // Rollback already happened in handleBleDisconnect
+    // Just show resume countdown and continue from last completed rep
+    console.log('[WorkoutMonitor] ✅ BLE reconnected - resuming from last completed rep');
 
     // Show resume countdown
     transition(SESSION_STATES.RESUMING_COUNTDOWN);
-  }, [transition, truncateToCheckpoint]);
+  }, [transition]);
 
   const {
     isReconnecting,
