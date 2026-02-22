@@ -480,10 +480,14 @@ export function WorkoutLoggingProvider({ children }) {
             });
 
             setBackgroundMLStatus(prev => ({ ...prev, [setNumber]: 'complete' }));
+            await updateJobStatus(job.jobId, 'done');
+            uploaded++;
+          } else {
+            // Classification returned empty/error — treat as failure so it can be retried
+            console.warn(`[WorkoutLogging] Classification returned empty for Set ${setNumber}: ${result?.error || 'no classifications'}`);
+            await updateJobStatus(job.jobId, 'failed');
+            failed++;
           }
-
-          await updateJobStatus(job.jobId, 'done');
-          uploaded++;
         } catch (err) {
           console.warn(`[WorkoutLogging] Failed to flush set classification ${job.jobId}:`, err);
           await updateJobStatus(job.jobId, 'failed');

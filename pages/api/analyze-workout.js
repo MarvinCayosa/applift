@@ -27,8 +27,34 @@ import {
   normalizeExerciseName 
 } from '../../services/mlClassificationService';
 import { resegmentWorkout } from '../../services/repResegmentation';
-import { spawn } from 'child_process';
-import path from 'path';
+
+// Cloud Run ML API URL — same env var as classify-rep.js
+const ML_API_URL = process.env.NEXT_PUBLIC_ML_API_URL || process.env.ML_API_URL || 'http://localhost:8080';
+
+// Exercise → Cloud Run model type (must stay in sync with classify-rep.js)
+const EXERCISE_TO_MODEL_TYPE = {
+  'concentration_curls': 'CONCENTRATION_CURLS',
+  'overhead_extensions': 'OVERHEAD_EXTENSIONS',
+  'overhead_extension': 'OVERHEAD_EXTENSIONS',
+  'overhead_triceps_extension': 'OVERHEAD_EXTENSIONS',
+  'bench_press': 'BENCH_PRESS',
+  'flat_bench_barbell_press': 'BENCH_PRESS',
+  'back_squats': 'BACK_SQUATS',
+  'back_squat': 'BACK_SQUATS',
+  'lateral_pulldown': 'LATERAL_PULLDOWN',
+  'leg_extension': 'LEG_EXTENSION',
+  'seated_leg_extension': 'LEG_EXTENSION',
+};
+
+function getModelType(exercise) {
+  const normalized = normalizeExerciseName(exercise);
+  if (!normalized) return null;
+  for (const [key, modelType] of Object.entries(EXERCISE_TO_MODEL_TYPE)) {
+    const nk = normalizeExerciseName(key);
+    if (nk === normalized || normalized.includes(nk) || nk.includes(normalized)) return modelType;
+  }
+  return null;
+}
 
 export const config = {
   api: {
@@ -245,14 +271,13 @@ async function getAnalysis(workoutId, userId, equipment, exercise) {
 // ============================================================================
 
 /**
- * Classify a single rep using ML model or rule-based fallback
- * @param {Object} repData - Rep data with samples
- * @param {string} exercise - Exercise name
- * @returns {Promise<Object>} Classification result
+ * Classify a single rep using Cloud Run ML API, with rule-based fallback.
+ * Mirrors the approach in classify-rep.js but called server-side directly.
  */
 async function classifyRep(repData, exercise) {
   const features = extractMLFeatures(repData.samples || repData);
-  
+  const qualityLabels = getQualityLabels(exercise);
+
   if (!features) {
     return {
       prediction: 0,
@@ -262,117 +287,44 @@ async function classifyRep(repData, exercise) {
       modelUsed: false
     };
   }
-  
-  // Check if ML model exists for this exercise
-  const modelFile = getModelFilename(exercise);
-  const qualityLabels = getQualityLabels(exercise);
-  
-  if (!modelFile) {
-    // Use rule-based fallback
-    const result = classifyWithRules(features, exercise);
-    return {
-      ...result,
-      modelUsed: false,
-      qualityLabels
-    };
-  }
-  
-  // Try to use ML model via Python subprocess
-  try {
-    const modelPath = path.join(process.cwd(), 'ml_scripts', 'models', modelFile);
-    const classifyScriptPath = path.join(process.cwd(), 'ml_scripts', 'classify_single_rep.py');
-    
-    // Check if Python script exists, if not use rules
-    const fs = await import('fs').then(m => m.promises);
-    try {
-      await fs.access(classifyScriptPath);
-    } catch {
-      console.log(`[ML Classification] Python script not found, using rules for ${exercise}`);
-      const result = classifyWithRules(features, exercise);
-      return { ...result, modelUsed: false, qualityLabels };
-    }
-    
-    // Find the correct Python executable (prefer venv)
-    const venvPython = path.join(process.cwd(), '.venv', 'Scripts', 'python.exe');
-    const venvPythonUnix = path.join(process.cwd(), '.venv', 'bin', 'python');
-    let pythonCmd = 'python';
-    try {
-      await fs.access(venvPython);
-      pythonCmd = venvPython;
-    } catch {
-      try {
-        await fs.access(venvPythonUnix);
-        pythonCmd = venvPythonUnix;
-      } catch {
-        // Fall back to system python
-      }
-    }
-    console.log(`[ML Classification] Using Python: ${pythonCmd}`);
 
-    // Spawn Python process for ML classification
-    const mlResult = await new Promise((resolve, reject) => {
-      const python = spawn(pythonCmd, [
-        classifyScriptPath,
-        modelPath,
-        JSON.stringify(features)
-      ], {
-        timeout: 10000 // 10 second timeout
-      });
-      
-      let stdout = '';
-      let stderr = '';
-      
-      python.stdout.on('data', (data) => {
-        stdout += data.toString();
-      });
-      
-      python.stderr.on('data', (data) => {
-        stderr += data.toString();
-      });
-      
-      python.on('close', (code) => {
-        if (code === 0 && stdout.trim()) {
-          try {
-            const result = JSON.parse(stdout.trim());
-            resolve(result);
-          } catch (e) {
-            reject(new Error(`Failed to parse ML output: ${stdout}`));
-          }
-        } else {
-          console.error(`[ML Classification] Python stderr: ${stderr}`);
-          reject(new Error(`Python process failed (code ${code}): ${stderr}`));
-        }
-      });
-      
-      python.on('error', (err) => {
-        reject(err);
-      });
+  const modelType = getModelType(exercise);
+  if (!modelType) {
+    const result = classifyWithRules(features, exercise);
+    return { ...result, modelUsed: false, qualityLabels };
+  }
+
+  // ── Call Cloud Run ML API directly (same as classify-rep.js) ──────
+  try {
+    const response = await fetch(`${ML_API_URL}/classify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ exercise_type: modelType, features }),
+      signal: AbortSignal.timeout(15000), // 15s per-rep timeout
     });
-    
+
+    if (!response.ok) {
+      throw new Error(`Cloud Run ${response.status}`);
+    }
+
+    const mlResult = await response.json();
     return {
       prediction: mlResult.prediction || 0,
-      label: qualityLabels[mlResult.prediction] || 'Clean',
-      confidence: mlResult.confidence || mlResult.probability || 0.8,
-      probabilities: mlResult.probabilities || qualityLabels.map((l, i) => ({
+      label: mlResult.class_name || qualityLabels[mlResult.prediction] || 'Clean',
+      confidence: mlResult.confidence || 0.8,
+      probabilities: (mlResult.probabilities || []).map((p, i) => ({
         class: i,
-        label: l,
-        probability: i === mlResult.prediction ? (mlResult.confidence || 0.8) : (1 - (mlResult.confidence || 0.8)) / (qualityLabels.length - 1)
+        label: qualityLabels[i] || `Class ${i}`,
+        probability: p
       })),
       method: 'ml_model',
       modelUsed: true,
-      modelFile,
       qualityLabels
     };
   } catch (error) {
-    console.error(`[ML Classification] Error using ML model for ${exercise}:`, error.message);
-    // Fall back to rule-based
+    console.warn(`[Analyze API] Cloud Run ML failed for ${exercise}: ${error.message} — falling back to rules`);
     const result = classifyWithRules(features, exercise);
-    return {
-      ...result,
-      modelUsed: false,
-      mlError: error.message,
-      qualityLabels
-    };
+    return { ...result, modelUsed: false, mlError: error.message, qualityLabels };
   }
 }
 
