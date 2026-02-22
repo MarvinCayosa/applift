@@ -267,16 +267,22 @@ export default function WorkoutMonitor() {
       } catch (_) {}
 
       if (!currentlyOnline || hasPending) {
-        // DO NOT show analyzing screen — show "Waiting for internet" modal instead
+        // ─── OFFLINE PATH ─────────────────────────────────────────────
+        // Transition IMMEDIATELY to prevent the race where
+        // handleNetworkOnline fires during the async work below and
+        // sees ACTIVE_OFFLINE → does ACTIVE_OFFLINE → ACTIVE (fresh page).
         console.log('[WorkoutMonitor] Offline or pending uploads — deferring analysis');
+        transition(SESSION_STATES.WAITING_FOR_INTERNET);
 
-        // *** FIX: Call handleSetComplete for the LAST set before finishing ***
+        // Now do the async work (handleSetComplete + finishWorkout).
+        // handleNetworkOnline may fire during this window, but it will
+        // see WAITING_FOR_INTERNET and check deferredWorkoutResultRef —
+        // which is still null, so it will simply return.
         if (isStreaming) {
           console.log('🏁 Workout complete - triggering ML for final set:', finalStats.completedSets);
           await handleSetComplete();
         }
 
-        // Build the deferred result so we can navigate once online
         const result = await finishWorkout();
 
         // Store deferred navigation data
@@ -287,8 +293,14 @@ export default function WorkoutMonitor() {
           chartData,
         };
 
-        // Transition to WAITING_FOR_INTERNET state
-        transition(SESSION_STATES.WAITING_FOR_INTERNET);
+        // Internet may have come back while we were doing async work.
+        // If so, process immediately — handleNetworkOnline already fired
+        // and returned (no deferred data at that time), so it won't fire
+        // again.  We must drive the flow ourselves.
+        if (isOnlineRef.current) {
+          console.log('[WorkoutMonitor] Internet restored during offline completion — processing now');
+          await processDeferredWorkout();
+        }
         return;
       }
 
@@ -341,6 +353,94 @@ export default function WorkoutMonitor() {
   // ═══════════════════════════════════════════════════════════════════════
   // HELPER FUNCTIONS (extracted for reuse in deferred navigation)
   // ═══════════════════════════════════════════════════════════════════════
+
+  /**
+   * Process deferred workout data: flush pending uploads, merge
+   * classifications, re-upload to GCS, and navigate to workout-finished.
+   * Called either by handleNetworkOnline or by onWorkoutComplete when
+   * internet came back during async completion work.
+   */
+  async function processDeferredWorkout() {
+    const deferred = deferredWorkoutResultRef.current;
+    if (!deferred) {
+      console.warn('[WorkoutMonitor] processDeferredWorkout called but no deferred data');
+      return;
+    }
+
+    const { finalStats, result, chartData } = deferred;
+    deferredWorkoutResultRef.current = null;
+
+    // 1. Flush GCS uploads (workout_data.json / metadata.json queued while offline)
+    try {
+      await migrateLocalStorageFallbacks();
+      await flushQueue(uploadOfflineJob);
+    } catch (_) {}
+
+    // 2. Flush queued set classifications — returns actual results
+    let classificationsBySet = {};
+    try {
+      const flushResult = await flushPendingSetClassifications();
+      classificationsBySet = flushResult.classificationsBySet || {};
+      console.log('[WorkoutMonitor] Flushed classifications for sets:', Object.keys(classificationsBySet));
+    } catch (_) {}
+
+    // 3. Merge flush results into the (stale) workoutData snapshot
+    if (result?.workoutData?.sets && Object.keys(classificationsBySet).length > 0) {
+      for (const [setNumStr, repClassifications] of Object.entries(classificationsBySet)) {
+        const setNum = Number(setNumStr);
+        const targetSet = result.workoutData.sets.find(s => s.setNumber === setNum);
+        if (targetSet && targetSet.reps) {
+          for (const rc of repClassifications) {
+            const targetRep = targetSet.reps.find(r => r.repNumber === rc.repNumber);
+            if (targetRep) {
+              targetRep.classification = rc.classification;
+              targetRep.confidence = rc.confidence;
+              targetRep.classifiedAt = new Date().toISOString();
+            }
+          }
+        }
+      }
+      console.log('[WorkoutMonitor] Merged classifications into deferred workoutData');
+
+      // 4. Re-upload the patched workout_data.json to GCS
+      try {
+        const gcsBase = result?.workoutData?.gcsPath || result?.metadata?.gcsPath;
+        if (gcsBase && user) {
+          const uploadPath = gcsBase.endsWith('/workout_data.json')
+            ? gcsBase
+            : `${gcsBase}/workout_data.json`;
+          const token = await user.getIdToken();
+          const signedResp = await fetch('/api/imu-stream', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ action: 'upload', userId: user.uid, filePath: uploadPath, contentType: 'application/json' }),
+          });
+          if (signedResp.ok) {
+            const { signedUrl } = await signedResp.json();
+            await fetch(signedUrl, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(result.workoutData),
+            });
+            console.log('[WorkoutMonitor] Re-uploaded workout_data.json with classifications');
+          }
+        }
+      } catch (uploadErr) {
+        console.warn('[WorkoutMonitor] Failed to re-upload patched workout_data.json:', uploadErr);
+      }
+    }
+
+    // 5. Show analyzing screen and navigate
+    setIsAnalyzing(true);
+    transition(SESSION_STATES.IDLE);
+
+    const mergedSetData = buildMergedSetData(finalStats, result);
+    const { avgConcentricVal, avgEccentricVal } = computePhaseAverages(mergedSetData);
+    storeWorkoutResults(finalStats, mergedSetData, avgConcentricVal, avgEccentricVal, result);
+
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    navigateToFinished(finalStats, mergedSetData, avgConcentricVal, avgEccentricVal, result, chartData);
+  }
 
   /** Merge classification data from streaming service into local set data */
   function buildMergedSetData(finalStats, result) {
@@ -569,89 +669,20 @@ export default function WorkoutMonitor() {
       transition(SESSION_STATES.ACTIVE);
     }
 
-    // ── If we were WAITING_FOR_INTERNET, internet is back → proceed with analyzing ──
+    // ── If we were WAITING_FOR_INTERNET, internet is back → proceed ──
     if (currentState === SESSION_STATES.WAITING_FOR_INTERNET) {
-      // 1. Flush GCS uploads first (workout_data.json, metadata.json that
-      //    failed during endStreaming when we were offline)
-      try {
-        await migrateLocalStorageFallbacks();
-        await flushQueue(uploadOfflineJob);
-      } catch (_) {}
-
-      // 2. Flush queued set classifications — returns actual results
-      let classificationsBySet = {};
-      try {
-        const flushResult = await flushPendingSetClassifications();
-        classificationsBySet = flushResult.classificationsBySet || {};
-        console.log('[WorkoutMonitor] Flushed classifications for sets:', Object.keys(classificationsBySet));
-      } catch (_) {}
-
-      const deferred = deferredWorkoutResultRef.current;
-      if (deferred) {
-        const { finalStats, result, chartData } = deferred;
-        deferredWorkoutResultRef.current = null;
-
-        // 3. Merge flush results into the (stale) workoutData snapshot.
-        //    storeRepClassification() can't help because endStreaming()
-        //    already called resetState(), so in-memory data is gone.
-        if (result?.workoutData?.sets && Object.keys(classificationsBySet).length > 0) {
-          for (const [setNumStr, repClassifications] of Object.entries(classificationsBySet)) {
-            const setNum = Number(setNumStr);
-            const targetSet = result.workoutData.sets.find(s => s.setNumber === setNum);
-            if (targetSet && targetSet.reps) {
-              for (const rc of repClassifications) {
-                const targetRep = targetSet.reps.find(r => r.repNumber === rc.repNumber);
-                if (targetRep) {
-                  targetRep.classification = rc.classification;
-                  targetRep.confidence = rc.confidence;
-                  targetRep.classifiedAt = new Date().toISOString();
-                }
-              }
-            }
-          }
-          console.log('[WorkoutMonitor] Merged classifications into deferred workoutData');
-
-          // 4. Re-upload the patched workout_data.json to GCS so that the
-          //    analyze-workout API finds the classifications already in place.
-          try {
-            const gcsBase = result?.workoutData?.gcsPath || result?.metadata?.gcsPath;
-            if (gcsBase && user) {
-              const uploadPath = gcsBase.endsWith('/workout_data.json')
-                ? gcsBase
-                : `${gcsBase}/workout_data.json`;
-              const token = await user.getIdToken();
-              const signedResp = await fetch('/api/imu-stream', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ action: 'upload', userId: user.uid, filePath: uploadPath, contentType: 'application/json' }),
-              });
-              if (signedResp.ok) {
-                const { signedUrl } = await signedResp.json();
-                await fetch(signedUrl, {
-                  method: 'PUT',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(result.workoutData),
-                });
-                console.log('[WorkoutMonitor] Re-uploaded workout_data.json with classifications');
-              }
-            }
-          } catch (uploadErr) {
-            console.warn('[WorkoutMonitor] Failed to re-upload patched workout_data.json:', uploadErr);
-          }
-        }
-
-        // Now show analyzing screen
-        setIsAnalyzing(true);
-        transition(SESSION_STATES.IDLE);
-
-        const mergedSetData = buildMergedSetData(finalStats, result);
-        const { avgConcentricVal, avgEccentricVal } = computePhaseAverages(mergedSetData);
-        storeWorkoutResults(finalStats, mergedSetData, avgConcentricVal, avgEccentricVal, result);
-
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        navigateToFinished(finalStats, mergedSetData, avgConcentricVal, avgEccentricVal, result, chartData);
+      // If the deferred data isn't ready yet (onWorkoutComplete is still
+      // doing async handleSetComplete / finishWorkout), just return.
+      // The completion handler will check isOnlineRef after its async work
+      // and call processDeferredWorkout() itself.
+      if (!deferredWorkoutResultRef.current) {
+        console.log('[WorkoutMonitor] WAITING_FOR_INTERNET but deferred data not ready — completion handler will drive');
         return;
       }
+
+      // Deferred data is ready — process it
+      await processDeferredWorkout();
+      return;
     }
 
     // Flush queued offline jobs + migrate any old localStorage fallbacks
