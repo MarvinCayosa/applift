@@ -318,7 +318,7 @@ export default function MovementQuality({
               className="text-center text-[10px] font-medium mt-2 transition-all duration-500 whitespace-nowrap"
               style={{ color: scoreColor }}
             >
-              {getInterpretation(currentData.score)}
+              {currentData.score > 0 ? getInterpretation(currentData.score) : 'No Data Available'}
             </p>
           </div>
 
