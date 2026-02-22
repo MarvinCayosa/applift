@@ -59,6 +59,10 @@ export default function WorkoutMonitor() {
   // ── Session state machine ────────────────────────────────────────────
   const { sessionState, transition, isState } = useWorkoutSessionState();
 
+  // Keep a ref so async callbacks always read the LATEST state
+  const sessionStateRef = useRef(sessionState);
+  useEffect(() => { sessionStateRef.current = sessionState; }, [sessionState]);
+
   // ── Checkpoint manager (persists across renders) ─────────────────────
   const checkpointManagerRef = useRef(new SessionCheckpointManager());
 
@@ -544,26 +548,29 @@ export default function WorkoutMonitor() {
 
   // ── Network Connection Watcher ─────────────────────────────────────
   const handleNetworkOffline = useCallback(() => {
-    console.log('[WorkoutMonitor] Network offline detected, isRecording:', isRecording, 'state:', sessionState);
+    const currentState = sessionStateRef.current;
+    console.log('[WorkoutMonitor] Network offline detected, isRecording:', isRecording, 'state:', currentState);
 
     // Act on offline for ANY non-IDLE state (including when isRecording is
     // already false during the completion flow — that was the old bug).
-    if (sessionState === SESSION_STATES.IDLE) return;
+    if (currentState === SESSION_STATES.IDLE) return;
 
     // Only transition if we're not already handling a BLE disconnect, cancel, or waiting
-    if (sessionState === SESSION_STATES.ACTIVE) {
+    if (currentState === SESSION_STATES.ACTIVE) {
       transition(SESSION_STATES.ACTIVE_OFFLINE);
     }
-  }, [sessionState, transition]);
+  }, [transition]);
 
   const handleNetworkOnline = useCallback(async () => {
+    const currentState = sessionStateRef.current;
+
     // Restore from ACTIVE_OFFLINE → ACTIVE
-    if (sessionState === SESSION_STATES.ACTIVE_OFFLINE) {
+    if (currentState === SESSION_STATES.ACTIVE_OFFLINE) {
       transition(SESSION_STATES.ACTIVE);
     }
 
     // ── If we were WAITING_FOR_INTERNET, internet is back → proceed with analyzing ──
-    if (sessionState === SESSION_STATES.WAITING_FOR_INTERNET) {
+    if (currentState === SESSION_STATES.WAITING_FOR_INTERNET) {
       // 1. Flush GCS uploads first (workout_data.json, metadata.json that
       //    failed during endStreaming when we were offline)
       try {
@@ -639,7 +646,7 @@ export default function WorkoutMonitor() {
       setOfflineToast('Sync failed — will retry later.');
       setTimeout(() => setOfflineToast(null), 4000);
     }
-  }, [sessionState, transition, flushPendingSetClassifications, migrateLocalStorageFallbacks, uploadOfflineJob]);
+  }, [transition, flushPendingSetClassifications, migrateLocalStorageFallbacks, uploadOfflineJob]);
 
   const { isOnline } = useNetworkConnectionWatcher({
     onOffline: handleNetworkOffline,
