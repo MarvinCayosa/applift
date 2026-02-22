@@ -659,6 +659,33 @@ export default function WorkoutMonitor() {
     onReconnect: handleBleReconnect,
   });
 
+  // ── Offline upload helper (reusable by both flush and startup) ─────
+  const uploadOfflineJob = useCallback(async (job) => {
+    if (job.type !== 'gcs_upload') {
+      throw new Error(`uploadOfflineJob: unsupported job type "${job.type}"`);
+    }
+
+    const { filePath, content, contentType, userId: jobUserId } = job.payload;
+    const token = user ? await user.getIdToken() : null;
+    if (!token) throw new Error('No auth token for offline sync');
+
+    const resp = await fetch('/api/imu-stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ action: 'upload', userId: jobUserId, filePath, contentType: contentType || 'application/json' }),
+    });
+    if (!resp.ok) throw new Error(`Signed URL failed: ${resp.status}`);
+    const { signedUrl } = await resp.json();
+
+    const up = await fetch(signedUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': contentType || 'application/json' },
+      body: content,
+    });
+    if (!up.ok) throw new Error(`GCS upload failed: ${up.status}`);
+    console.log('[OfflineSync] ✅ Uploaded:', filePath);
+  }, [user]);
+
   // ── Comprehensive offline sync with classification merging ─────────────────
   const comprehensiveOfflineSync = useCallback(async () => {
     if (!user?.uid) return { uploaded: 0, failed: 0 };
@@ -730,7 +757,6 @@ export default function WorkoutMonitor() {
 
           // Process set classifications for this session
           const token = await user.getIdToken();
-          const { updateJobStatus } = await import('../utils/offlineQueue');
           let hasNewClassifications = false;
 
           for (const job of jobs.classificationJobs) {
@@ -867,33 +893,6 @@ export default function WorkoutMonitor() {
       return { uploaded: 0, failed: 0 };
     }
   }, [user, uploadOfflineJob]);
-
-  // ── Offline upload helper (reusable by both flush and startup) ─────
-  const uploadOfflineJob = useCallback(async (job) => {
-    if (job.type !== 'gcs_upload') {
-      throw new Error(`uploadOfflineJob: unsupported job type "${job.type}"`);
-    }
-
-    const { filePath, content, contentType, userId: jobUserId } = job.payload;
-    const token = user ? await user.getIdToken() : null;
-    if (!token) throw new Error('No auth token for offline sync');
-
-    const resp = await fetch('/api/imu-stream', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ action: 'upload', userId: jobUserId, filePath, contentType: contentType || 'application/json' }),
-    });
-    if (!resp.ok) throw new Error(`Signed URL failed: ${resp.status}`);
-    const { signedUrl } = await resp.json();
-
-    const up = await fetch(signedUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': contentType || 'application/json' },
-      body: content,
-    });
-    if (!up.ok) throw new Error(`GCS upload failed: ${up.status}`);
-    console.log('[OfflineSync] ✅ Uploaded:', filePath);
-  }, [user]);
 
   // ── Migrate old localStorage imu_fallback_* → IndexedDB queue ─────
   const migrateLocalStorageFallbacks = useCallback(async () => {
