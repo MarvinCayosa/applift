@@ -430,7 +430,34 @@ export default function WorkoutMonitor() {
       }
     }
 
-    // 5. Show analyzing screen and navigate
+    // 5. Save workout log to Firestore (skipped during offline finishWorkout)
+    if (user && result?.workoutId && result?.metadata) {
+      try {
+        const token = await user.getIdToken();
+        const fsResp = await fetch('/api/imu-stream', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            action: 'completeWorkout',
+            userId: user.uid,
+            workoutId: result.workoutId,
+            metadata: result.metadata,
+          }),
+        });
+        if (fsResp.ok) {
+          console.log('[WorkoutMonitor] ✅ Firestore workout log saved (deferred)');
+        } else {
+          console.warn('[WorkoutMonitor] Firestore save returned', fsResp.status);
+        }
+      } catch (fsErr) {
+        console.warn('[WorkoutMonitor] Firestore save failed:', fsErr.message);
+      }
+    }
+
+    // 6. Show analyzing screen and navigate
     setIsAnalyzing(true);
     transition(SESSION_STATES.IDLE);
 
