@@ -440,8 +440,11 @@ export async function classifyReps(exercise, reps, authToken) {
     console.error('  Could not reach /api/classify-rep endpoint');
     console.error('==========================================');
 
-    // Signal offline immediately so network watcher picks it up
-    if (error.name === 'AbortError' || error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
+    // Signal offline only on genuine network failures (not aborts from
+    // our own timeout or component unmount).
+    const msg = error.message || '';
+    const isNetworkError = msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('Load failed');
+    if (isNetworkError) {
       try {
         const { signalFetchFailed } = await import('../hooks/useNetworkConnectionWatcher');
         signalFetchFailed();

@@ -104,8 +104,9 @@ export function useNetworkConnectionWatcher({ onOffline, onOnline, activeProbe =
     //   external Google connectivity-check URL instead.
     let probeTimer = null;
     if (activeProbe) {
-      // Use an external URL so localhost can't fool us
-      const PROBE_URL = 'https://www.gstatic.com/generate_204';
+      // Probe our own API — always passes CSP and tests the real path.
+      // On localhost this still works because the dev server is running.
+      const PROBE_URL = '/api/health';
 
       let probeFailures = 0;
 
@@ -113,15 +114,14 @@ export function useNetworkConnectionWatcher({ onOffline, onOnline, activeProbe =
         try {
           const ctrl = new AbortController();
           const tid = setTimeout(() => ctrl.abort(), 3000);
-          await fetch(PROBE_URL, {
+          const resp = await fetch(PROBE_URL, {
             method: 'HEAD',
-            mode: 'no-cors',       // avoid CORS — opaque response is fine
             signal: ctrl.signal,
             cache: 'no-store',
           });
           clearTimeout(tid);
-          // mode:'no-cors' gives resp.type === 'opaque' with status 0,
-          // but it only resolves if the network round-trip succeeded.
+          // Any 2xx/3xx means the network round-trip succeeded.
+          if (!resp.ok) throw new Error('probe non-ok');
           probeFailures = 0;
           _consecutiveFailures = 0; // reset module-level counter too
           goOnline();

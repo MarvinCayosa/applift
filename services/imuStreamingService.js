@@ -838,8 +838,10 @@ const uploadToGCS = async (filePath, content, contentType) => {
   } catch (error) {
     clearTimeout(timeoutId);
 
-    // Signal network failure for instant offline detection
-    if (error.name === 'AbortError' || error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
+    // Signal network failure only on genuine network errors (not aborts)
+    const msg = error.message || '';
+    const isNetworkError = msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('Load failed');
+    if (isNetworkError) {
       try {
         const { signalFetchFailed } = await import('../hooks/useNetworkConnectionWatcher');
         signalFetchFailed();
