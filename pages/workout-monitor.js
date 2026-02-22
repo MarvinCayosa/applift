@@ -610,6 +610,34 @@ export default function WorkoutMonitor() {
             }
           }
           console.log('[WorkoutMonitor] Merged classifications into deferred workoutData');
+
+          // 4. Re-upload the patched workout_data.json to GCS so that the
+          //    analyze-workout API finds the classifications already in place.
+          try {
+            const gcsBase = result?.workoutData?.gcsPath || result?.metadata?.gcsPath;
+            if (gcsBase && user) {
+              const uploadPath = gcsBase.endsWith('/workout_data.json')
+                ? gcsBase
+                : `${gcsBase}/workout_data.json`;
+              const token = await user.getIdToken();
+              const signedResp = await fetch('/api/imu-stream', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ action: 'upload', userId: user.uid, filePath: uploadPath, contentType: 'application/json' }),
+              });
+              if (signedResp.ok) {
+                const { signedUrl } = await signedResp.json();
+                await fetch(signedUrl, {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(result.workoutData),
+                });
+                console.log('[WorkoutMonitor] Re-uploaded workout_data.json with classifications');
+              }
+            }
+          } catch (uploadErr) {
+            console.warn('[WorkoutMonitor] Failed to re-upload patched workout_data.json:', uploadErr);
+          }
         }
 
         // Now show analyzing screen
