@@ -32,7 +32,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Sector } from 'recharts';
  */
 const SEVERITY_COLORS = {
   0: '#22c55e', // Green  – Clean
-  1: '#f59e0b', // Yellow – 1 mistake
+  1: '#f59e0b', // Orange – 1 mistake  
   2: '#ef4444', // Red    – 2 mistakes
 };
 

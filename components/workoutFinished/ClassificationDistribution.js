@@ -45,11 +45,31 @@ export default function ClassificationDistribution({ setsData, analysisData, sel
       if (label === 'Clean') cleanReps++;
     });
 
-    const labels = Object.keys(classificationCounts).sort((a, b) => {
-      if (a === 'Clean') return -1;
-      if (b === 'Clean') return 1;
-      return a.localeCompare(b);
-    });
+    // Fixed order: Clean, Mistake 1, Mistake 2
+    const allLabels = Object.keys(classificationCounts)
+    const orderedLabels = []
+    
+    // Always add Clean first if it exists
+    if (allLabels.includes('Clean')) orderedLabels.push('Clean')
+    
+    // Add first mistake type (prediction 1)
+    const mistake1Label = allLabels.find(label => 
+      label !== 'Clean' && (PREDICTION_1_LABELS_WF.some(l => label.includes(l) || l.includes(label)) || label === '1')
+    )
+    if (mistake1Label) orderedLabels.push(mistake1Label)
+    
+    // Add second mistake type (prediction 2) 
+    const mistake2Label = allLabels.find(label => 
+      label !== 'Clean' && label !== mistake1Label && 
+      (PREDICTION_2_LABELS_WF.some(l => label.includes(l) || l.includes(label)) || label === '2')
+    )
+    if (mistake2Label) orderedLabels.push(mistake2Label)
+    
+    // Add any remaining labels
+    const remainingLabels = allLabels.filter(label => !orderedLabels.includes(label))
+    orderedLabels.push(...remainingLabels)
+    
+    const labels = orderedLabels
 
     const distributionPercent = {};
     labels.forEach(label => {
@@ -66,12 +86,12 @@ export default function ClassificationDistribution({ setsData, analysisData, sel
     'Abrupt Initiation', 'Abrupt', 'Inclination Asymmetry', 'Inclination',
     'Releasing Too Fast', 'Release Fast', 'Poor Form', 'Bad Form',
   ];
-  const getLabelColor = (label) => {
-    if (label === 'Clean') return { hex: '#22c55e', text: 'text-green-400', dot: 'bg-green-400' };
-    if (PREDICTION_2_LABELS_WF.some((l) => label.includes(l) || l.includes(label))) {
-      return { hex: '#ef4444', text: 'text-red-400', dot: 'bg-red-400' };
+  const getLabelColor = (label, index) => {
+    if (label === 'Clean' || index === 0) return { hex: '#22c55e', text: 'text-green-400', dot: 'bg-green-400' };
+    if (PREDICTION_1_LABELS_WF.some((l) => label.includes(l) || l.includes(label)) || index === 1) {
+      return { hex: '#f59e0b', text: 'text-orange-400', dot: 'bg-orange-400' };
     }
-    return { hex: '#f59e0b', text: 'text-yellow-400', dot: 'bg-yellow-400' };
+    return { hex: '#ef4444', text: 'text-red-400', dot: 'bg-red-400' };
   };
 
   // Build donut chart segments
@@ -81,11 +101,11 @@ export default function ClassificationDistribution({ setsData, analysisData, sel
     let cumulative = 0;
     const circumference = 2 * Math.PI * 40; // r=40
 
-    distribution.labels.forEach(label => {
+    distribution.labels.forEach((label, index) => {
       const pct = (distribution.distribution[label] || 0) / distribution.totalReps;
       const dashLength = pct * circumference;
       const dashOffset = -cumulative * circumference;
-      segments.push({ label, pct, dashLength, dashOffset, circumference, color: getLabelColor(label).hex });
+      segments.push({ label, pct, dashLength, dashOffset, circumference, color: getLabelColor(label, index).hex });
       cumulative += pct;
     });
     return segments;
@@ -135,10 +155,10 @@ export default function ClassificationDistribution({ setsData, analysisData, sel
 
         {/* Legend */}
         <div className="flex-1 space-y-2">
-          {distribution.labels.map(label => {
+          {distribution.labels.map((label, index) => {
             const count = distribution.distribution[label] || 0;
             const pct = distribution.distributionPercent[label] || 0;
-            const colors = getLabelColor(label);
+            const colors = getLabelColor(label, index);
             return (
               <div key={label} className="flex items-center justify-between">
                 <div className="flex items-center gap-2">

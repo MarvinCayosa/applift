@@ -99,10 +99,17 @@ export default function ExerciseDetailPage() {
   /* ── carousel ── */
   const carouselRef = useRef(null)
   const [activeSlide, setActiveSlide] = useState(0)
+  const qualityCarouselRef = useRef(null)
+  const [activeQualitySlide, setActiveQualitySlide] = useState(0)
   const handleCarouselScroll = useCallback(() => {
     const el = carouselRef.current
     if (!el) return
     setActiveSlide(Math.round(el.scrollLeft / el.clientWidth))
+  }, [])
+  const handleQualityCarouselScroll = useCallback(() => {
+    const el = qualityCarouselRef.current
+    if (!el) return
+    setActiveQualitySlide(Math.round(el.scrollLeft / el.clientWidth))
   }, [])
 
   /* ── computed stats (all use analytics when available) ── */
@@ -111,6 +118,44 @@ export default function ExerciseDetailPage() {
   const qualityBreakdown = useMemo(() => computeQualityBreakdown(sessions, analyticsMap, slug), [sessions, analyticsMap, slug])
   const timing = useMemo(() => computeTimingStats(sessions, analyticsMap), [sessions, analyticsMap])
   const consistency = useMemo(() => computeConsistency(sessions, analyticsMap), [sessions, analyticsMap])
+
+  /* ── quality comparison for last 3 sessions ── */
+  const qualityComparison = useMemo(() => {
+    const last3Sessions = sessions.slice(0, 3)
+    if (last3Sessions.length === 0) return []
+
+    return last3Sessions.map((session, index) => {
+      const analytics = analyticsMap[session.id]
+      const qualityData = computeQualityBreakdown([session], analytics ? {[session.id]: analytics} : {}, slug)
+      const date = getLogDate(session) || new Date()
+      
+      // Extract clean percentage
+      const cleanItem = qualityData.find(item => item.name === 'Clean')
+      const cleanPct = cleanItem ? cleanItem.pct : 0
+      
+      // Calculate trend (compared to previous session)
+      let trend = null
+      if (index < last3Sessions.length - 1) {
+        const prevSession = last3Sessions[index + 1]
+        const prevAnalytics = analyticsMap[prevSession.id]
+        const prevQualityData = computeQualityBreakdown([prevSession], prevAnalytics ? {[prevSession.id]: prevAnalytics} : {}, slug)
+        const prevCleanItem = prevQualityData.find(item => item.name === 'Clean')
+        const prevCleanPct = prevCleanItem ? prevCleanItem.pct : 0
+        
+        if (cleanPct > prevCleanPct) trend = 'up'
+        else if (cleanPct < prevCleanPct) trend = 'down'
+        else trend = 'same'
+      }
+
+      return {
+        date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        cleanPct,
+        trend,
+        totalReps: session.results?.totalReps || session.results?.completedReps || 0,
+        weight: session.planned?.weight || session.exercise?.weight || 0
+      }
+    })
+  }, [sessions, analyticsMap, slug])
 
   /* ── guard ── */
   if (!config || !exerciseCfg) {
@@ -291,74 +336,217 @@ export default function ExerciseDetailPage() {
                 {/* ═══ Bottom Grid ═══ */}
                 <section className="content-fade-up-3">
                   <div className="grid grid-cols-2 gap-3">
-                    {/* LEFT: Execution Quality – single donut with 3 sectors */}
-                    <div className="row-span-2 bg-white/[0.05] rounded-2xl p-4 flex flex-col" style={{ backgroundColor: `${bgColor}33` }}>
-                      <p className="text-sm font-semibold text-white mb-2">Execution Quality</p>
-                      {qualityBreakdown.length > 0 ? (
-                        <div className="flex-1 flex flex-col">
-                          {/* Donut Chart using Recharts */}
-                          <div className="relative flex-1 flex items-center justify-center min-h-[120px]">
-                            <div style={{ height: '140px', width: '100%' }}>
-                              <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                  <Pie
-                                    data={qualityBreakdown.slice(0, 3).map((item, i) => ({
-                                      name: item.name,
-                                      value: item.value,
-                                      pct: item.pct,
-                                      color: ['#22C55E', '#EAB308', '#EF4444'][i]
-                                    }))}
-                                    cx="50%"
-                                    cy="50%"
-                                    innerRadius={45}
-                                    outerRadius={65}
-                                    paddingAngle={2}
-                                    dataKey="value"
-                                    animationDuration={700}
-                                    cornerRadius={3}
-                                    stroke="none"
-                                  >
-                                    {qualityBreakdown.slice(0, 3).map((_, index) => (
-                                      <Cell 
-                                        key={`cell-${index}`} 
-                                        fill={['#22C55E', '#EAB308', '#EF4444'][index]}
+                    {/* LEFT: Execution Quality – swipeable with overall + comparison views */}
+                    <div className="row-span-2 bg-white/[0.05] rounded-2xl overflow-hidden flex flex-col" style={{ backgroundColor: `${bgColor}33` }}>
+                      <div className="p-4 pb-2 flex items-center justify-between">
+                        <p className="text-sm font-semibold text-white">Execution Quality</p>
+                        <Dots count={2} active={activeQualitySlide} />
+                      </div>
+
+                      <div
+                        ref={qualityCarouselRef}
+                        onScroll={handleQualityCarouselScroll}
+                        className="flex-1 flex overflow-x-auto snap-x snap-mandatory scrollbar-hide scroll-smooth"
+                        style={{ scrollSnapType: 'x mandatory' }}
+                      >
+                        {/* Slide 1: Overall Quality Distribution */}
+                        <div className="w-full shrink-0 snap-center snap-always p-4 pt-0 flex flex-col" style={{ minWidth: '100%' }}>
+                          {qualityBreakdown.length > 0 ? (
+                            <div className="flex-1 flex flex-col">
+                              {/* Donut Chart using Recharts */}
+                              <div className="relative flex-1 flex items-center justify-center min-h-[120px]">
+                                <div style={{ height: '140px', width: '100%' }}>
+                                  <ResponsiveContainer width="100%" height="100%">
+                                    <PieChart>
+                                      <Pie
+                                        data={(() => {
+                                          // Fixed order: Clean, Mistake 1, Mistake 2
+                                          const orderedData = []
+                                          const colors = ['#22C55E', '#f59e0b', '#EF4444'] // Green, Orange, Red
+                                          
+                                          // Find Clean first
+                                          const cleanItem = qualityBreakdown.find(item => item.name === 'Clean')
+                                          if (cleanItem) orderedData.push({...cleanItem, color: colors[0]})
+                                          
+                                          // Find Mistake 1 types
+                                          const mistake1Item = qualityBreakdown.find(item => 
+                                            item.name !== 'Clean' && 
+                                            (item.name.includes('Uncontrolled') || item.name.includes('Pulling'))
+                                          )
+                                          if (mistake1Item) orderedData.push({...mistake1Item, color: colors[1]})
+                                          
+                                          // Find Mistake 2 types 
+                                          const mistake2Item = qualityBreakdown.find(item => 
+                                            item.name !== 'Clean' && 
+                                            item !== mistake1Item &&
+                                            (item.name.includes('Abrupt') || item.name.includes('Inclination') || item.name.includes('Releasing') || item.name.includes('Poor'))
+                                          )
+                                          if (mistake2Item) orderedData.push({...mistake2Item, color: colors[2]})
+                                          
+                                          // Fill remaining slots with any other items
+                                          const remainingItems = qualityBreakdown.filter(item => 
+                                            !orderedData.some(ordered => ordered.name === item.name)
+                                          ).slice(0, 3 - orderedData.length)
+                                          
+                                          remainingItems.forEach((item, idx) => {
+                                            orderedData.push({...item, color: colors[orderedData.length]})
+                                          })
+                                          
+                                          return orderedData.slice(0, 3)
+                                        })()
+                                        }
+                                        cx="50%"
+                                        cy="50%"
+                                        innerRadius={45}
+                                        outerRadius={65}
+                                        paddingAngle={2}
+                                        dataKey="value"
+                                        animationDuration={700}
+                                        cornerRadius={3}
                                         stroke="none"
-                                      />
-                                    ))}
-                                  </Pie>
-                                </PieChart>
-                              </ResponsiveContainer>
+                                      >
+                                        {(() => {
+                                          const colors = ['#22C55E', '#f59e0b', '#EF4444'] // Green, Orange, Red
+                                          return Array.from({length: 3}, (_, index) => (
+                                            <Cell 
+                                              key={`cell-${index}`} 
+                                              fill={colors[index]}
+                                              stroke="none"
+                                            />
+                                          ))
+                                        })()}
+                                      </Pie>
+                                    </PieChart>
+                                  </ResponsiveContainer>
+                                </div>
+                                {/* Center Icon */}
+                                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                  <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
+                                    <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                    </svg>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Legend */}
+                              <div className="space-y-1.5 mt-2">
+                                {(() => {
+                                  const orderedData = []
+                                  const colors = ['#22C55E', '#f59e0b', '#EF4444'] // Green, Orange, Red
+                                  
+                                  // Fixed order: Clean, Mistake 1, Mistake 2
+                                  const cleanItem = qualityBreakdown.find(item => item.name === 'Clean')
+                                  if (cleanItem) orderedData.push({...cleanItem, color: colors[0]})
+                                  
+                                  const mistake1Item = qualityBreakdown.find(item => 
+                                    item.name !== 'Clean' && 
+                                    (item.name.includes('Uncontrolled') || item.name.includes('Pulling'))
+                                  )
+                                  if (mistake1Item) orderedData.push({...mistake1Item, color: colors[1]})
+                                  
+                                  const mistake2Item = qualityBreakdown.find(item => 
+                                    item.name !== 'Clean' && 
+                                    item !== mistake1Item &&
+                                    (item.name.includes('Abrupt') || item.name.includes('Inclination') || item.name.includes('Releasing') || item.name.includes('Poor'))
+                                  )
+                                  if (mistake2Item) orderedData.push({...mistake2Item, color: colors[2]})
+                                  
+                                  const remainingItems = qualityBreakdown.filter(item => 
+                                    !orderedData.some(ordered => ordered.name === item.name)
+                                  ).slice(0, 3 - orderedData.length)
+                                  
+                                  remainingItems.forEach((item, idx) => {
+                                    orderedData.push({...item, color: colors[orderedData.length]})
+                                  })
+                                  
+                                  return orderedData.slice(0, 3).map((item, i) => (
+                                    <div key={item.name} className="flex items-center gap-2 text-xs">
+                                      <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: item.color }} />
+                                      <span className="text-white/70 truncate flex-1">{item.name}</span>
+                                      <span className="text-white font-bold">{item.pct}%</span>
+                                    </div>
+                                  ))
+                                })()}
+                              </div>
+
+                              {/* Subtitle */}
+                              <p className="text-[10px] text-white/40 text-center mt-3">Based on all sessions</p>
                             </div>
-                            {/* Center Icon */}
-                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                              <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
-                                <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                </svg>
+                          ) : (
+                            <p className="text-white/25 text-xs text-center py-8 flex-1 flex items-center justify-center">No data yet</p>
+                          )}
+                        </div>
+
+                        {/* Slide 2: Last 3 Sessions Comparison */}
+                        <div className="w-full shrink-0 snap-center snap-always p-4 pt-0 flex flex-col" style={{ minWidth: '100%' }}>
+                          {qualityComparison.length > 0 ? (
+                            <div className="flex-1 flex flex-col">
+                              <p className="text-xs text-white/60 mb-3 text-center">Last 3 Sessions</p>
+                              
+                              <div className="space-y-3 flex-1">
+                                {qualityComparison.map((session, idx) => (
+                                  <div key={idx} className="bg-white/5 rounded-xl p-3 flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                      <div className="text-center">
+                                        <p className="text-xs text-white/50">{session.date}</p>
+                                        <p className="text-[10px] text-white/40">{session.weight}kg · {session.totalReps}reps</p>
+                                      </div>
+                                      
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-3 h-3 rounded-full bg-green-500" />
+                                        <span className="text-sm font-bold text-white">{session.cleanPct}%</span>
+                                      </div>
+                                    </div>
+
+                                    <div className="flex items-center">
+                                      {session.trend === 'up' && (
+                                        <svg className="w-4 h-4 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                                          <path fillRule="evenodd" d="M3.293 9.707a1 1 0 010-1.414l6-6a1 1 0 011.414 0l6 6a1 1 0 01-1.414 1.414L11 5.414V17a1 1 0 11-2 0V5.414L4.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                                        </svg>
+                                      )}
+                                      {session.trend === 'down' && (
+                                        <svg className="w-4 h-4 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                                          <path fillRule="evenodd" d="M16.707 10.293a1 1 0 010 1.414l-6 6a1 1 0 01-1.414 0l-6-6a1 1 0 111.414-1.414L9 14.586V3a1 1 0 012 0v11.586l4.293-4.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                        </svg>
+                                      )}
+                                      {session.trend === 'same' && (
+                                        <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                                          <path fillRule="evenodd" d="M3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+                                        </svg>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+
+                              <div className="mt-4 bg-white/5 rounded-xl p-3">
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="text-white/60">Average Quality</span>
+                                  <span className="font-bold text-white">
+                                    {Math.round(qualityComparison.reduce((sum, s) => sum + s.cleanPct, 0) / qualityComparison.length)}%
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between text-xs mt-1">
+                                  <span className="text-white/60">Trend</span>
+                                  <span className="font-bold text-white">
+                                    {(() => {
+                                      const trends = qualityComparison.filter(s => s.trend).map(s => s.trend)
+                                      const upCount = trends.filter(t => t === 'up').length
+                                      const downCount = trends.filter(t => t === 'down').length
+                                      if (upCount > downCount) return '📈 Improving'
+                                      if (downCount > upCount) return '📉 Declining'  
+                                      return '➡️ Stable'
+                                    })()}
+                                  </span>
+                                </div>
                               </div>
                             </div>
-                          </div>
-
-                          {/* Legend */}
-                          <div className="space-y-1.5 mt-2">
-                            {qualityBreakdown.slice(0, 3).map((item, i) => {
-                              const colors = ['#22C55E', '#EAB308', '#EF4444']
-                              return (
-                                <div key={item.name} className="flex items-center gap-2 text-xs">
-                                  <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: colors[i] }} />
-                                  <span className="text-white/70 truncate flex-1">{item.name}</span>
-                                  <span className="text-white font-bold">{item.pct}%</span>
-                                </div>
-                              )
-                            })}
-                          </div>
-
-                          {/* Subtitle */}
-                          <p className="text-[10px] text-white/40 text-center mt-3">Based on all sessions</p>
+                          ) : (
+                            <p className="text-white/25 text-xs text-center py-8 flex-1 flex items-center justify-center">Need at least 3 sessions</p>
+                          )}
                         </div>
-                      ) : (
-                        <p className="text-white/25 text-xs text-center py-8 flex-1 flex items-center justify-center">No data yet</p>
-                      )}
+                      </div>
                     </div>
 
                     {/* RIGHT TOP: Timing carousel – contained, one card visible */}
