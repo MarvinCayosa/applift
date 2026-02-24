@@ -96,11 +96,19 @@ You MUST respond with ONLY a valid JSON object, no markdown, no code fences, no 
   "recommendedLoad": <number in kg, use 0 if bodyweight only>,
   "sets": <integer>,
   "reps": <integer>,
-  "restTimeSeconds": <integer>,
+  "restTimeSeconds": <integer, rest between sets in seconds>,
+  "estimatedCalories": <integer, estimated kcal burned for the entire exercise based on sets, reps, load, and user weight>,
   "safetyJustification": "<1-2 sentences explaining safety considerations>",
   "guidelineReference": "<which NSCA/ACSM/STE principle applies>",
   "progressionNotes": "<brief coaching note about what to focus on>"
-}`;
+}
+
+CALORIE ESTIMATION GUIDELINES:
+- Base MET value for resistance training varies by intensity (3-6 METs)
+- Heavier loads and more sets = higher calorie burn
+- Formula estimate: (MET × user_weight_kg × duration_minutes) / 60
+- Duration estimate: (sets × reps × 3 seconds per rep + sets × restTimeSeconds) / 60 minutes
+- Provide a reasonable estimate (typically 30-150 kcal for a single exercise)`;
 
 // ============================================================
 // VERTEX AI CLIENT INITIALIZATION
@@ -285,9 +293,9 @@ export default async function handler(req, res) {
     }
 
     // Normalize response — handle both flat and nested formats from the model
-    // Flat format: { recommendedLoad, sets, reps, restTimeSeconds, safetyJustification, ... }
-    // Nested format: { recommendation: { weight, sets, reps, restTimeSeconds }, reasoning: { safetyJustification, ... } }
-    let weight, sets, reps, restTimeSeconds, safetyJustification, guidelineReference, progressionNotes;
+    // Flat format: { recommendedLoad, sets, reps, restTimeSeconds, estimatedCalories, safetyJustification, ... }
+    // Nested format: { recommendation: { weight, sets, reps, restTimeSeconds, estimatedCalories }, reasoning: { safetyJustification, ... } }
+    let weight, sets, reps, restTimeSeconds, estimatedCalories, safetyJustification, guidelineReference, progressionNotes;
 
     if (parsed.recommendation && typeof parsed.recommendation === 'object') {
       // Nested format
@@ -295,6 +303,7 @@ export default async function handler(req, res) {
       sets = parsed.recommendation.sets ?? 3;
       reps = parsed.recommendation.reps ?? 8;
       restTimeSeconds = parsed.recommendation.restTimeSeconds ?? 90;
+      estimatedCalories = parsed.recommendation.estimatedCalories ?? parsed.estimatedCalories ?? 45;
       safetyJustification = parsed.reasoning?.safetyJustification ?? parsed.safetyJustification ?? '';
       guidelineReference = parsed.reasoning?.guidelineReference ?? parsed.guidelineReference ?? '';
       progressionNotes = parsed.reasoning?.progressionNotes ?? parsed.progressionNotes ?? '';
@@ -304,6 +313,7 @@ export default async function handler(req, res) {
       sets = parsed.sets ?? 3;
       reps = parsed.reps ?? 8;
       restTimeSeconds = parsed.restTimeSeconds ?? 90;
+      estimatedCalories = parsed.estimatedCalories ?? 45;
       safetyJustification = parsed.safetyJustification ?? '';
       guidelineReference = parsed.guidelineReference ?? '';
       progressionNotes = parsed.progressionNotes ?? '';
@@ -314,8 +324,9 @@ export default async function handler(req, res) {
     sets = Math.max(1, Math.min(10, Math.round(Number(sets) || 3)));
     reps = Math.max(1, Math.min(30, Math.round(Number(reps) || 8)));
     restTimeSeconds = Math.max(15, Math.min(600, Math.round(Number(restTimeSeconds) || 90)));
+    estimatedCalories = Math.max(5, Math.min(500, Math.round(Number(estimatedCalories) || 45)));
 
-    console.log('[AI API] Parsed recommendation:', { weight, sets, reps, restTimeSeconds });
+    console.log('[AI API] Parsed recommendation:', { weight, sets, reps, restTimeSeconds, estimatedCalories });
 
     return res.status(200).json({
       recommendation: {
@@ -323,6 +334,7 @@ export default async function handler(req, res) {
         sets,
         reps,
         restTimeSeconds,
+        estimatedCalories,
       },
       reasoning: {
         safetyJustification: safetyJustification || 'Recommendation follows established guidelines.',

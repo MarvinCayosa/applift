@@ -2,6 +2,16 @@
 import { useState, useEffect, useRef } from 'react';
 import RestTimerModal from './RestTimerModal';
 
+// Helper to format rest time in seconds to readable format
+function formatRestTime(seconds) {
+  if (!seconds || seconds <= 0) return '0s';
+  if (seconds < 60) return `${seconds}s`;
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  if (secs === 0) return `${mins}m`;
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
 // Helper to lighten a hex color
 function lightenColor(hex, amount = 0.2) {
   if (!hex || hex[0] !== '#' || (hex.length !== 7 && hex.length !== 4)) return hex;
@@ -43,6 +53,7 @@ export default function RecommendedSetCard({
   // AI recommendation callbacks
   onRefresh = null,
   aiLoading = false,
+  aiEnabled = true,
   canRegenerate = true,
   regenCount = 0,
   maxRegen = 5,
@@ -91,7 +102,8 @@ export default function RecommendedSetCard({
   };
 
   const cards = [
-    {
+    // Only include recommended card when AI is enabled
+    ...(aiEnabled ? [{
       type: 'recommended',
       weight,
       weightUnit,
@@ -100,7 +112,7 @@ export default function RecommendedSetCard({
       time,
       timeUnit,
       burnCalories
-    },
+    }] : []),
     {
       type: 'custom',
       weight: customWeight,
@@ -115,26 +127,28 @@ export default function RecommendedSetCard({
 
   return (
     <div className="space-y-3">
-      {/* Animated header text */}
-      <div
-        className="transition-opacity duration-300 text-center"
-        style={{ opacity: activeIndex === 0 ? 1 : 0, minHeight: '20px' }}
-      >
-        {aiLoading ? (
-          <span className="text-sm font-medium text-white/70 inline-flex items-center gap-1">
-            Choosing the best set for you
-            <span className="inline-flex gap-0.5 ml-0.5">
-              <span className="w-1 h-1 rounded-full bg-white/60 animate-bounce" style={{ animationDelay: '0ms' }} />
-              <span className="w-1 h-1 rounded-full bg-white/60 animate-bounce" style={{ animationDelay: '150ms' }} />
-              <span className="w-1 h-1 rounded-full bg-white/60 animate-bounce" style={{ animationDelay: '300ms' }} />
+      {/* Animated header text - only show when AI is enabled */}
+      {aiEnabled && (
+        <div
+          className="transition-opacity duration-300 text-center"
+          style={{ opacity: activeIndex === 0 ? 1 : 0, minHeight: '20px' }}
+        >
+          {aiLoading ? (
+            <span className="text-sm font-medium text-white/70 inline-flex items-center gap-1">
+              Choosing the best set for you
+              <span className="inline-flex gap-0.5 ml-0.5">
+                <span className="w-1 h-1 rounded-full bg-white/60 animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-1 h-1 rounded-full bg-white/60 animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-1 h-1 rounded-full bg-white/60 animate-bounce" style={{ animationDelay: '300ms' }} />
+              </span>
             </span>
-          </span>
-        ) : (
-          <h3 className="text-sm font-medium bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-500 bg-clip-text text-transparent animate-gradient-text">
-            Here is a Recommended Set for You
-          </h3>
-        )}
-      </div>
+          ) : (
+            <h3 className="text-sm font-medium bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-500 bg-clip-text text-transparent animate-gradient-text">
+              Here is a Recommended Set for You
+            </h3>
+          )}
+        </div>
+      )}
       
       {/* Mobile Carousel container */}
       <div 
@@ -332,15 +346,15 @@ export default function RecommendedSetCard({
                     {card.type === 'recommended' && (
                       <div className="flex items-center justify-between px-1">
                         <div className="flex gap-3">
-                          {/* Time */}
+                          {/* Rest Time */}
                           <div className="flex items-center gap-1.5">
                             <div className="w-6 h-6 flex items-center justify-center">
-                              <img src="/images/icons/time.png" alt="Time" className="w-3.5 h-3.5" />
+                              <img src="/images/icons/time.png" alt="Rest" className="w-3.5 h-3.5" />
                             </div>
                             <div>
-                              <p className="text-[9px] text-white/80 leading-tight">Time</p>
+                              <p className="text-[9px] text-white/80 leading-tight">Rest</p>
                               <p className="text-xs font-semibold text-white leading-tight">
-                                {`${card.time} ${card.timeUnit}`}
+                                {formatRestTime(card.time)}
                               </p>
                             </div>
                           </div>
@@ -568,15 +582,15 @@ export default function RecommendedSetCard({
                     {card.type === 'recommended' && (
                       <div className="flex items-center justify-between px-2">
                         <div className="flex gap-4">
-                          {/* Time */}
+                          {/* Rest Time */}
                           <div className="flex items-center gap-2">
                             <div className="w-8 h-8 flex items-center justify-center">
-                              <img src="/images/icons/time.png" alt="Time" className="w-4 h-4" />
+                              <img src="/images/icons/time.png" alt="Rest" className="w-4 h-4" />
                             </div>
                             <div>
-                              <p className="text-[10px] text-white/80 leading-tight">Time</p>
+                              <p className="text-[10px] text-white/80 leading-tight">Rest</p>
                               <p className="text-sm font-semibold text-white leading-tight">
-                                {`${card.time} ${card.timeUnit}`}
+                                {formatRestTime(card.time)}
                               </p>
                             </div>
                           </div>
@@ -618,16 +632,18 @@ export default function RecommendedSetCard({
         ))}
       </div>
 
-      {/* Subtext - fades together with header when on recommended set */}
-      <p 
-        className="text-xs text-center text-white/50 content-fade-up-3 transition-opacity duration-300 mb-2" 
-        style={{ animationDelay: '0.35s', opacity: activeIndex === 0 ? 1 : 0 }}
-      >
-        Swipe right for custom set
-      </p>
+      {/* Subtext - only show when AI is enabled and there are 2 cards */}
+      {aiEnabled && cards.length > 1 && (
+        <p 
+          className="text-xs text-center text-white/50 content-fade-up-3 transition-opacity duration-300 mb-2" 
+          style={{ animationDelay: '0.35s', opacity: activeIndex === 0 ? 1 : 0 }}
+        >
+          Swipe right for custom set
+        </p>
+      )}
 
-      {/* Carousel dots - Mobile only */}
-      <div className="flex justify-center gap-2.5 px-4 mb-4 md:hidden content-fade-up-3" style={{ animationDelay: '0.3s' }}>
+      {/* Carousel dots - Mobile only, hide when only one card */}
+      <div className={`flex justify-center gap-2.5 px-4 mb-4 md:hidden content-fade-up-3 ${cards.length === 1 ? 'hidden' : ''}`} style={{ animationDelay: '0.3s' }}>
         {cards.map((_, idx) => (
           <span
             key={idx}

@@ -702,6 +702,8 @@ export default function SelectedWorkout() {
             recommendedSets={aiRec?.sets ?? details.recommendedSets}
             recommendedReps={aiRec?.reps ?? details.recommendedReps}
             weight={aiRec?.weight ?? 5}
+            time={aiRec?.restTimeSeconds ?? 45}
+            burnCalories={aiRec?.estimatedCalories ?? 45}
             image={workoutImage}
             equipmentColor={equipmentColor}
             customWeight={customWeight}
@@ -715,6 +717,7 @@ export default function SelectedWorkout() {
             onActiveIndexChange={handleCarouselIndexChange}
             onRefresh={aiRegenerate}
             aiLoading={aiLoading}
+            aiEnabled={aiEnabled}
             canRegenerate={canRegenerate}
             regenCount={regenCount}
             maxRegen={maxRegen}
