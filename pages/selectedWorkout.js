@@ -1,6 +1,7 @@
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useRef, useState, useEffect, useMemo, useCallback } from 'react';
+import AIReasoningPanel from '../components/AIReasoningPanel';
 import CalibrationHistoryPanel from '../components/CalibrationHistoryPanel';
 import CalibrationModal from '../components/CalibrationModal';
 import ConnectPill from '../components/ConnectPill';
@@ -10,8 +11,12 @@ import RecommendedSetCard from '../components/RecommendedSetCard';
 import VideoPlayerModal from '../components/VideoPlayerModal';
 import WarmUpBanner from '../components/WarmUpBanner';
 import WorkoutActionButton from '../components/WorkoutActionButton';
+import { useAuth } from '../context/AuthContext';
 import { useBluetooth } from '../context/BluetoothProvider';
 import { useWorkoutLogging } from '../context/WorkoutLoggingContext';
+import { useAIRecommendation } from '../hooks/useAIRecommendation';
+import { collection, getDocs, query, orderBy, limit as firestoreLimit } from 'firebase/firestore';
+import { db } from '../config/firestore';
 
 // Pastel colors for cards (including target muscles)
 const cardColors = [
@@ -440,6 +445,9 @@ export default function SelectedWorkout() {
   const { equipment, workout } = router.query;
   const mainRef = useRef(null);
 
+  // Auth & user profile
+  const { user, userProfile } = useAuth();
+
   // Workout logging
   const { initializeLog, isLogging } = useWorkoutLogging();
 
@@ -466,6 +474,85 @@ export default function SelectedWorkout() {
   const [customSetError, setCustomSetError] = useState('');
   const [errorVisible, setErrorVisible] = useState(false);
   const [isPillExpanded, setIsPillExpanded] = useState(false);
+
+  // Past sessions for AI context
+  const [pastSessions, setPastSessions] = useState([]);
+
+  // Sanitize string for Firestore path (matches workoutLogService convention)
+  const sanitizeForPath = useCallback((str) => {
+    if (!str) return 'unknown';
+    return str
+      .trim()
+      .replace(/([a-z])([A-Z])/g, '$1-$2')
+      .replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9-]/g, '')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+  }, []);
+
+  // Fetch past exercise sessions for AI context
+  useEffect(() => {
+    if (!user?.uid || !equipment || !workout) return;
+    
+    const fetchPastSessions = async () => {
+      try {
+        const equipmentPath = sanitizeForPath(equipment);
+        const exercisePath = sanitizeForPath(workout);
+        const logsRef = collection(db, 'userWorkouts', user.uid, equipmentPath, exercisePath, 'logs');
+        const q = query(logsRef, orderBy('timestamps.completed', 'desc'), firestoreLimit(5));
+        const snapshot = await getDocs(q);
+        
+        const sessions = snapshot.docs
+          .map(doc => {
+            const data = doc.data();
+            if (data.status !== 'completed' || !data.results) return null;
+            return {
+              date: data.timestamps?.completed?.toDate?.()?.toISOString?.() || null,
+              weight: data.results?.weight || data.planned?.weight || 0,
+              weightUnit: data.results?.weightUnit || data.planned?.weightUnit || 'kg',
+              sets: data.results?.totalSets || data.planned?.sets || 0,
+              reps: data.results?.totalReps || data.planned?.reps || 0,
+              avgFormScore: data.results?.avgFormScore || null,
+            };
+          })
+          .filter(Boolean);
+        
+        setPastSessions(sessions);
+      } catch (err) {
+        console.log('[SelectedWorkout] Could not fetch past sessions:', err.message);
+      }
+    };
+    
+    fetchPastSessions();
+  }, [user?.uid, equipment, workout, sanitizeForPath]);
+
+  // AI Recommendation
+  const aiEnabled = userProfile?.aiRecommendationsEnabled !== false;
+  const {
+    recommendation: aiRec,
+    reasoning: aiReasoning,
+    loading: aiLoading,
+    error: aiError,
+    regenCount,
+    maxRegen,
+    isFromCache,
+    canRegenerate,
+    regenerate: aiRegenerate,
+  } = useAIRecommendation({
+    equipment,
+    exerciseName: workout,
+    pastSessions,
+    enabled: aiEnabled && !!equipment && !!workout,
+  });
+
+  // Update rest time when AI provides a recommendation
+  useEffect(() => {
+    if (aiRec?.restTimeSeconds && customRestTime === 30) {
+      setCustomRestTime(aiRec.restTimeSeconds);
+    }
+  }, [aiRec?.restTimeSeconds]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-fade error message after 3 seconds
   useEffect(() => {
@@ -612,8 +699,9 @@ export default function SelectedWorkout() {
           <RecommendedSetCard
             equipment={equipment}
             workout={workout}
-            recommendedSets={details.recommendedSets}
-            recommendedReps={details.recommendedReps}
+            recommendedSets={aiRec?.sets ?? details.recommendedSets}
+            recommendedReps={aiRec?.reps ?? details.recommendedReps}
+            weight={aiRec?.weight ?? 5}
             image={workoutImage}
             equipmentColor={equipmentColor}
             customWeight={customWeight}
@@ -625,8 +713,36 @@ export default function SelectedWorkout() {
             onRestTimeChange={setCustomRestTime}
             onCustomFieldClick={handleCustomFieldClick}
             onActiveIndexChange={handleCarouselIndexChange}
+            onRefresh={aiRegenerate}
+            aiLoading={aiLoading}
+            canRegenerate={canRegenerate}
+            regenCount={regenCount}
+            maxRegen={maxRegen}
           />
         </div>
+
+        {/* AI Reasoning Panel */}
+        {aiEnabled && aiReasoning && !aiLoading && (
+          <div className="content-fade-up-2 flex-shrink-0 px-1" style={{ animationDelay: '0.5s' }}>
+            <AIReasoningPanel
+              reasoning={aiReasoning}
+              regenCount={regenCount}
+              maxRegen={maxRegen}
+              isFromCache={isFromCache}
+            />
+          </div>
+        )}
+
+        {/* AI Error Notice */}
+        {aiEnabled && aiError && !aiLoading && (
+          <div className="content-fade-up-2 flex-shrink-0 px-1" style={{ animationDelay: '0.5s' }}>
+            <div className="rounded-xl bg-red-500/10 border border-red-500/20 px-4 py-3">
+              <p className="text-xs text-red-400/80">
+                AI recommendation unavailable — using default values. {aiError}
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Info & History Carousel */}
         <InfoHistoryCarousel

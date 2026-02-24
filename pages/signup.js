@@ -8,6 +8,7 @@ import { shouldUseAppMode } from '../utils/pwaInstalled'
 import GoogleSignInButton from '../components/GoogleSignInButton'
 import AuthErrorAlert from '../components/AuthErrorAlert'
 import LoadingScreen from '../components/LoadingScreen'
+import InjuryIllnessInput from '../components/InjuryIllnessInput'
 
 const steps = [
   { id: 1, label: 'Terms' },
@@ -314,8 +315,11 @@ export default function Signup() {
     mainGoal: '',
     trainingPriority: '',
   })
-  const [step5Phase, setStep5Phase] = useState('intro') // 'intro', 'question', 'summary'
+  const [step5Phase, setStep5Phase] = useState('intro') // 'intro', 'question', 'injuries', 'summary'
   const [step5QuestionIndex, setStep5QuestionIndex] = useState(0)
+
+  // Injury / Illness data
+  const [injuries, setInjuries] = useState([])
 
   const [errors, setErrors] = useState([])
 
@@ -815,10 +819,12 @@ export default function Signup() {
         if (!answer) return
         const isLast = step5QuestionIndex === step5Questions.length - 1
         if (isLast) {
-          setStep5Phase('summary')
+          setStep5Phase('injuries')
         } else {
           setStep5QuestionIndex((idx) => idx + 1)
         }
+      } else if (step5Phase === 'injuries') {
+        setStep5Phase('summary')
       } else if (step5Phase === 'summary') {
         // Move to review step (step 6) after fitness summary
         setStep(reviewStep)
@@ -839,6 +845,10 @@ export default function Signup() {
     }
     if (step === 5) {
       if (step5Phase === 'summary') {
+        setStep5Phase('injuries')
+        return
+      }
+      if (step5Phase === 'injuries') {
         setStep5Phase('question')
         setStep5QuestionIndex(step5Questions.length - 1)
         return
@@ -915,6 +925,8 @@ export default function Signup() {
       activityLevel: questionAnswers.workoutFrequency || null, // Save as activityLevel
       fitnessGoal: questionAnswers.mainGoal || null,
       trainingPriority: questionAnswers.trainingPriority || null,
+      injuries: injuries.filter(i => i && i.trim()) || [],
+      aiRecommendationsEnabled: true,
       termsAccepted: true,
       termsAcceptedAt: new Date().toISOString(),
       consentAccepted: true,
@@ -1691,6 +1703,21 @@ You acknowledge the system's limits (e.g., single IMU, equipment-based sensing) 
         </div>
       )}
 
+      {step5Phase === 'injuries' && (
+        <div className="space-y-4 step-content">
+          <div className="text-center space-y-1">
+            <div className="text-sm font-semibold" style={{ color: 'var(--app-white)' }}>Do you have any injuries or illnesses?</div>
+            <div className="text-xs" style={{ color: 'rgba(238,235,217,0.7)' }}>
+              This helps us generate safer recommendations for you.
+            </div>
+          </div>
+          <InjuryIllnessInput
+            injuries={injuries}
+            onChange={setInjuries}
+          />
+        </div>
+      )}
+
       {step5Phase === 'summary' && (
         <div className="space-y-3 step-content">
           <div className="text-center space-y-1">
@@ -1839,6 +1866,7 @@ You acknowledge the system's limits (e.g., single IMU, equipment-based sensing) 
           { label: 'Activity Level', value: questionAnswers.workoutFrequency ? `Level ${questionAnswers.workoutFrequency} (${getStep5Label('workoutFrequency', questionAnswers.workoutFrequency)})` : '', jump: 5 },
           { label: 'Goal', value: getStep5Label('mainGoal', questionAnswers.mainGoal), jump: 5 },
           { label: 'Training Priority', value: getStep5Label('trainingPriority', questionAnswers.trainingPriority), jump: 5 },
+          { label: 'Injuries / Illness', value: injuries.filter(i => i.trim()).join(', ') || 'None', jump: 5 },
         ]
           .map((item) => (
             <div key={item.label} className="flex items-center justify-between rounded-2xl bg-black/30 px-4 py-3">
@@ -2025,7 +2053,7 @@ You acknowledge the system's limits (e.g., single IMU, equipment-based sensing) 
               )}
 
               <div className="flex items-center" style={{ gap: 'clamp(0.5rem, 2vw, 0.75rem)', paddingTop: 'clamp(0.25rem, 1vh, 0.5rem)' }}>
-                {(step > 1 || step === reviewStep || (step === 1 && step1Phase === 'consent') || (step === 5 && (step5Phase === 'summary' || (step5Phase === 'question' && step5QuestionIndex > 0)))) ? (
+                {(step > 1 || step === reviewStep || (step === 1 && step1Phase === 'consent') || (step === 5 && (step5Phase === 'summary' || step5Phase === 'injuries' || (step5Phase === 'question' && step5QuestionIndex > 0)))) ? (
                   <button
                     type="button"
                     onClick={handleBack}

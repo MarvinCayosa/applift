@@ -39,7 +39,13 @@ export default function RecommendedSetCard({
   // Callback to open modal
   onCustomFieldClick = () => {},
   // Callback when carousel slide changes
-  onActiveIndexChange = () => {}
+  onActiveIndexChange = () => {},
+  // AI recommendation callbacks
+  onRefresh = null,
+  aiLoading = false,
+  canRegenerate = true,
+  regenCount = 0,
+  maxRegen = 5,
 }) {
   const darkenColor = (hex, amount = 0.12) => {
     if (!hex || hex[0] !== '#' || (hex.length !== 7 && hex.length !== 4)) return hex;
@@ -109,12 +115,26 @@ export default function RecommendedSetCard({
 
   return (
     <div className="space-y-3">
-      <h3 
-        className="text-sm font-medium text-center bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-500 bg-clip-text text-transparent animate-gradient-text transition-opacity duration-300"
-        style={{ opacity: activeIndex === 0 ? 1 : 0 }}
+      {/* Animated header text */}
+      <div
+        className="transition-opacity duration-300 text-center"
+        style={{ opacity: activeIndex === 0 ? 1 : 0, minHeight: '20px' }}
       >
-        Here is a Recommended Set for You
-      </h3>
+        {aiLoading ? (
+          <span className="text-sm font-medium text-white/70 inline-flex items-center gap-1">
+            Choosing the best set for you
+            <span className="inline-flex gap-0.5 ml-0.5">
+              <span className="w-1 h-1 rounded-full bg-white/60 animate-bounce" style={{ animationDelay: '0ms' }} />
+              <span className="w-1 h-1 rounded-full bg-white/60 animate-bounce" style={{ animationDelay: '150ms' }} />
+              <span className="w-1 h-1 rounded-full bg-white/60 animate-bounce" style={{ animationDelay: '300ms' }} />
+            </span>
+          </span>
+        ) : (
+          <h3 className="text-sm font-medium bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-500 bg-clip-text text-transparent animate-gradient-text">
+            Here is a Recommended Set for You
+          </h3>
+        )}
+      </div>
       
       {/* Mobile Carousel container */}
       <div 
@@ -175,8 +195,10 @@ export default function RecommendedSetCard({
                 {card.type !== 'custom' && (
                   <button
                     type="button"
-                    className="absolute top-4 right-4 w-10 h-10 rounded-xl flex items-center justify-center hover:bg-white/10 transition-colors z-10"
-                    aria-label="Refresh"
+                    className={`absolute top-4 right-4 w-10 h-10 rounded-xl flex items-center justify-center hover:bg-white/10 transition-all z-10 ${aiLoading ? 'animate-spin' : ''} ${!canRegenerate ? 'opacity-30 cursor-not-allowed' : ''}`}
+                    aria-label="Refresh AI Recommendation"
+                    onClick={() => onRefresh && canRegenerate && !aiLoading && onRefresh()}
+                    disabled={!canRegenerate || aiLoading}
                   >
                     <img src="/images/icons/refresh.png" alt="Refresh" className="w-5 h-5" />
                   </button>
@@ -251,6 +273,30 @@ export default function RecommendedSetCard({
                                 {customReps || '-'}
                               </p>
                             </button>
+                          </>
+                        ) : aiLoading ? (
+                          /* Skeleton loading state for recommended stats */
+                          <>
+                            <div className="flex-1 py-0.5 text-center">
+                              <p className="text-xs text-white/40 mb-1.5">Weight</p>
+                              <div className="flex justify-center">
+                                <div className="h-8 w-10 rounded-lg bg-white/10 animate-pulse" />
+                              </div>
+                            </div>
+                            <span className="text-white/20 text-xl font-light">|</span>
+                            <div className="flex-1 py-0.5 text-center">
+                              <p className="text-xs text-white/40 mb-1.5">Sets</p>
+                              <div className="flex justify-center">
+                                <div className="h-8 w-8 rounded-lg bg-white/10 animate-pulse" style={{ animationDelay: '150ms' }} />
+                              </div>
+                            </div>
+                            <span className="text-white/20 text-xl font-light">|</span>
+                            <div className="flex-1 py-0.5 text-center">
+                              <p className="text-xs text-white/40 mb-1.5">Reps</p>
+                              <div className="flex justify-center">
+                                <div className="h-8 w-8 rounded-lg bg-white/10 animate-pulse" style={{ animationDelay: '300ms' }} />
+                              </div>
+                            </div>
                           </>
                         ) : (
                           <>
@@ -385,8 +431,10 @@ export default function RecommendedSetCard({
                 {card.type !== 'custom' && (
                   <button
                     type="button"
-                    className="absolute top-4 right-4 w-10 h-10 rounded-xl flex items-center justify-center hover:bg-white/10 transition-colors z-10"
-                    aria-label="Refresh"
+                    className={`absolute top-4 right-4 w-10 h-10 rounded-xl flex items-center justify-center hover:bg-white/10 transition-all z-10 ${aiLoading ? 'animate-spin' : ''} ${!canRegenerate ? 'opacity-30 cursor-not-allowed' : ''}`}
+                    aria-label="Refresh AI Recommendation"
+                    onClick={() => onRefresh && canRegenerate && !aiLoading && onRefresh()}
+                    disabled={!canRegenerate || aiLoading}
                   >
                     <img src="/images/icons/refresh.png" alt="Refresh" className="w-5 h-5" />
                   </button>
@@ -461,6 +509,30 @@ export default function RecommendedSetCard({
                                 {customReps || '-'}
                               </p>
                             </button>
+                          </>
+                        ) : aiLoading ? (
+                          /* Skeleton loading state for desktop recommended stats */
+                          <>
+                            <div className="flex-1 py-1 text-center">
+                              <p className="text-xs text-white/40 mb-2">Weight</p>
+                              <div className="flex justify-center">
+                                <div className="h-10 w-12 rounded-lg bg-white/10 animate-pulse" />
+                              </div>
+                            </div>
+                            <span className="text-white/20 text-3xl font-light">|</span>
+                            <div className="flex-1 py-1 text-center">
+                              <p className="text-xs text-white/40 mb-2">Sets</p>
+                              <div className="flex justify-center">
+                                <div className="h-10 w-10 rounded-lg bg-white/10 animate-pulse" style={{ animationDelay: '150ms' }} />
+                              </div>
+                            </div>
+                            <span className="text-white/20 text-3xl font-light">|</span>
+                            <div className="flex-1 py-1 text-center">
+                              <p className="text-xs text-white/40 mb-2">Reps</p>
+                              <div className="flex justify-center">
+                                <div className="h-10 w-10 rounded-lg bg-white/10 animate-pulse" style={{ animationDelay: '300ms' }} />
+                              </div>
+                            </div>
                           </>
                         ) : (
                           <>

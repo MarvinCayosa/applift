@@ -203,6 +203,7 @@ function BirthdayPicker({ months, years, selectedMonth, selectedYear, onMonthCha
 }
 import BottomNav from '../components/BottomNav';
 import LoadingScreen from '../components/LoadingScreen';
+import InjuryIllnessInput from '../components/InjuryIllnessInput';
 import { useAuth } from '../context/AuthContext';
 import { getUserAvatarColorStyle, getUserTextColor, getFirstWord } from '../utils/colorUtils';
 import { deleteUser, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
@@ -277,6 +278,15 @@ export default function Settings() {
 
   // Dropdown open states
   const [openDropdown, setOpenDropdown] = useState(null);
+
+  // Injury / Illness state
+  const [injuries, setInjuries] = useState([]);
+  const [isEditingInjuries, setIsEditingInjuries] = useState(false);
+  const [isSavingInjuries, setIsSavingInjuries] = useState(false);
+
+  // AI Recommendations toggle
+  const [aiEnabled, setAiEnabled] = useState(true);
+  const [isSavingAiToggle, setIsSavingAiToggle] = useState(false);
 
   // Goals questions with options (from signup)
   const goalsQuestions = [
@@ -655,6 +665,10 @@ export default function Settings() {
       fitnessGoal: userProfile?.fitnessGoal || '',
       trainingPriority: userProfile?.trainingPriority || '',
     });
+
+    // Initialize injuries and AI settings
+    setInjuries(userProfile?.injuries || []);
+    setAiEnabled(userProfile?.aiRecommendationsEnabled !== false);
     
     if (username) {
       const names = username.trim().split(' ').filter(n => n.length > 0);
@@ -1600,6 +1614,133 @@ export default function Settings() {
                     );
                   })}
                 </>
+              )}
+            </div>
+          </section>
+
+          {/* Injuries / Illnesses Section */}
+          <section className="content-fade-up-4">
+            <div className="flex items-center justify-between mb-3 px-1">
+              <h3 className="text-xs font-semibold text-white/50 uppercase tracking-wide">Injuries & Illnesses</h3>
+              <button
+                onClick={() => {
+                  if (isEditingInjuries) {
+                    setInjuries(userProfile?.injuries || []);
+                    setIsEditingInjuries(false);
+                  } else {
+                    setIsEditingInjuries(true);
+                  }
+                }}
+                className={`p-1.5 rounded-full transition-all duration-300 ${isEditingInjuries ? 'bg-violet-500/30 rotate-45' : 'hover:bg-violet-500/20'}`}
+                aria-label="Edit injuries"
+              >
+                <svg className={`w-4 h-4 transition-colors duration-300 ${isEditingInjuries ? 'text-violet-300' : 'text-violet-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+              </button>
+            </div>
+            <div className="rounded-2xl bg-white/10 transition-all duration-500 ease-out overflow-hidden">
+              {isEditingInjuries ? (
+                <div className="p-5 space-y-4 animate-fadeIn">
+                  <InjuryIllnessInput
+                    injuries={injuries}
+                    onChange={setInjuries}
+                    variant="compact"
+                  />
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      onClick={() => {
+                        setInjuries(userProfile?.injuries || []);
+                        setIsEditingInjuries(false);
+                      }}
+                      className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/90 font-medium transition-colors border border-white/10"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={async () => {
+                        setIsSavingInjuries(true);
+                        try {
+                          await updateUserProfile({ injuries: injuries.filter(i => i && i.trim()) });
+                          setIsEditingInjuries(false);
+                        } catch (e) {
+                          console.error('Failed to save injuries:', e);
+                        }
+                        setIsSavingInjuries(false);
+                      }}
+                      disabled={isSavingInjuries}
+                      className="flex-1 px-4 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-medium transition-colors disabled:opacity-50"
+                    >
+                      {isSavingInjuries ? 'Saving...' : 'Save'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="px-5 py-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
+                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="1.5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-white">Active Conditions</p>
+                      <p className="text-xs text-white/50">
+                        {injuries.filter(i => i && i.trim()).length > 0
+                          ? injuries.filter(i => i && i.trim()).join(', ')
+                          : 'None reported'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* AI Recommendations Section */}
+          <section className="content-fade-up-4">
+            <h3 className="text-xs font-semibold text-white/50 uppercase tracking-wide mb-3 px-1">AI Recommendations</h3>
+            <div className="rounded-2xl bg-white/10 overflow-hidden">
+              <div className="px-5 py-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-violet-500/20 flex items-center justify-center">
+                    <svg className="w-4 h-4 text-violet-400" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M12 2L14.09 8.26L20 9.27L15.55 13.97L16.91 20L12 16.9L7.09 20L8.45 13.97L4 9.27L9.91 8.26L12 2Z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-white">Enable AI Recommendations</p>
+                    <p className="text-xs text-white/50">
+                      {aiEnabled ? 'AI-powered coaching is active' : 'Using manual setup only'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={async () => {
+                    const newValue = !aiEnabled;
+                    setAiEnabled(newValue);
+                    setIsSavingAiToggle(true);
+                    try {
+                      await updateUserProfile({ aiRecommendationsEnabled: newValue });
+                    } catch (e) {
+                      setAiEnabled(!newValue);
+                      console.error('Failed to toggle AI:', e);
+                    }
+                    setIsSavingAiToggle(false);
+                  }}
+                  disabled={isSavingAiToggle}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-300 ${aiEnabled ? 'bg-violet-500' : 'bg-white/20'}`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-300 ${aiEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+              </div>
+              {aiEnabled && (
+                <div className="px-5 pb-4 -mt-1">
+                  <p className="text-[10px] text-white/30 leading-relaxed">
+                    Powered by Vertex AI Studio. Recommendations follow NSCA, ACSM, and STE guidelines.
+                    AI calls are only made when needed to minimize costs.
+                  </p>
+                </div>
               )}
             </div>
           </section>
