@@ -158,7 +158,7 @@ export default function RecentExerciseCards({ exercises, exerciseLogs, primaryCo
                     /* Bootstrap bi-check-circle-fill */
                     <svg
                       className="flex-shrink-0"
-                      style={{ width: 16, height: 16, color: 'rgba(255,255,255,0.6)' }}
+                      style={{ width: 16, height: 16, color: '#22c55e' }}
                       viewBox="0 0 16 16"
                       fill="currentColor"
                     >
@@ -177,7 +177,7 @@ export default function RecentExerciseCards({ exercises, exerciseLogs, primaryCo
                   )}
                   <span
                     className="text-sm"
-                    style={{ color: item.isCompleted ? 'rgba(255,255,255,0.6)' : 'rgba(234,179,8,0.6)' }}
+                    style={{ color: item.isCompleted ? '#22c55e' : 'rgba(234,179,8,0.6)' }}
                   >
                     {item.reps}/{item.totalPlannedReps}
                   </span>
