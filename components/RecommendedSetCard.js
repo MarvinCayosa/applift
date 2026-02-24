@@ -353,9 +353,13 @@ export default function RecommendedSetCard({
                             </div>
                             <div>
                               <p className="text-[9px] text-white/80 leading-tight">Rest</p>
-                              <p className="text-xs font-semibold text-white leading-tight">
-                                {formatRestTime(card.time)}
-                              </p>
+                              {aiLoading ? (
+                                <div className="h-3 w-8 rounded bg-white/10 animate-pulse" />
+                              ) : (
+                                <p className="text-xs font-semibold text-white leading-tight">
+                                  {formatRestTime(card.time)}
+                                </p>
+                              )}
                             </div>
                           </div>
                           
@@ -366,9 +370,13 @@ export default function RecommendedSetCard({
                             </div>
                             <div>
                               <p className="text-[9px] text-white/80 leading-tight">Burn</p>
-                              <p className="text-xs font-semibold text-white leading-tight">
-                                {`${card.burnCalories} kcal`}
-                              </p>
+                              {aiLoading ? (
+                                <div className="h-3 w-10 rounded bg-white/10 animate-pulse" style={{ animationDelay: '200ms' }} />
+                              ) : (
+                                <p className="text-xs font-semibold text-white leading-tight">
+                                  {`${card.burnCalories} kcal`}
+                                </p>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -589,9 +597,13 @@ export default function RecommendedSetCard({
                             </div>
                             <div>
                               <p className="text-[10px] text-white/80 leading-tight">Rest</p>
-                              <p className="text-sm font-semibold text-white leading-tight">
-                                {formatRestTime(card.time)}
-                              </p>
+                              {aiLoading ? (
+                                <div className="h-3.5 w-10 rounded bg-white/10 animate-pulse" />
+                              ) : (
+                                <p className="text-sm font-semibold text-white leading-tight">
+                                  {formatRestTime(card.time)}
+                                </p>
+                              )}
                             </div>
                           </div>
                           
@@ -602,9 +614,13 @@ export default function RecommendedSetCard({
                             </div>
                             <div>
                               <p className="text-[10px] text-white/80 leading-tight">Burn</p>
-                              <p className="text-sm font-semibold text-white leading-tight">
-                                {`${card.burnCalories} kcal`}
-                              </p>
+                              {aiLoading ? (
+                                <div className="h-3.5 w-12 rounded bg-white/10 animate-pulse" style={{ animationDelay: '200ms' }} />
+                              ) : (
+                                <p className="text-sm font-semibold text-white leading-tight">
+                                  {`${card.burnCalories} kcal`}
+                                </p>
+                              )}
                             </div>
                           </div>
                         </div>

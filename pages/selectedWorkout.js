@@ -15,7 +15,7 @@ import { useAuth } from '../context/AuthContext';
 import { useBluetooth } from '../context/BluetoothProvider';
 import { useWorkoutLogging } from '../context/WorkoutLoggingContext';
 import { useAIRecommendation } from '../hooks/useAIRecommendation';
-import { collection, getDocs, query, orderBy, limit as firestoreLimit } from 'firebase/firestore';
+import { collection, getDocs, getDoc, doc, query, orderBy, limit as firestoreLimit } from 'firebase/firestore';
 import { db } from '../config/firestore';
 
 // Pastel colors for cards (including target muscles)
@@ -492,7 +492,7 @@ export default function SelectedWorkout() {
       .replace(/^-|-$/g, '');
   }, []);
 
-  // Fetch past exercise sessions for AI context
+  // Fetch past exercise sessions for AI context (logs + analytics)
   useEffect(() => {
     if (!user?.uid || !equipment || !workout) return;
     
@@ -504,25 +504,99 @@ export default function SelectedWorkout() {
         const q = query(logsRef, orderBy('timestamps.completed', 'desc'), firestoreLimit(5));
         const snapshot = await getDocs(q);
         
-        const sessions = snapshot.docs
-          .map(doc => {
-            const data = doc.data();
+        // Fetch analytics for each log in parallel
+        const sessionsWithAnalytics = await Promise.all(
+          snapshot.docs.map(async (logDoc) => {
+            const data = logDoc.data();
             if (data.status !== 'completed' || !data.results) return null;
+            
+            // Try to fetch corresponding analytics doc
+            let analytics = null;
+            try {
+              const analyticsRef = doc(db, 'userWorkouts', user.uid, equipmentPath, exercisePath, 'analytics', logDoc.id);
+              const analyticsSnap = await getDoc(analyticsRef);
+              if (analyticsSnap.exists()) {
+                analytics = analyticsSnap.data();
+              }
+            } catch (err) {
+              console.log('[SelectedWorkout] Could not fetch analytics for session:', err.message);
+            }
+            
+            // Extract ML classification summary
+            let mlSummary = null;
+            if (analytics?.mlClassification?.distribution) {
+              const dist = analytics.mlClassification.distribution;
+              const total = Object.values(dist).reduce((sum, c) => sum + c, 0);
+              const cleanCount = dist['Clean'] || dist['0'] || 0;
+              mlSummary = `${Math.round((cleanCount / total) * 100)}% clean reps`;
+            }
+            
             return {
               date: data.timestamps?.completed?.toDate?.()?.toISOString?.() || null,
               weight: data.results?.weight || data.planned?.weight || 0,
               weightUnit: data.results?.weightUnit || data.planned?.weightUnit || 'kg',
               sets: data.results?.totalSets || data.planned?.sets || 0,
               reps: data.results?.totalReps || data.planned?.reps || 0,
-              avgFormScore: data.results?.avgFormScore || null,
+              // Form quality from results
+              quality: data.results?.avgFormScore 
+                ? (data.results.avgFormScore >= 80 ? 'good form' : data.results.avgFormScore >= 60 ? 'moderate form' : 'needs improvement')
+                : null,
+              // Tempo data (average concentric/eccentric times)
+              avgConcentric: data.results?.avgConcentric || null,
+              avgEccentric: data.results?.avgEccentric || null,
+              // Analytics-derived metrics
+              fatigueScore: analytics?.fatigueScore ?? null,
+              consistencyScore: analytics?.consistencyScore ?? null,
+              keyFindings: analytics?.performanceReport?.keyFindings || null,
+              mlClassification: mlSummary,
+              // Comprehensive performance summary
+              performance: buildPerformanceSummary(data, analytics),
             };
           })
-          .filter(Boolean);
+        );
         
-        setPastSessions(sessions);
+        setPastSessions(sessionsWithAnalytics.filter(Boolean));
       } catch (err) {
         console.log('[SelectedWorkout] Could not fetch past sessions:', err.message);
       }
+    };
+    
+    // Helper to build comprehensive performance summary
+    const buildPerformanceSummary = (data, analytics) => {
+      const parts = [];
+      const results = data.results || {};
+      const planned = data.planned || {};
+      
+      // Basic completion info
+      if (results.totalSets && results.totalReps) {
+        parts.push(`${results.totalSets} sets × ${Math.round(results.totalReps / results.totalSets)} reps at ${results.weight || planned.weight || 0}${results.weightUnit || 'kg'}`);
+      }
+      
+      // Form score
+      if (results.avgFormScore) {
+        parts.push(`form ${results.avgFormScore}%`);
+      }
+      
+      // Tempo info
+      if (results.avgConcentric || results.avgEccentric) {
+        const tempo = [];
+        if (results.avgEccentric) tempo.push(`${results.avgEccentric.toFixed(1)}s ecc`);
+        if (results.avgConcentric) tempo.push(`${results.avgConcentric.toFixed(1)}s con`);
+        parts.push(`tempo: ${tempo.join('/')}`);
+      }
+      
+      // Analytics-derived insights
+      if (analytics) {
+        if (analytics.fatigueScore != null) {
+          const level = analytics.fatigueScore < 15 ? 'low' : analytics.fatigueScore < 35 ? 'moderate' : 'high';
+          parts.push(`${level} fatigue (${analytics.fatigueScore}%)`);
+        }
+        if (analytics.consistencyScore != null) {
+          parts.push(`consistency ${analytics.consistencyScore}%`);
+        }
+      }
+      
+      return parts.length > 0 ? parts.join(', ') : null;
     };
     
     fetchPastSessions();
@@ -653,8 +727,8 @@ export default function SelectedWorkout() {
         <title>{workout} — AppLift</title>
       </Head>
 
-      <main ref={mainRef} className="flex-1 w-full px-4 sm:px-6 md:px-8 pt-2.5 sm:pt-3.5 pt-pwa-dynamic pb-24 flex flex-col overflow-hidden">
-        <div className="mx-auto w-full max-w-4xl flex flex-col flex-1 space-y-2 overflow-hidden">
+      <main ref={mainRef} className="flex-1 w-full px-4 sm:px-6 md:px-8 pt-2.5 sm:pt-3.5 pt-pwa-dynamic pb-24 flex flex-col overflow-y-auto">
+        <div className="mx-auto w-full max-w-4xl flex flex-col flex-1 space-y-2">
         {/* Header with back button and connection pill */}
         <div className="flex items-center justify-between content-fade-up-1 flex-shrink-0 relative">
           {/* Back button - stays visible */}
@@ -732,6 +806,7 @@ export default function SelectedWorkout() {
               regenCount={regenCount}
               maxRegen={maxRegen}
               isFromCache={isFromCache}
+              hasPastSessions={pastSessions.length > 0}
             />
           </div>
         )}
@@ -826,12 +901,18 @@ export default function SelectedWorkout() {
                   return match ? parseInt(match[1]) : 8;
                 };
 
-                // Determine final values based on set type
-                const finalSets = isCustomSet ? (customSets || details.recommendedSets) : details.recommendedSets;
-                const finalReps = isCustomSet ? (customReps || parseReps(details.recommendedReps)) : parseReps(details.recommendedReps);
-                const defaultRecommendedWeight = 5; // Default recommended weight in kg
-                const finalWeight = isCustomSet ? (customWeight || 0) : defaultRecommendedWeight;
+                // Get AI recommendation values (fallback to defaults)
+                const aiSets = aiRec?.sets ?? details.recommendedSets;
+                const aiReps = aiRec?.reps ?? details.recommendedReps;
+                const aiWeight = aiRec?.weight ?? 5;
+                const aiRestTime = aiRec?.restTimeSeconds ?? 30;
+
+                // Determine final values based on set type (AI recommendation vs custom)
+                const finalSets = isCustomSet ? (customSets || details.recommendedSets) : aiSets;
+                const finalReps = isCustomSet ? (customReps || parseReps(details.recommendedReps)) : parseReps(aiReps);
+                const finalWeight = isCustomSet ? (customWeight || 0) : aiWeight;
                 const finalWeightUnit = isCustomSet ? customWeightUnit : 'kg';
+                const finalRestTime = isCustomSet ? customRestTime : aiRestTime;
 
                 console.log('🏋️ Starting Workout:', {
                   exercise: workout,
@@ -866,7 +947,7 @@ export default function SelectedWorkout() {
                     weight: finalWeight,
                     weightUnit: finalWeightUnit,
                     setType: setType,
-                    restTime: isCustomSet ? customRestTime : 30,
+                    restTime: finalRestTime,
                   }
                 });
               } catch (error) {

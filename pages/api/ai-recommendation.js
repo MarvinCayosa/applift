@@ -66,7 +66,7 @@ ALL recommendations MUST strictly comply with established exercise science guide
 
 SAFETY RULES (NON-NEGOTIABLE):
 1. NEVER recommend loads exceeding safe progressive overload thresholds.
-2. For beginners (less than 6 months experience): use ONLY conservative progression (5-10% load increase maximum between sessions).
+2. For beginners (less than 6 months experience) OR users who describe themselves as "beginner": use ONLY conservative progression (5-10% load increase maximum between sessions) and START WITH MINIMAL WEIGHTS.
 3. For intermediates (6 months - 2 years): moderate progression (5-15% load increase is acceptable if form quality is high).
 4. For advanced (2+ years): allow standard progressive overload with appropriate deload recommendations.
 5. ALWAYS respect user-reported injuries and illnesses — reduce load, suggest modifications, or avoid contraindicated movements entirely.
@@ -78,6 +78,7 @@ SAFETY RULES (NON-NEGOTIABLE):
 8. NEVER provide medical advice — defer to medical professionals for injuries.
 9. If injury data is present, EXPLICITLY state movement modifications or load adjustments.
 10. Total volume (sets × reps × load) must be appropriate for the user's training level and goals.
+11. For any user profile indicating "beginner", "new", or first-time status: ERR ON THE SIDE OF CAUTION with ultra-light starting weights.
 
 REP RANGES BY GOAL (NSCA/ACSM Guidelines):
 - Maximal Strength: 1-5 reps, 85-100% 1RM, 3-6 sets
@@ -90,6 +91,24 @@ PROGRESSIVE OVERLOAD PRINCIPLES:
 - For first-time exercises with no data: start at the LOWER end of appropriate ranges
 - Consider the user's body weight, training age, and exercise complexity
 
+FIRST-TIME/BEGINNER STARTING WEIGHTS (CONSERVATIVE APPROACH):
+Barbell Exercises:
+- Bench Press: 15kg (empty barbell)
+- Back Squats: 15kg (empty barbell)
+- Deadlift: 20kg (light but effective)
+
+Dumbbell Exercises:
+- Bicep Curls: 3kg per hand
+- Tricep Extensions: 3kg per hand
+- Shoulder Press: 4kg per hand
+
+Weight Stack/Cable Exercises:
+- Lat Pulldown: 25kg (conservative start)
+- Leg Extensions: 20kg
+- Cable Rows: 25kg
+
+For beginners (0-6 months experience) and first-time exercises: USE THESE EXACT STARTING WEIGHTS to ensure consistency and safety.
+
 RESPONSE FORMAT:
 You MUST respond with ONLY a valid JSON object, no markdown, no code fences, no explanation outside the JSON. The JSON must have this exact structure:
 {
@@ -98,9 +117,10 @@ You MUST respond with ONLY a valid JSON object, no markdown, no code fences, no 
   "reps": <integer>,
   "restTimeSeconds": <integer, rest between sets in seconds>,
   "estimatedCalories": <integer, estimated kcal burned for the entire exercise based on sets, reps, load, and user weight>,
-  "safetyJustification": "<1 SHORT sentence, max 30 words, explaining safety considerations>",
-  "guidelineReference": "<short reference, max 15 words, e.g. ACSM Hypertrophy Guidelines>",
-  "progressionNotes": "<1 SHORT sentence, max 25 words, about what to focus on>"
+  "rationale": "<2-3 sentences explaining WHY you chose this specific weight, sets, and reps. If past session data exists, reference it directly (e.g. 'Your last session was 40kg x 3x10 with good form, so I increased load by 5kg'). If no past data, explain the starting point reasoning based on profile.>",
+  "safetyNote": "<1 sentence on safety — e.g. injury consideration, form priority, or load appropriateness>",
+  "guideline": "<short guideline reference, max 15 words, e.g. ACSM Hypertrophy: 6-12 reps at 65-85% 1RM>",
+  "nextSteps": "<1 sentence on what to aim for next session — e.g. 'If you complete all reps with good form, increase to 50kg next time'>"
 }
 
 CALORIE ESTIMATION GUIDELINES:
@@ -154,6 +174,17 @@ function buildUserPrompt({ userProfile, equipment, exerciseName, pastSessions })
   if (userProfile.fitnessGoal) prompt += `- Primary Goal: ${userProfile.fitnessGoal}\n`;
   if (userProfile.trainingPriority) prompt += `- Training Priority: ${userProfile.trainingPriority}\n`;
 
+  // Explicit beginner flag based on experience level
+  const isBeginner = !userProfile.strengthExperience || 
+                    userProfile.strengthExperience.toLowerCase().includes('beginner') ||
+                    userProfile.strengthExperience.toLowerCase().includes('new') ||
+                    userProfile.strengthExperience === 'Less than 6 months' ||
+                    userProfile.strengthExperience === '0-6 months';
+  
+  if (isBeginner) {
+    prompt += `\n⚠️ BEGINNER STATUS DETECTED: This user is new to strength training. Use MINIMAL starting weights and prioritize movement quality over load progression.\n`;
+  }
+
   // Injury / Illness data
   if (userProfile.injuries && userProfile.injuries.length > 0) {
     const validInjuries = userProfile.injuries.filter(i => i && i.trim());
@@ -166,23 +197,54 @@ function buildUserPrompt({ userProfile, equipment, exerciseName, pastSessions })
     }
   }
 
-  // Past session data (summarized, not raw IMU)
+  // Past session data with rich analytics
   if (pastSessions && pastSessions.length > 0) {
     prompt += `\nPAST SESSION DATA (most recent first):\n`;
     pastSessions.slice(0, 5).forEach((session, i) => {
       prompt += `Session ${i + 1}:\n`;
+      // Core metrics
       if (session.weight) prompt += `  - Load: ${session.weight} ${session.weightUnit || 'kg'}\n`;
       if (session.sets) prompt += `  - Sets completed: ${session.sets}\n`;
-      if (session.reps) prompt += `  - Reps per set: ${session.reps}\n`;
-      if (session.quality) prompt += `  - Execution quality: ${session.quality}\n`;
+      if (session.reps) prompt += `  - Total reps: ${session.reps}\n`;
+      // Execution quality
+      if (session.quality) prompt += `  - Form quality: ${session.quality}\n`;
+      // Tempo data (concentric/eccentric phases)
+      if (session.avgConcentric || session.avgEccentric) {
+        const tempoStr = [];
+        if (session.avgEccentric) tempoStr.push(`${session.avgEccentric.toFixed(1)}s eccentric`);
+        if (session.avgConcentric) tempoStr.push(`${session.avgConcentric.toFixed(1)}s concentric`);
+        prompt += `  - Rep tempo: ${tempoStr.join(', ')}\n`;
+      }
+      // Analytics-derived metrics
+      if (session.fatigueScore != null) {
+        const level = session.fatigueScore < 15 ? 'low' : session.fatigueScore < 35 ? 'moderate' : 'high';
+        prompt += `  - Fatigue level: ${level} (${session.fatigueScore}%)\n`;
+      }
+      if (session.consistencyScore != null) {
+        prompt += `  - Movement consistency: ${session.consistencyScore}%\n`;
+      }
+      if (session.mlClassification) {
+        prompt += `  - ML rep quality: ${session.mlClassification}\n`;
+      }
+      // Key findings from analysis
+      if (session.keyFindings && session.keyFindings.length > 0) {
+        prompt += `  - Analysis findings: ${session.keyFindings.slice(0, 3).join('; ')}\n`;
+      }
       if (session.date) prompt += `  - Date: ${session.date}\n`;
-      if (session.performance) prompt += `  - Performance summary: ${session.performance}\n`;
     });
-    prompt += `\nUse this data to apply progressive overload appropriately. If the user's form quality was poor in recent sessions, do NOT increase load.\n`;
+    prompt += `\nUse this comprehensive data for intelligent progressive overload:\n`;
+    prompt += `- If fatigue was HIGH or form quality was POOR, maintain or reduce load\n`;
+    prompt += `- If consistency was LOW (<70%), focus on maintaining current weight for form mastery\n`;
+    prompt += `- If ML clean rep % was LOW (<70%), reduce weight to ensure quality reps\n`;
+    prompt += `- If tempo was very fast (concentric <1s), consider slowing down for time-under-tension\n`;
+    prompt += `- Only increase load when fatigue is low, consistency is high, and form is good\n`;
   } else {
     prompt += `\nNO PAST SESSION DATA available for this exercise. This is the user's first time.\n`;
     prompt += `Generate a CONSERVATIVE initial recommendation based on the user's profile and established guidelines.\n`;
     prompt += `Start at the LOWER end of appropriate ranges for safety.\n`;
+    prompt += `CRITICAL: For beginners and first-time exercises, prioritize movement learning over load progression.\n`;
+    prompt += `Use minimal effective weights (see FIRST-TIME/BEGINNER STARTING WEIGHTS in system prompt).\n`;
+    prompt += `Better to start too light and build confidence than risk injury with excessive load.\n`;
   }
 
   return prompt;
@@ -328,9 +390,9 @@ export default async function handler(req, res) {
       reps = parsed.recommendation.reps ?? 8;
       restTimeSeconds = parsed.recommendation.restTimeSeconds ?? 90;
       estimatedCalories = parsed.recommendation.estimatedCalories ?? parsed.estimatedCalories ?? 45;
-      safetyJustification = parsed.reasoning?.safetyJustification ?? parsed.safetyJustification ?? '';
-      guidelineReference = parsed.reasoning?.guidelineReference ?? parsed.guidelineReference ?? '';
-      progressionNotes = parsed.reasoning?.progressionNotes ?? parsed.progressionNotes ?? '';
+      safetyJustification = parsed.reasoning?.safetyNote ?? parsed.reasoning?.safetyJustification ?? parsed.safetyNote ?? parsed.safetyJustification ?? '';
+      guidelineReference = parsed.reasoning?.guideline ?? parsed.reasoning?.guidelineReference ?? parsed.guideline ?? parsed.guidelineReference ?? '';
+      progressionNotes = parsed.reasoning?.nextSteps ?? parsed.reasoning?.progressionNotes ?? parsed.nextSteps ?? parsed.progressionNotes ?? '';
     } else {
       // Flat format
       weight = parsed.recommendedLoad ?? parsed.weight ?? 0;
@@ -338,9 +400,9 @@ export default async function handler(req, res) {
       reps = parsed.reps ?? 8;
       restTimeSeconds = parsed.restTimeSeconds ?? 90;
       estimatedCalories = parsed.estimatedCalories ?? 45;
-      safetyJustification = parsed.safetyJustification ?? '';
-      guidelineReference = parsed.guidelineReference ?? '';
-      progressionNotes = parsed.progressionNotes ?? '';
+      safetyJustification = parsed.safetyNote ?? parsed.safetyJustification ?? '';
+      guidelineReference = parsed.guideline ?? parsed.guidelineReference ?? '';
+      progressionNotes = parsed.nextSteps ?? parsed.progressionNotes ?? '';
     }
 
     // Safety bounds — clamp values to sane ranges
@@ -352,6 +414,9 @@ export default async function handler(req, res) {
 
     console.log('[AI API] Parsed recommendation:', { weight, sets, reps, restTimeSeconds, estimatedCalories });
 
+    // Extract rationale (new field) with fallback
+    const rationale = parsed.rationale || '';
+
     return res.status(200).json({
       recommendation: {
         weight,
@@ -361,7 +426,8 @@ export default async function handler(req, res) {
         estimatedCalories,
       },
       reasoning: {
-        safetyJustification: safetyJustification || 'Recommendation follows established guidelines.',
+        rationale: rationale || 'Recommendation based on your profile and established guidelines.',
+        safetyJustification: safetyJustification || 'Follow proper form throughout all sets.',
         guidelineReference: guidelineReference || 'NSCA/ACSM general principles.',
         progressionNotes: progressionNotes || '',
       },
