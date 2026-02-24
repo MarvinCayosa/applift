@@ -76,15 +76,33 @@ export function useAIRecommendation({ equipment, exerciseName, pastSessions = []
         const cached = await getCachedRecommendation(user.uid, equipment, exerciseName);
         
         if (cached.exists && cached.recommendation) {
-          if (mountedRef.current) {
-            setRecommendation(cached.recommendation);
-            setReasoning(cached.reasoning);
-            setRegenCount(cached.regenCount || 0);
-            setIsFromCache(true);
-            setLoading(false);
-            fetchingRef.current = false;
+          const cachedSessionCount = cached.sessionCountAtGeneration ?? 0;
+          const currentSessionCount = pastSessions.length;
+          
+          console.log('📊 [AI Hook] Session count check:', {
+            cachedSessionCount,
+            currentSessionCount,
+            needsRefresh: currentSessionCount > cachedSessionCount
+          });
+          
+          // If user completed more sessions since last recommendation, auto-regenerate
+          if (currentSessionCount > cachedSessionCount) {
+            console.log('🔄 [AI Hook] New session detected! Triggering fresh recommendation...');
+            // Don't return cache - fall through to generate new recommendation
+            // Set trigger to 'new_session' for this auto-refresh
+            trigger = 'new_session';
+          } else {
+            // Use cached recommendation
+            if (mountedRef.current) {
+              setRecommendation(cached.recommendation);
+              setReasoning(cached.reasoning);
+              setRegenCount(cached.regenCount || 0);
+              setIsFromCache(true);
+              setLoading(false);
+              fetchingRef.current = false;
+            }
+            return;
           }
-          return;
         }
       }
 

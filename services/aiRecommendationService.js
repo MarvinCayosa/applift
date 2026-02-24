@@ -32,10 +32,11 @@ export async function getCachedRecommendation(uid, equipment, exerciseName) {
         generatedAt: data.generatedAt,
         regenCount: data.regenCount || 0,
         triggeredBy: data.triggeredBy,
+        sessionCountAtGeneration: data.sessionCountAtGeneration ?? 0, // Track sessions when generated
       };
     }
 
-    return { exists: false, recommendation: null };
+    return { exists: false, recommendation: null, sessionCountAtGeneration: 0 };
   } catch (error) {
     console.error('Error fetching cached recommendation:', error);
     return { exists: false, recommendation: null, error: error.message };
@@ -44,8 +45,9 @@ export async function getCachedRecommendation(uid, equipment, exerciseName) {
 
 /**
  * Save AI recommendation to Firestore cache.
+ * @param {number} sessionCount - Number of past sessions at time of generation (for cache invalidation)
  */
-export async function cacheRecommendation(uid, equipment, exerciseName, recommendation, reasoning, triggeredBy = 'initial') {
+export async function cacheRecommendation(uid, equipment, exerciseName, recommendation, reasoning, triggeredBy = 'initial', sessionCount = 0) {
   try {
     const docId = `${equipment}_${exerciseName}`.replace(/\s+/g, '_');
     const docRef = doc(db, 'users', uid, 'aiRecommendations', docId);
@@ -57,6 +59,7 @@ export async function cacheRecommendation(uid, equipment, exerciseName, recommen
       equipment,
       exerciseName,
       triggeredBy,
+      sessionCountAtGeneration: sessionCount, // Track session count for cache invalidation
       generatedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
@@ -185,12 +188,13 @@ export async function generateRecommendation({
       hasReasoning: !!data.reasoning
     });
 
-    // Cache the result
+    // Cache the result with session count for future cache invalidation
     await cacheRecommendation(
       uid, equipment, exerciseName,
       data.recommendation,
       data.reasoning,
-      triggeredBy
+      triggeredBy,
+      pastSessions.length // Store current session count
     );
 
     return {
