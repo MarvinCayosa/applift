@@ -94,67 +94,59 @@ const WorkoutLogCard = memo(({ log, analytics, accentColor = '#3B82F6', onClick,
   return (
     <div
       onClick={onClick}
-      className="log-card-enter rounded-3xl cursor-pointer active:scale-[0.98] transition-transform duration-200"
+      className="log-card-enter rounded-3xl cursor-pointer active:scale-[0.98] transition-transform duration-200 p-4 sm:p-4"
       style={{
         animationDelay: `${delay}ms`,
         backgroundColor: 'rgb(29 29 29)',
-        padding: '16px',
       }}
     >
       {/* ═══ Top Row: Weight, Sets, Reps, Quality Distribution, Chevron ═══ */}
-      <div className="flex items-stretch gap-2">
+      <div className="flex items-stretch gap-2 sm:gap-3">
         {/* Weight Box (accent color) */}
         <div
-          className="flex flex-col items-center justify-center shrink-0"
+          className="flex flex-col items-center justify-center shrink-0 p-2 sm:p-3 min-w-[100px] sm:min-w-[140px]"
           style={{
             backgroundColor: accentColor,
             borderRadius: '12px',
-            padding: '10px',
-            minWidth: '100px',
           }}
         >
-          <span className="text-[11px] font-semibold text-white/80">Weight</span>
-          <span className="text-5xl font-bold text-white leading-none mt-1" style={{ letterSpacing: '-1px' }}>
+          <span className="text-[10px] sm:text-[11px] font-semibold text-white/80">Weight</span>
+          <span className="text-4xl sm:text-6xl font-bold text-white leading-none mt-0.5 sm:mt-1" style={{ letterSpacing: '-1px' }}>
             {weight}
           </span>
-          <span className="text-[11px] font-semibold text-white/80 mt-0.5">kg</span>
+          <span className="text-[10px] sm:text-[11px] font-semibold text-white/80 mt-0.5">kg</span>
         </div>
 
         {/* Sets Box (gray) */}
         <div
-          className="flex flex-col items-center justify-center shrink-0"
+          className="flex flex-col items-center justify-center flex-1 p-2 sm:p-3"
           style={{
             backgroundColor: 'rgb(55 55 55)',
             borderRadius: '12px',
-            padding: '10px',
-            minWidth: '80px',
           }}
         >
-          <span className="text-4xl font-bold text-white leading-none">{sets}</span>
-          <span className="text-[10px] font-medium text-white/60 mt-1">Sets</span>
+          <span className="text-3xl sm:text-4xl font-bold text-white leading-none">{sets}</span>
+          <span className="text-[9px] sm:text-[10px] font-medium text-white/60 mt-0.5 sm:mt-1">Sets</span>
         </div>
 
         {/* Reps Box (gray) */}
         <div
-          className="flex flex-col items-center justify-center shrink-0"
+          className="flex flex-col items-center justify-center flex-1 p-2 sm:p-3"
           style={{
             backgroundColor: 'rgb(55 55 55)',
             borderRadius: '12px',
-            padding: '12px',
-            minWidth: '80px',
           }}
         >
-          <span className="text-4xl font-bold text-white leading-none">{reps}</span>
-          <span className="text-[10px] font-medium text-white/60 mt-1">Reps</span>
+          <span className="text-3xl sm:text-4xl font-bold text-white leading-none">{reps}</span>
+          <span className="text-[9px] sm:text-[10px] font-medium text-white/60 mt-0.5 sm:mt-1">Reps</span>
         </div>
 
         {/* Quality Distribution (continuous rectangle) */}
         {qualityDistribution && (
           <div
-            className="flex flex-col shrink-0 overflow-hidden"
+            className="flex flex-col shrink-0 overflow-hidden min-w-[32px] sm:min-w-[48px]"
             style={{
               borderRadius: '12px',
-              minWidth: '40px',
             }}
             title={`Clean: ${qualityDistribution.clean.pct}%, ${qualityDistribution.mistake1.label}: ${qualityDistribution.mistake1.pct}%, ${qualityDistribution.mistake2.label}: ${qualityDistribution.mistake2.pct}%`}
           >
@@ -186,11 +178,10 @@ const WorkoutLogCard = memo(({ log, analytics, accentColor = '#3B82F6', onClick,
         )}
 
         {/* Spacer + Chevron + Completion */}
-        <div className="flex-1 flex flex-col items-end justify-between">
+        <div className="flex flex-col items-end justify-between min-w-0 pl-2">
           {/* Chevron */}
           <svg
-            className="text-white/40 flex-shrink-0"
-            style={{ width: '20px', height: '20px' }}
+            className="text-white/40 flex-shrink-0 w-5 h-5 sm:w-6 sm:h-6"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -201,8 +192,7 @@ const WorkoutLogCard = memo(({ log, analytics, accentColor = '#3B82F6', onClick,
           {/* Completion indicator */}
           <div className="flex items-center gap-1 mt-auto">
             <svg
-              className="text-white/60"
-              style={{ width: '14px', height: '14px' }}
+              className="text-white/60 flex-shrink-0 w-3.5 h-3.5 sm:w-4 sm:h-4"
               viewBox="0 0 20 20"
               fill="currentColor"
             >
@@ -212,37 +202,37 @@ const WorkoutLogCard = memo(({ log, analytics, accentColor = '#3B82F6', onClick,
                 clipRule="evenodd"
               />
             </svg>
-            <span className="text-[12px] font-semibold text-white/60">{reps}/{plannedReps}</span>
+            <span className="text-[11px] sm:text-[12px] font-semibold text-white/60 whitespace-nowrap">{reps}/{plannedReps}</span>
           </div>
         </div>
       </div>
 
       {/* ═══ Bottom Row: Duration, Calories, Date, Time ═══ */}
-      <div className="flex items-center justify-between mt-3">
+      <div className="flex items-center justify-between mt-2 sm:mt-3 gap-2">
         {/* Duration + Calories pill */}
-        <div className="inline-flex items-center" style={{ backgroundColor: 'rgb(15 15 15)', padding: '5px 10px', gap: '6px', borderRadius: '8px' }}>
+        <div className="inline-flex items-center flex-shrink-0 px-1.5 py-1 sm:px-2.5 sm:py-1.5 gap-1 sm:gap-1.5" style={{ backgroundColor: 'rgb(15 15 15)', borderRadius: '8px' }}>
           {/* Timer icon */}
-          <svg className="flex-shrink-0" style={{ width: '16px', height: '16px' }} viewBox="0 0 24 24" fill="none">
+          <svg className="flex-shrink-0 w-3 h-3 sm:w-4 sm:h-4" viewBox="0 0 24 24" fill="none">
             <circle cx="12" cy="13" r="8" stroke="#3b82f6" strokeWidth="2"/>
             <path d="M12 9v4l2.5 2.5" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round"/>
             <path d="M12 5V3" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round"/>
             <path d="M9 3h6" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round"/>
           </svg>
-          <span className="text-[12px] font-bold text-white whitespace-nowrap">{duration}</span>
+          <span className="text-[10px] sm:text-[12px] font-bold text-white whitespace-nowrap">{duration}</span>
 
           {/* Flame icon */}
-          <svg className="flex-shrink-0 ml-1" style={{ width: '14px', height: '14px' }} viewBox="0 0 24 24" fill="#3b82f6">
+          <svg className="flex-shrink-0 ml-0.5 sm:ml-1 w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" viewBox="0 0 24 24" fill="#3b82f6">
             <path d="M12 23c-3.5 0-7-2.5-7-7 0-3 1.5-5 3-6.5.5-.5 1-.5 1.5-.5.5 0 .5.5.5 1v2c0 .5.5 1 1 .5.5-.5 2-3 2-5.5 0-1 0-2.5-.5-4-.5-.5 0-1.5.5-1.5h.5c3 1 6.5 4.5 6.5 9.5 0 6-4 12-8 12z"/>
           </svg>
-          <span className="text-[12px] font-bold text-white whitespace-nowrap">{calories} Kcal</span>
+          <span className="text-[10px] sm:text-[12px] font-bold text-white whitespace-nowrap">{calories} Kcal</span>
         </div>
 
         {/* Date + Time */}
-        <div className="flex items-center gap-2">
-          <span className="text-[12px] text-white/40 font-medium">{dateStr}</span>
+        <div className="flex items-center gap-1 sm:gap-2 min-w-0 flex-shrink">
+          <span className="text-[10px] sm:text-[12px] text-white/40 font-medium truncate">{dateStr}</span>
           <span
-            className="text-[12px] font-medium text-white/50"
-            style={{ backgroundColor: 'rgb(45 45 45)', padding: '2px 6px', borderRadius: '4px' }}
+            className="text-[10px] sm:text-[12px] font-medium text-white/50 flex-shrink-0 px-1 py-0.5 sm:px-1.5 sm:py-0.5"
+            style={{ backgroundColor: 'rgb(45 45 45)', borderRadius: '4px' }}
           >
             {timeStr}
           </span>

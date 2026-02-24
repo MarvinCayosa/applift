@@ -283,3 +283,147 @@ export function computeConsistency(logs, analyticsMap = {}) {
 
   return { pct: Math.min(100, Math.max(0, pct)), label }
 }
+
+// ─── Progressive Overload Score ─────────────────────────────────────────────
+
+export function computeProgressiveOverloadScore(logs, analyticsMap = {}) {
+  if (logs.length < 2) return { score: 0, status: 'insufficient-data', label: 'No Data' }
+
+  // Take last 5 sessions for trend analysis (or all if less than 5)
+  const recentLogs = logs.slice(0, Math.min(5, logs.length))
+  
+  // Calculate metrics for each session
+  const sessionMetrics = recentLogs.map(log => {
+    const analytics = analyticsMap[log.id]
+    const reps = analytics?.summary?.totalReps || log.results?.totalReps || log.results?.completedReps || 0
+    const weight = log.planned?.weight || log.exercise?.weight || 0
+    const load = reps * weight
+    
+    // Get execution quality (clean percentage)
+    let qualityScore = 0.8 // Default to 80% if no analytics
+    if (analytics?.mlClassification?.distribution) {
+      const total = Object.values(analytics.mlClassification.distribution).reduce((sum, count) => sum + count, 0)
+      const cleanCount = analytics.mlClassification.distribution['Clean'] || 
+                        analytics.mlClassification.distribution['0'] || 0 // 0 often represents "Clean"
+      qualityScore = total > 0 ? cleanCount / total : 0.8
+    }
+    
+    return { load, reps, weight, qualityScore, date: getLogDate(log) }
+  })
+
+  // Calculate weighted trends (more recent sessions have higher weight)
+  let loadTrend = 0, repsTrend = 0, weightTrend = 0, qualityTrend = 0
+  let totalWeight = 0
+
+  for (let i = 1; i < sessionMetrics.length; i++) {
+    const current = sessionMetrics[i - 1] // More recent
+    const previous = sessionMetrics[i]     // Older
+    const weight = sessionMetrics.length - i // Higher weight for recent comparisons
+    
+    // Calculate percentage changes
+    if (previous.load > 0) {
+      loadTrend += ((current.load - previous.load) / previous.load) * weight
+    }
+    if (previous.reps > 0) {
+      repsTrend += ((current.reps - previous.reps) / previous.reps) * weight
+    }
+    if (previous.weight > 0) {
+      weightTrend += ((current.weight - previous.weight) / previous.weight) * weight
+    }
+    qualityTrend += (current.qualityScore - previous.qualityScore) * weight
+    
+    totalWeight += weight
+  }
+
+  if (totalWeight === 0) return { score: 0, status: 'insufficient-data', label: 'No Data' }
+
+  // Normalize trends
+  loadTrend = loadTrend / totalWeight
+  repsTrend = repsTrend / totalWeight
+  weightTrend = weightTrend / totalWeight
+  qualityTrend = qualityTrend / totalWeight
+
+  // Calculate composite score (weighted combination)
+  // Load is most important (50%), then weight (30%), reps (15%), quality (5%)
+  const compositeScore = (loadTrend * 0.5) + (weightTrend * 0.3) + (repsTrend * 0.15) + (qualityTrend * 0.05)
+  
+  // Convert to percentage
+  const scorePercent = compositeScore * 100
+  
+  let status, label
+  if (scorePercent > 2) {
+    status = 'progressive'
+    label = `+${Math.abs(scorePercent).toFixed(1)}%`
+  } else if (scorePercent < -2) {
+    status = 'regressive'
+    label = `-${Math.abs(scorePercent).toFixed(1)}%`
+  } else {
+    status = 'maintained'
+    label = 'Maintained'
+  }
+
+  return { score: scorePercent, status, label }
+}
+
+// ─── Weekly Comparison ──────────────────────────────────────────────────────
+
+export function computeWeeklyComparison(logs, analyticsMap = {}, metric = 'load') {
+  const now = new Date()
+  
+  // Current week (Sunday to now)
+  const currentWeekStart = new Date(now)
+  const dayOfWeek = currentWeekStart.getDay()
+  currentWeekStart.setDate(currentWeekStart.getDate() - dayOfWeek)
+  currentWeekStart.setHours(0, 0, 0, 0)
+  
+  // Previous week (Sunday to Saturday)
+  const prevWeekStart = new Date(currentWeekStart)
+  prevWeekStart.setDate(prevWeekStart.getDate() - 7)
+  const prevWeekEnd = new Date(currentWeekStart)
+  prevWeekEnd.setTime(prevWeekEnd.getTime() - 1) // 1ms before current week starts
+  
+  const getMetricValue = (log) => {
+    const analytics = analyticsMap[log.id]
+    const reps = analytics?.summary?.totalReps || log.results?.totalReps || log.results?.completedReps || 0
+    const weight = log.planned?.weight || log.exercise?.weight || 0
+    return metric === 'load' ? reps * weight : reps
+  }
+  
+  // Calculate totals for each period
+  let currentWeekTotal = 0
+  let prevWeekTotal = 0
+  
+  logs.forEach(log => {
+    const date = getLogDate(log)
+    if (!date) return
+    
+    const value = getMetricValue(log)
+    
+    if (date >= currentWeekStart) {
+      currentWeekTotal += value
+    } else if (date >= prevWeekStart && date <= prevWeekEnd) {
+      prevWeekTotal += value
+    }
+  })
+  
+  // Calculate percentage change
+  let change = 0
+  let trend = 'same'
+  
+  if (prevWeekTotal > 0) {
+    change = ((currentWeekTotal - prevWeekTotal) / prevWeekTotal) * 100
+    if (change > 1) trend = 'up'
+    else if (change < -1) trend = 'down'
+  } else if (currentWeekTotal > 0) {
+    change = 100 // 100% increase from 0
+    trend = 'up'
+  }
+  
+  return {
+    currentWeek: currentWeekTotal,
+    previousWeek: prevWeekTotal,
+    change: Math.abs(change),
+    trend,
+    label: metric === 'load' ? 'kg' : 'reps'
+  }
+}

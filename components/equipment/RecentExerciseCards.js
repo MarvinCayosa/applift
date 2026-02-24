@@ -71,6 +71,9 @@ export default function RecentExerciseCards({ exercises, exerciseLogs, primaryCo
   const formatDate = (d) =>
     d.toLocaleDateString('en-US', { month: 'short', day: '2-digit' })
 
+  const formatTime = (d) =>
+    d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+
   const handleOpen = (item) => {
     if (!item.logId || !equipmentSlug) return
     router.push({
@@ -182,11 +185,14 @@ export default function RecentExerciseCards({ exercises, exerciseLogs, primaryCo
               )}
             </div>
 
-            {/* Bottom: date + weight */}
+            {/* Bottom: date + time + weight */}
             <div className="flex items-end justify-between mt-auto pt-2">
-              <p className="text-sm text-white/70">{formatDate(item.date)}</p>
+              <div className="flex flex-col">
+                <p className="text-sm text-white/70">{formatDate(item.date)}</p>
+                <p className="text-xs text-white/50">{formatTime(item.date)}</p>
+              </div>
               <p className="font-bold text-white leading-none">
-                <span className="text-4xl">{item.weight}</span>
+                <span className="text-5xl">{item.weight}</span>
                 <span className="text-sm font-medium text-white/60 ml-0.5">{item.weightUnit}</span>
               </p>
             </div>

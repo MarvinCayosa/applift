@@ -20,6 +20,8 @@ import {
   computeQualityBreakdown,
   computeTimingStats,
   computeConsistency,
+  computeProgressiveOverloadScore,
+  computeWeeklyComparison,
 } from '../../../../utils/exerciseStatsHelper'
 
 /*───────────────────────────  CONSTANTS  ───────────────────────────*/
@@ -118,6 +120,10 @@ export default function ExerciseDetailPage() {
   const qualityBreakdown = useMemo(() => computeQualityBreakdown(sessions, analyticsMap, slug), [sessions, analyticsMap, slug])
   const timing = useMemo(() => computeTimingStats(sessions, analyticsMap), [sessions, analyticsMap])
   const consistency = useMemo(() => computeConsistency(sessions, analyticsMap), [sessions, analyticsMap])
+  
+  /* ── progressive overload & comparison stats ── */
+  const progressiveOverload = useMemo(() => computeProgressiveOverloadScore(sessions, analyticsMap), [sessions, analyticsMap])
+  const weeklyComparison = useMemo(() => computeWeeklyComparison(sessions, analyticsMap, chartMetric), [sessions, analyticsMap, chartMetric])
 
   /* ── quality comparison for last 3 sessions ── */
   const qualityComparison = useMemo(() => {
@@ -267,6 +273,8 @@ export default function ExerciseDetailPage() {
                 <section className="content-fade-up-2">
                   <div className="flex items-center justify-between mb-3">
                     <h2 className="text-lg font-bold text-white">Workout Progression</h2>
+                    
+                    {/* Load/Reps Toggle */}
                     <div className="flex bg-white/[0.08] rounded-full p-0.5">
                       {['load', 'reps'].map((m) => (
                         <button
@@ -281,7 +289,7 @@ export default function ExerciseDetailPage() {
                     </div>
                   </div>
 
-                  <div className="bg-white/[0.05] rounded-2xl p-4 pt-3">
+                  <div className="bg-white/[0.05] rounded-2xl p-4 pt-3 relative">
                     <button
                       onClick={cyclePeriod}
                       className="flex items-center gap-1.5 text-xs text-white/70 bg-white/[0.08] rounded-full px-3 py-1.5 mb-3 active:scale-95 transition-transform"
@@ -291,6 +299,33 @@ export default function ExerciseDetailPage() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
                       </svg>
                     </button>
+
+                    {/* Progressive Overload Score Pill - Overlaid on Chart */}
+                    <div className="absolute top-3 right-4 z-10">
+                      <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold backdrop-blur-sm ${
+                        progressiveOverload.status === 'progressive' ? 'bg-green-500/30 text-green-300 border border-green-400/30' :
+                        progressiveOverload.status === 'regressive' ? 'bg-red-500/30 text-red-300 border border-red-400/30' :
+                        progressiveOverload.status === 'maintained' ? 'bg-yellow-500/30 text-yellow-300 border border-yellow-400/30' :
+                        'bg-white/20 text-white/60 border border-white/20'
+                      }`}>
+                        {progressiveOverload.status === 'progressive' && (
+                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M3.293 9.707a1 1 0 010-1.414l6-6a1 1 0 011.414 0l6 6a1 1 0 01-1.414 1.414L11 5.414V17a1 1 0 11-2 0V5.414L4.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                          </svg>
+                        )}
+                        {progressiveOverload.status === 'regressive' && (
+                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 10.293a1 1 0 010 1.414l-6 6a1 1 0 01-1.414 0l-6-6a1 1 0 111.414-1.414L9 14.586V3a1 1 0 012 0v11.586l4.293-4.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                        )}
+                        {progressiveOverload.status === 'maintained' && (
+                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+                          </svg>
+                        )}
+                        <span>{progressiveOverload.label}</span>
+                      </div>
+                    </div>
 
                     {chartData.length > 0 ? (
                       <div className="chart-transition">
@@ -330,6 +365,48 @@ export default function ExerciseDetailPage() {
                         <p className="text-white/25 text-sm">No data for this period</p>
                       </div>
                     )}
+                    
+                    {/* Weekly Comparison */}
+                    {weeklyComparison.previousWeek > 0 || weeklyComparison.currentWeek > 0 ? (
+                      <div className="mt-4 flex items-center justify-between bg-white/[0.05] rounded-xl px-4 py-3">
+                        <div className="text-left">
+                          <div className="text-xs text-white/50">
+                            {weeklyComparison.currentWeek} {weeklyComparison.label} this week
+                          </div>
+                          <div className="text-xs text-white/40">
+                            vs {weeklyComparison.previousWeek} {weeklyComparison.label} last week
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-1.5">
+                          {weeklyComparison.trend === 'up' && (
+                            <svg className="w-4 h-4 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M3.293 9.707a1 1 0 010-1.414l6-6a1 1 0 011.414 0l6 6a1 1 0 01-1.414 1.414L11 5.414V17a1 1 0 11-2 0V5.414L4.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                            </svg>
+                          )}
+                          {weeklyComparison.trend === 'down' && (
+                            <svg className="w-4 h-4 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M16.707 10.293a1 1 0 010 1.414l-6 6a1 1 0 01-1.414 0l-6-6a1 1 0 111.414-1.414L9 14.586V3a1 1 0 012 0v11.586l4.293-4.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                          )}
+                          {weeklyComparison.trend === 'same' && (
+                            <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+                            </svg>
+                          )}
+                          <span className={`text-sm font-bold ${
+                            weeklyComparison.trend === 'up' ? 'text-green-400' :
+                            weeklyComparison.trend === 'down' ? 'text-red-400' :
+                            'text-gray-400'
+                          }`}>
+                            {weeklyComparison.change > 0 ? 
+                              `${weeklyComparison.trend === 'up' ? '+' : '-'}${weeklyComparison.change.toFixed(1)}%` : 
+                              'No change'
+                            }
+                          </span>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 </section>
 
