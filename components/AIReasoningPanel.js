@@ -21,10 +21,10 @@ export default function AIReasoningPanel({ reasoning, isFromCache, regenCount, m
         className="w-full px-4 py-3 flex items-center justify-between hover:bg-white/5 transition-colors"
       >
         <div className="flex items-center gap-2.5">
-          {/* AI sparkle icon */}
+          {/* Gemini AI icon */}
           <div className="w-7 h-7 rounded-full bg-violet-500/20 flex items-center justify-center flex-shrink-0">
             <svg className="w-3.5 h-3.5 text-violet-400" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12 2L14.09 8.26L20 9.27L15.55 13.97L16.91 20L12 16.9L7.09 20L8.45 13.97L4 9.27L9.91 8.26L12 2Z" />
+              <path d="M12 1L21 6V18L12 23L3 18V6L12 1Z M12 3.5L5.5 7V17L12 20.5L18.5 17V7L12 3.5Z M12 6L18 9.5V14.5L12 18L6 14.5V9.5L12 6Z"/>
             </svg>
           </div>
           <div className="text-left">
