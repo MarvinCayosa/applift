@@ -127,11 +127,28 @@ NO PAST SESSION DATA available. Generate a CONSERVATIVE initial recommendation.`
       responseText = result.response?.candidates?.[0]?.content?.parts?.[0]?.text;
     }
 
+    // Dump full response structure to see thinking vs. output parts
+    const candidates = result.response?.candidates || [];
+    const allParts = candidates[0]?.content?.parts || [];
+    const partsInfo = allParts.map((p, i) => ({
+      index: i,
+      hasText: !!p.text,
+      textLength: p.text?.length,
+      textPreview: p.text?.slice(0, 200),
+      thought: p.thought || false,
+    }));
+
     results.steps.push({ 
       step: 'Generate Content', 
       status: responseText ? 'PASS' : 'FAIL — empty response',
       elapsed: `${elapsed}ms`,
-      rawResponse: responseText?.slice(0, 2000),
+      rawResponseLength: responseText?.length,
+      rawResponseFirst500: responseText?.slice(0, 500),
+      rawResponseLast200: responseText?.slice(-200),
+      candidateCount: candidates.length,
+      partsCount: allParts.length,
+      partsInfo,
+      finishReason: candidates[0]?.finishReason,
     });
 
     // Step 5: Parse JSON (exact same as real endpoint)
