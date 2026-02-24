@@ -8,6 +8,14 @@
 
 import { useMemo } from 'react';
 
+// Color mapping for labels — prediction 0=green, 1=yellow, 2=red
+// Defined outside component to avoid temporal dead zone issues
+const PREDICTION_1_LABELS_WF = ['Uncontrolled Movement', 'Uncontrolled', 'Pulling Too Fast', 'Pull Fast'];
+const PREDICTION_2_LABELS_WF = [
+  'Abrupt Initiation', 'Abrupt', 'Inclination Asymmetry', 'Inclination',
+  'Releasing Too Fast', 'Release Fast', 'Poor Form', 'Bad Form',
+];
+
 export default function ClassificationDistribution({ setsData, analysisData, selectedSet = 'all' }) {
   // Calculate distribution from setsData filtered by selectedSet
   const distribution = useMemo(() => {
@@ -79,13 +87,7 @@ export default function ClassificationDistribution({ setsData, analysisData, sel
     return { totalReps, cleanReps, cleanPercentage: Math.round((cleanReps / totalReps) * 100), labels, distribution: classificationCounts, distributionPercent };
   }, [setsData, selectedSet]);
 
-  // Color mapping for labels — prediction 0=green, 1=yellow, 2=red
-  // Uses the prediction number when available, otherwise infers from label string
-  const PREDICTION_1_LABELS_WF = ['Uncontrolled Movement', 'Uncontrolled', 'Pulling Too Fast', 'Pull Fast'];
-  const PREDICTION_2_LABELS_WF = [
-    'Abrupt Initiation', 'Abrupt', 'Inclination Asymmetry', 'Inclination',
-    'Releasing Too Fast', 'Release Fast', 'Poor Form', 'Bad Form',
-  ];
+  // Color mapping function — prediction 0=green, 1=yellow, 2=red
   const getLabelColor = (label, index) => {
     if (label === 'Clean' || index === 0) return { hex: '#22c55e', text: 'text-green-400', dot: 'bg-green-400' };
     if (PREDICTION_1_LABELS_WF.some((l) => label.includes(l) || l.includes(label)) || index === 1) {
