@@ -114,8 +114,11 @@ CALORIE ESTIMATION GUIDELINES:
 // VERTEX AI CLIENT INITIALIZATION
 // ============================================================
 function getVertexAIClient() {
-  const project = process.env.GOOGLE_CLOUD_PROJECT;
-  const location = process.env.GOOGLE_CLOUD_LOCATION || 'asia-southeast1';
+  // Support both naming conventions (VERTEX_AI_* and GCS_*)
+  const project = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCS_PROJECT_ID;
+  const location = process.env.GOOGLE_CLOUD_LOCATION || 'us-central1';
+  const clientEmail = process.env.VERTEX_AI_CLIENT_EMAIL || process.env.GCS_CLIENT_EMAIL;
+  const privateKey = (process.env.VERTEX_AI_PRIVATE_KEY || process.env.GCS_PRIVATE_KEY)?.replace(/\\n/g, '\n');
 
   // Use explicit service account credentials for Vertex AI
   const vertexAI = new VertexAI({
@@ -123,8 +126,8 @@ function getVertexAIClient() {
     location,
     googleAuthOptions: {
       credentials: {
-        client_email: process.env.VERTEX_AI_CLIENT_EMAIL,
-        private_key: process.env.VERTEX_AI_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+        client_email: clientEmail,
+        private_key: privateKey,
       },
       projectId: project,
     },
@@ -194,6 +197,26 @@ export default async function handler(req, res) {
     hasAuth: !!req.headers.authorization,
     body: req.body ? Object.keys(req.body) : 'no body'
   });
+
+  // Environment variable check (log what's missing) - supports both naming conventions
+  const envCheck = {
+    GOOGLE_CLOUD_PROJECT: !!(process.env.GOOGLE_CLOUD_PROJECT || process.env.GCS_PROJECT_ID),
+    GOOGLE_CLOUD_LOCATION: true, // Has default fallback
+    VERTEX_AI_CLIENT_EMAIL: !!(process.env.VERTEX_AI_CLIENT_EMAIL || process.env.GCS_CLIENT_EMAIL),
+    VERTEX_AI_PRIVATE_KEY: !!(process.env.VERTEX_AI_PRIVATE_KEY || process.env.GCS_PRIVATE_KEY),
+    VERTEX_AI_MODEL: true, // Has default fallback
+    FIREBASE_PROJECT_ID: !!process.env.FIREBASE_PROJECT_ID,
+    FIREBASE_CLIENT_EMAIL: !!process.env.FIREBASE_CLIENT_EMAIL,
+    FIREBASE_PRIVATE_KEY: !!process.env.FIREBASE_PRIVATE_KEY,
+  };
+  const missingEnv = Object.entries(envCheck).filter(([k, v]) => !v).map(([k]) => k);
+  if (missingEnv.length > 0) {
+    console.error('❌ [AI API] Missing environment variables:', missingEnv);
+    return res.status(500).json({ 
+      error: 'Server configuration error. Missing environment variables.',
+      missing: process.env.NODE_ENV === 'development' ? missingEnv : undefined
+    });
+  }
 
   if (req.method !== 'POST') {
     console.log('❌ [AI API] Method not allowed:', req.method);
