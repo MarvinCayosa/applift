@@ -98,9 +98,9 @@ You MUST respond with ONLY a valid JSON object, no markdown, no code fences, no 
   "reps": <integer>,
   "restTimeSeconds": <integer, rest between sets in seconds>,
   "estimatedCalories": <integer, estimated kcal burned for the entire exercise based on sets, reps, load, and user weight>,
-  "safetyJustification": "<1-2 sentences explaining safety considerations>",
-  "guidelineReference": "<which NSCA/ACSM/STE principle applies>",
-  "progressionNotes": "<brief coaching note about what to focus on>"
+  "safetyJustification": "<1 SHORT sentence, max 30 words, explaining safety considerations>",
+  "guidelineReference": "<short reference, max 15 words, e.g. ACSM Hypertrophy Guidelines>",
+  "progressionNotes": "<1 SHORT sentence, max 25 words, about what to focus on>"
 }
 
 CALORIE ESTIMATION GUIDELINES:
@@ -279,7 +279,7 @@ export default async function handler(req, res) {
         temperature: 0.3,
         topP: 0.8,
         topK: 40,
-        maxOutputTokens: 1024,
+        maxOutputTokens: 4096,
         responseMimeType: 'application/json',
       },
       systemInstruction: {
@@ -386,8 +386,7 @@ export default async function handler(req, res) {
 
     return res.status(500).json({ 
       error: 'Failed to generate recommendation. Please try again later.',
-      detail: error.message,
-      stack: error.stack?.slice(0, 300),
+      detail: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
 }
