@@ -131,7 +131,7 @@ NO PAST SESSION DATA available. Generate a CONSERVATIVE initial recommendation.`
       step: 'Generate Content', 
       status: responseText ? 'PASS' : 'FAIL — empty response',
       elapsed: `${elapsed}ms`,
-      rawResponse: responseText?.slice(0, 500),
+      rawResponse: responseText?.slice(0, 2000),
     });
 
     // Step 5: Parse JSON (exact same as real endpoint)
