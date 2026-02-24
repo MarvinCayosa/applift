@@ -115,8 +115,8 @@ CALORIE ESTIMATION GUIDELINES:
 // ============================================================
 function getVertexAIClient() {
   // Support both naming conventions (VERTEX_AI_* and GCS_*)
-  const project = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCS_PROJECT_ID;
-  const location = process.env.GOOGLE_CLOUD_LOCATION || 'us-central1';
+  const project = process.env.VERTEX_AI_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT || process.env.GCS_PROJECT_ID;
+  const location = process.env.VERTEX_AI_LOCATION || process.env.GOOGLE_CLOUD_LOCATION || 'us-central1';
   const clientEmail = process.env.VERTEX_AI_CLIENT_EMAIL || process.env.GCS_CLIENT_EMAIL;
   const privateKey = (process.env.VERTEX_AI_PRIVATE_KEY || process.env.GCS_PRIVATE_KEY)?.replace(/\\n/g, '\n');
 
@@ -271,7 +271,7 @@ export default async function handler(req, res) {
     // Call Vertex AI Gemini 2.5 Flash
     console.log('🤖 [AI API] Calling Vertex AI...');
     const vertexAI = getVertexAIClient();
-    const model = process.env.VERTEX_AI_MODEL || 'gemini-2.5-flash-preview-05-20';
+    const model = process.env.VERTEX_AI_MODEL || 'gemini-2.5-flash';
 
     const generativeModel = vertexAI.preview.getGenerativeModel({
       model,
@@ -280,6 +280,7 @@ export default async function handler(req, res) {
         topP: 0.8,
         topK: 40,
         maxOutputTokens: 1024,
+        responseMimeType: 'application/json',
       },
       systemInstruction: {
         parts: [{ text: SYSTEM_PROMPT }],
