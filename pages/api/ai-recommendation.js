@@ -386,7 +386,8 @@ export default async function handler(req, res) {
 
     return res.status(500).json({ 
       error: 'Failed to generate recommendation. Please try again later.',
-      detail: process.env.NODE_ENV === 'development' ? error.message : undefined
+      detail: error.message,
+      stack: error.stack?.slice(0, 300),
     });
   }
 }

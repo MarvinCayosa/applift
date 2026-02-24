@@ -91,7 +91,7 @@ export default async function handler(req, res) {
 
         diagnostics.steps.push({ step: `Model Load (${model})`, status: 'PASS' });
 
-        // Step 4: Actually call the API with a minimal prompt
+        // Step 4: Simple API call (no JSON mode, no system instruction)
         try {
           const result = await generativeModel.generateContent({
             contents: [{ role: 'user', parts: [{ text: 'Say "hello" in JSON: {"message":"hello"}' }] }],
@@ -105,16 +105,96 @@ export default async function handler(req, res) {
           }
 
           diagnostics.steps.push({ 
-            step: 'Vertex AI API Call', 
+            step: 'Simple API Call', 
             status: 'PASS',
             response: responseText?.slice(0, 200),
           });
         } catch (apiError) {
           diagnostics.steps.push({ 
-            step: 'Vertex AI API Call', 
+            step: 'Simple API Call', 
             status: 'FAIL',
             error: apiError.message,
             hint: getHint(apiError.message),
+          });
+        }
+
+        // Step 5: Test with responseMimeType (JSON mode) — matches real endpoint
+        try {
+          const jsonModel = vertexAI.preview.getGenerativeModel({
+            model,
+            generationConfig: {
+              temperature: 0.3,
+              topP: 0.8,
+              topK: 40,
+              maxOutputTokens: 1024,
+              responseMimeType: 'application/json',
+            },
+            systemInstruction: {
+              parts: [{ text: 'You are a fitness coach. Respond with JSON only.' }],
+            },
+          });
+
+          const result2 = await jsonModel.generateContent({
+            contents: [{ role: 'user', parts: [{ text: 'Recommend weight for bench press. Respond as: {"weight":60,"sets":3,"reps":8}' }] }],
+          });
+
+          let responseText2;
+          if (typeof result2.response?.text === 'function') {
+            responseText2 = result2.response.text();
+          } else {
+            responseText2 = result2.response?.candidates?.[0]?.content?.parts?.[0]?.text;
+          }
+
+          diagnostics.steps.push({ 
+            step: 'JSON Mode + SystemInstruction Call', 
+            status: 'PASS',
+            response: responseText2?.slice(0, 300),
+          });
+        } catch (jsonError) {
+          diagnostics.steps.push({ 
+            step: 'JSON Mode + SystemInstruction Call', 
+            status: 'FAIL',
+            error: jsonError.message?.slice(0, 500),
+            hint: getHint(jsonError.message),
+          });
+        }
+
+        // Step 6: Test with gemini-2.0-flash as fallback
+        try {
+          const fallbackModel = vertexAI.preview.getGenerativeModel({
+            model: 'gemini-2.0-flash',
+            generationConfig: {
+              temperature: 0.3,
+              maxOutputTokens: 256,
+              responseMimeType: 'application/json',
+            },
+            systemInstruction: {
+              parts: [{ text: 'You are a fitness coach. Respond with JSON only.' }],
+            },
+          });
+
+          const result3 = await fallbackModel.generateContent({
+            contents: [{ role: 'user', parts: [{ text: 'Recommend weight for bench press. JSON: {"weight":60,"sets":3,"reps":8}' }] }],
+          });
+
+          let responseText3;
+          if (typeof result3.response?.text === 'function') {
+            responseText3 = result3.response.text();
+          } else {
+            responseText3 = result3.response?.candidates?.[0]?.content?.parts?.[0]?.text;
+          }
+
+          diagnostics.steps.push({ 
+            step: 'Fallback gemini-2.0-flash Call', 
+            status: 'PASS',
+            response: responseText3?.slice(0, 300),
+          });
+        } catch (fallbackError) {
+          diagnostics.steps.push({ 
+            step: 'Fallback gemini-2.0-flash Call', 
+            status: 'FAIL',
+            error: fallbackError.message?.slice(0, 500),
+            hint: getHint(fallbackError.message),
           });
         }
       } catch (modelError) {
