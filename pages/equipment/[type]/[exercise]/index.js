@@ -94,6 +94,7 @@ export default function ExerciseDetailPage() {
   /* ── chart controls ── */
   const [period, setPeriod] = useState('week')
   const [chartMetric, setChartMetric] = useState('load')
+  const [showOverloadTooltip, setShowOverloadTooltip] = useState(false)
   const cyclePeriod = useCallback(() => {
     setPeriod((p) => (p === 'week' ? 'month' : p === 'month' ? 'all' : 'week'))
   }, [])
@@ -302,11 +303,13 @@ export default function ExerciseDetailPage() {
 
                     {/* Progressive Overload Score Pill - Overlaid on Chart */}
                     <div className="absolute top-3 right-4 z-10">
-                      <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold backdrop-blur-sm ${
-                        progressiveOverload.status === 'progressive' ? 'bg-green-500/30 text-green-300 border border-green-400/30' :
-                        progressiveOverload.status === 'regressive' ? 'bg-red-500/30 text-red-300 border border-red-400/30' :
-                        progressiveOverload.status === 'maintained' ? 'bg-yellow-500/30 text-yellow-300 border border-yellow-400/30' :
-                        'bg-white/20 text-white/60 border border-white/20'
+                      <button
+                        onClick={() => setShowOverloadTooltip(!showOverloadTooltip)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold backdrop-blur-sm transition-all duration-200 hover:scale-105 active:scale-95 ${
+                        progressiveOverload.status === 'progressive' ? 'bg-green-500/30 text-green-500' :
+                        progressiveOverload.status === 'regressive' ? 'bg-red-500/30 text-red-300' :
+                        progressiveOverload.status === 'maintained' ? 'bg-yellow-500/30 text-yellow-300' :
+                        'bg-white/20 text-white/60'
                       }`}>
                         {progressiveOverload.status === 'progressive' && (
                           <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
@@ -324,7 +327,59 @@ export default function ExerciseDetailPage() {
                           </svg>
                         )}
                         <span>{progressiveOverload.label}</span>
-                      </div>
+                      </button>
+                      
+                      {/* Tooltip */}
+                      {showOverloadTooltip && (
+                        <div className="absolute top-full right-0 mt-2 w-72 bg-zinc-900 border border-white/20 rounded-xl p-4 shadow-xl z-20">
+                          <div className="flex items-center justify-between mb-3">
+                            <h3 className="text-sm font-bold text-white">Progressive Overload Breakdown</h3>
+                            <button 
+                              onClick={() => setShowOverloadTooltip(false)}
+                              className="text-white/40 hover:text-white/60"
+                            >
+                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                              </svg>
+                            </button>
+                          </div>
+                          
+                          <div className="space-y-2 text-xs">
+                            <div className="flex justify-between items-center">
+                              <span className="text-white/70">Load Trend</span>
+                              <span className="text-white font-medium">50% weight</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-white/70">Weight Progression</span>
+                              <span className="text-white font-medium">30% weight</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-white/70">Volume (Reps)</span>
+                              <span className="text-white font-medium">15% weight</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-white/70">Execution Quality</span>
+                              <span className="text-white font-medium">5% weight</span>
+                            </div>
+                            
+                            <div className="border-t border-white/10 pt-2 mt-3">
+                              <div className="flex justify-between items-center">
+                                <span className="text-white/90 font-medium">Final Score</span>
+                                <span className={`font-bold ${
+                                  progressiveOverload.status === 'progressive' ? 'text-green-500' :
+                                  progressiveOverload.status === 'regressive' ? 'text-red-400' :
+                                  'text-yellow-400'
+                                }`}>
+                                  {progressiveOverload.label}
+                                </span>
+                              </div>
+                              <p className="text-white/50 text-[10px] mt-1">
+                                Based on last {Math.min(sessions.length, 5)} sessions with weighted analysis
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {chartData.length > 0 ? (
@@ -380,7 +435,7 @@ export default function ExerciseDetailPage() {
                         
                         <div className="flex items-center gap-1.5">
                           {weeklyComparison.trend === 'up' && (
-                            <svg className="w-4 h-4 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                            <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20">
                               <path fillRule="evenodd" d="M3.293 9.707a1 1 0 010-1.414l6-6a1 1 0 011.414 0l6 6a1 1 0 01-1.414 1.414L11 5.414V17a1 1 0 11-2 0V5.414L4.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
                             </svg>
                           )}
@@ -395,7 +450,7 @@ export default function ExerciseDetailPage() {
                             </svg>
                           )}
                           <span className={`text-sm font-bold ${
-                            weeklyComparison.trend === 'up' ? 'text-green-400' :
+                            weeklyComparison.trend === 'up' ? 'text-green-500' :
                             weeklyComparison.trend === 'down' ? 'text-red-400' :
                             'text-gray-400'
                           }`}>
@@ -578,7 +633,7 @@ export default function ExerciseDetailPage() {
 
                                     <div className="flex items-center">
                                       {session.trend === 'up' && (
-                                        <svg className="w-4 h-4 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                                        <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20">
                                           <path fillRule="evenodd" d="M3.293 9.707a1 1 0 010-1.414l6-6a1 1 0 011.414 0l6 6a1 1 0 01-1.414 1.414L11 5.414V17a1 1 0 11-2 0V5.414L4.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
                                         </svg>
                                       )}
@@ -675,7 +730,7 @@ export default function ExerciseDetailPage() {
                           <circle cx="18" cy="18" r="15.5" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="3" />
                           <circle
                             cx="18" cy="18" r="15.5" fill="none"
-                            stroke={consistency.label === 'Good' ? '#22C55E' : consistency.label === 'Fair' ? '#EAB308' : '#EF4444'}
+                            stroke={consistency.label === 'Good' ? '#22c55e' : consistency.label === 'Fair' ? '#EAB308' : '#EF4444'}
                             strokeWidth="3" strokeLinecap="round"
                             strokeDasharray={`${consistency.pct} ${100 - consistency.pct}`}
                             className="transition-all duration-700"
@@ -687,7 +742,7 @@ export default function ExerciseDetailPage() {
                       </div>
                       <span
                         className="text-xs font-semibold"
-                        style={{ color: consistency.label === 'Good' ? '#22C55E' : consistency.label === 'Fair' ? '#EAB308' : '#EF4444' }}
+                        style={{ color: consistency.label === 'Good' ? '#22c55e' : consistency.label === 'Fair' ? '#EAB308' : '#EF4444' }}
                       >
                         {consistency.label}
                       </span>
