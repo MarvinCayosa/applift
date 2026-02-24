@@ -207,12 +207,29 @@ export function useAIRecommendation({ equipment, exerciseName, pastSessions = []
     await loadRecommendation(true, 'new_session');
   }, [loadRecommendation]);
 
-  // Auto-load on mount (only when enabled and exercise is set)
+  // Track previous pastSessions length to detect new sessions
+  const prevPastSessionsLengthRef = useRef(pastSessions.length);
+
+  // Auto-load on mount and when pastSessions changes
   useEffect(() => {
     if (enabled && equipment && exerciseName && user?.uid) {
-      loadRecommendation(false, 'initial');
+      const prevLength = prevPastSessionsLengthRef.current;
+      const currentLength = pastSessions.length;
+      
+      // Only reload if this is initial load OR pastSessions increased
+      // (not on every pastSessions reference change)
+      if (prevLength === 0 || currentLength > prevLength) {
+        console.log('🔄 [AI Hook] useEffect trigger:', {
+          prevLength,
+          currentLength,
+          reason: prevLength === 0 ? 'initial' : 'new_session_detected'
+        });
+        loadRecommendation(false, 'initial');
+      }
+      
+      prevPastSessionsLengthRef.current = currentLength;
     }
-  }, [enabled, equipment, exerciseName, user?.uid]);
+  }, [enabled, equipment, exerciseName, user?.uid, pastSessions.length, loadRecommendation]);
 
   return {
     recommendation,
