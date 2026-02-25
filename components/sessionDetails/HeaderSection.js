@@ -30,7 +30,8 @@ export default function HeaderSection({
 }) {
   const router = useRouter();
   const dateStr = formatSessionDate(date);
-  const repsPerSet = getRepsPerSet(reps, sets);
+  // `reps` is already per-set (plannedRepsPerSet from viewModel)
+  const repsPerSet = reps;
 
   return (
     <div className="relative w-full overflow-hidden">

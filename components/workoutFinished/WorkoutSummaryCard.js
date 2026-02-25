@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
-import WorkoutBreakdownCard from '../WorkoutBreakdownCard';
 
 export default function WorkoutSummaryCard({ 
   workoutName, 
@@ -259,20 +258,9 @@ export default function WorkoutSummaryCard({
       </div>
 
       {/* Chart Container */}
-      <div className="relative h-48 rounded-2xl overflow-hidden mb-4 bg-black/30">
+      <div className="relative h-48 rounded-2xl overflow-hidden bg-black/30">
         <canvas ref={canvasRef} className="w-full h-full" />
       </div>
-
-      {/* Workout Breakdown */}
-      <WorkoutBreakdownCard
-        totalReps={parseInt(totalReps) || 0}
-        plannedReps={(parseInt(recommendedSets) || setsData?.length || 1) * (parseInt(recommendedReps) || 10)}
-        completedSets={setsData?.length || 0}
-        plannedSets={parseInt(recommendedSets) || setsData?.length || 0}
-        weight={parseFloat(weight) || 0}
-        weightUnit={weightUnit}
-        equipment={equipment}
-      />
     </div>
   );
 }

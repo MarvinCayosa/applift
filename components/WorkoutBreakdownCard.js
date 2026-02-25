@@ -41,9 +41,9 @@ export default function WorkoutBreakdownCard({
   const setsPercent  = plannedSets  > 0 ? Math.min(1, completedSets / plannedSets) : (completedSets > 0 ? 1 : 0);
 
   return (
-    <div className="rounded-2xl bg-[#1a1a1a] p-5 space-y-4">
+    <div className="rounded-2xl bg-[#1a1a1a] p-5 space-y-2">
       {/* Title */}
-      <h3 className="text-lg font-bold italic text-white">Workout Breakdown</h3>
+      <h3 className="text-lg font-bold text-white">Workout Breakdown</h3>
 
       {/* Rings row */}
       <div className="flex justify-center gap-10">
@@ -52,8 +52,8 @@ export default function WorkoutBreakdownCard({
       </div>
 
       {/* Weight breakdown */}
-      <div className="rounded-xl bg-white/[0.06] px-5 py-4">
-        <p className="text-xs font-semibold text-white/70 mb-3">Weight</p>
+      <div className="rounded-xl bg-white/[0.06] p-4">
+        <p className="text-xs font-semibold text-white/70 mb-2">Weight</p>
         <div className="flex items-center justify-center gap-4">
           {/* Base equipment weight */}
           <div className="text-center flex-1">
@@ -84,13 +84,13 @@ export default function WorkoutBreakdownCard({
 /* ── Circular ring gauge ── */
 function Ring({ value, label, progress }) {
   const size = 90;
-  const stroke = 6;
+  const stroke = 8;
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference * (1 - progress);
 
   return (
-    <div className="flex flex-col items-center gap-1.5">
+    <div className="flex flex-col items-center">
       <div className="relative" style={{ width: size, height: size }}>
         <svg viewBox={`0 0 ${size} ${size}`} className="w-full h-full -rotate-90">
           {/* Track */}
@@ -110,12 +110,13 @@ function Ring({ value, label, progress }) {
             style={{ transition: 'stroke-dashoffset 0.6s ease-out' }}
           />
         </svg>
-        {/* Center number */}
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-2xl font-bold text-white">{value}</span>
+        {/* Center: number + separator + label */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-2xl font-bold text-white leading-none">{value}</span>
+          <div className="w-6 h-px bg-white/20 my-1" />
+          <span className="text-[10px] text-white/50 leading-none">{label}</span>
         </div>
       </div>
-      <span className="text-xs text-white/50">{label}</span>
     </div>
   );
 }

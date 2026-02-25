@@ -247,7 +247,7 @@ export default function ExerciseDetailPage() {
                               /* Bootstrap bi-exclamation-circle-fill */
                               <svg
                                 className="flex-shrink-0"
-                                style={{ width: 18, height: 18, color: '#EAB308' }}
+                                style={{ width: 18, height: 18, color: slug === 'barbell' ? '#EF4444' : '#EAB308' }}
                                 viewBox="0 0 16 16"
                                 fill="currentColor"
                               >
@@ -256,7 +256,7 @@ export default function ExerciseDetailPage() {
                             )}
                             <span
                               className="text-[15px] font-bold"
-                              style={{ color: isCompleted ? 'rgba(255,255,255,0.7)' : '#EAB308' }}
+                              style={{ color: isCompleted ? 'rgba(255,255,255,0.7)' : (slug === 'barbell' ? '#EF4444' : '#EAB308') }}
                             >
                               {repDisplay}
                             </span>

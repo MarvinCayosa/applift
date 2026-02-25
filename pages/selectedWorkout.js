@@ -471,6 +471,7 @@ export default function SelectedWorkout() {
   const [customReps, setCustomReps] = useState(null);
   const [customWeightUnit, setCustomWeightUnit] = useState('kg');
   const [customRestTime, setCustomRestTime] = useState(30); // Rest time in seconds
+  const [customBarWeight, setCustomBarWeight] = useState(0); // Bar/handle weight for breakdown
   const [customSetError, setCustomSetError] = useState('');
   const [errorVisible, setErrorVisible] = useState(false);
   const [isPillExpanded, setIsPillExpanded] = useState(false);
@@ -672,11 +673,13 @@ export default function SelectedWorkout() {
   }, []);
 
   // Handle save from modal
-  const handleModalSave = ({ value, weightUnit: wu, fieldType }) => {
+  const handleModalSave = ({ value, weightUnit: wu, fieldType, barWeight, barOnly }) => {
     switch (fieldType) {
       case 'weight':
         setCustomWeight(value);
         setCustomWeightUnit(wu);
+        // Track bar weight for breakdown generation
+        if (barWeight !== undefined) setCustomBarWeight(barWeight);
         break;
       case 'sets':
         setCustomSets(value);
@@ -812,9 +815,20 @@ export default function SelectedWorkout() {
           />
         </div>
 
-        {/* AI Reasoning Panel */}
+        {/* AI Reasoning Panel - auto-collapse with smooth animation */}
         {aiEnabled && aiReasoning && !aiLoading && (
-          <div className="content-fade-up-2 flex-shrink-0 px-1" style={{ animationDelay: '0.5s' }}>
+          <div 
+            className="flex-shrink-0 px-1 overflow-hidden"
+            style={{ 
+              maxHeight: carouselActiveIndex === 0 ? '600px' : '0px',
+              opacity: carouselActiveIndex === 0 ? 1 : 0,
+              marginTop: carouselActiveIndex === 0 ? '16px' : '0px',
+              marginBottom: carouselActiveIndex === 0 ? '16px' : '0px',
+              transform: carouselActiveIndex === 0 ? 'translateY(0) scale(1)' : 'translateY(-20px) scale(0.95)',
+              transition: 'all 0.45s cubic-bezier(0.25, 0.46, 0.45, 0.94)',
+              pointerEvents: carouselActiveIndex === 0 ? 'auto' : 'none'
+            }}
+          >
             <AIReasoningPanel
               reasoning={aiReasoning}
               recommendation={aiRec}
@@ -928,7 +942,30 @@ export default function SelectedWorkout() {
                 const finalWeight = isCustomSet ? (customWeight || 0) : aiWeight;
                 const finalWeightUnit = isCustomSet ? customWeightUnit : 'kg';
                 const finalRestTime = isCustomSet ? customRestTime : aiRestTime;
-                const finalWeightBreakdown = isCustomSet ? '' : (aiRec?.weightBreakdown || '');
+                
+                // Generate weight breakdown for custom sets
+                const generateCustomBreakdown = () => {
+                  if (!isCustomSet) return aiRec?.weightBreakdown || '';
+                  const w = finalWeight;
+                  const unit = finalWeightUnit;
+                  const eqLower = equipment.toLowerCase();
+                  
+                  if (eqLower === 'barbell') {
+                    const barW = customBarWeight || 20;
+                    const plateW = w - barW;
+                    if (plateW <= 0) return `Bar only (${barW}${unit})`;
+                    return `${barW}${unit} bar + ${plateW}${unit} plates`;
+                  } else if (eqLower === 'dumbbell') {
+                    // Just show total weight for dumbbell (unilateral/isolated exercises)
+                    const handleW = customBarWeight || 2;
+                    const plateW = w - handleW;
+                    if (plateW <= 0) return `Handle only (${handleW}${unit})`;
+                    return `${handleW}${unit} handle + ${plateW}${unit} plates`;
+                  } else {
+                    return `${w}${unit} on stack`;
+                  }
+                };
+                const finalWeightBreakdown = generateCustomBreakdown();
 
                 console.log('🏋️ Starting Workout:', {
                   exercise: workout,
@@ -986,6 +1023,7 @@ export default function SelectedWorkout() {
         initialValue={getModalInitialValue()}
         initialWeightUnit={customWeightUnit}
         fieldType={modalField}
+        equipment={equipment}
       />
       
       {/* Calibration Modal */}

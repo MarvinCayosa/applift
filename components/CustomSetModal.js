@@ -336,7 +336,8 @@ export default function CustomSetModal({
   onSave,
   initialValue = null,
   initialWeightUnit = 'kg',
-  fieldType = 'weight'
+  fieldType = 'weight',
+  equipment = ''
 }) {
   // Default values for each field type - start at the lowest value
   const getDefaultValue = (type) => {
@@ -363,13 +364,28 @@ export default function CustomSetModal({
   const [dragCurrentY, setDragCurrentY] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
 
+  // Bar / handle weight state (for Barbell & Dumbbell exercises)
+  const isBarbell = equipment === 'Barbell';
+  const isDumbbell = equipment === 'Dumbbell';
+  const hasBaseWeight = isBarbell || isDumbbell;
+  const defaultBaseWeight = isBarbell ? 20 : 2; // Olympic bar 20kg, Dumbbell handle 2kg
+  const baseLabel = isBarbell ? 'Bar Weight' : 'Handle Weight';
+  const baseOnlyLabel = isBarbell ? 'Bar Only' : 'Handle Only';
+  const [barWeight, setBarWeight] = useState(defaultBaseWeight);
+  const [barOnly, setBarOnly] = useState(false);
+  const [editingBarWeight, setEditingBarWeight] = useState(false);
+  const [barWeightInput, setBarWeightInput] = useState(String(defaultBaseWeight));
+
   // Reset value when modal opens or fieldType changes
   useEffect(() => {
     if (isOpen) {
       setValue(getInitialValue());
       setWeightUnit(initialWeightUnit);
+      setBarOnly(false);
+      setBarWeight(defaultBaseWeight);
+      setBarWeightInput(String(defaultBaseWeight));
     }
-  }, [isOpen, fieldType, initialValue, initialWeightUnit]);
+  }, [isOpen, fieldType, initialValue, initialWeightUnit, defaultBaseWeight]);
 
   const handleClose = () => {
     setIsClosing(true);
@@ -412,7 +428,7 @@ export default function CustomSetModal({
   if (!isOpen) return null;
 
   const handleSave = () => {
-    onSave({ value, weightUnit, fieldType });
+    onSave({ value, weightUnit, fieldType, barWeight: hasBaseWeight ? barWeight : 0, barOnly });
     handleClose();
   };
 
@@ -446,15 +462,109 @@ export default function CustomSetModal({
             <div className="w-9 h-1 rounded-full bg-white/30" />
           </div>
 
+          {/* Bar / handle weight section for Barbell & Dumbbell */}
+          {hasBaseWeight && fieldType === 'weight' && (
+            <div className="mb-4">
+              {/* Bar Weight row */}
+              <div className="flex items-center justify-between rounded-xl px-4 py-3" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}>
+                <div className="flex items-center gap-2.5">
+                  {/* Equipment icon */}
+                  {isBarbell ? (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(139,92,246,0.8)" strokeWidth="2" strokeLinecap="round">
+                      <line x1="2" y1="12" x2="22" y2="12" />
+                      <rect x="4" y="8" width="3" height="8" rx="1" fill="rgba(139,92,246,0.3)" />
+                      <rect x="17" y="8" width="3" height="8" rx="1" fill="rgba(139,92,246,0.3)" />
+                    </svg>
+                  ) : (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(139,92,246,0.8)" strokeWidth="2" strokeLinecap="round">
+                      <rect x="8" y="4" width="8" height="16" rx="2" fill="rgba(139,92,246,0.3)" />
+                      <line x1="12" y1="2" x2="12" y2="4" />
+                      <line x1="12" y1="20" x2="12" y2="22" />
+                    </svg>
+                  )}
+                  <span className="text-sm font-medium text-white/70">{baseLabel}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {/* Editable bar weight */}
+                  {editingBarWeight ? (
+                    <input
+                      type="number"
+                      autoFocus
+                      className="w-16 text-right text-lg font-bold text-white bg-transparent border-b-2 border-violet-500 outline-none appearance-none"
+                      style={{ MozAppearance: 'textfield' }}
+                      value={barWeightInput}
+                      onChange={(e) => setBarWeightInput(e.target.value)}
+                      onBlur={() => {
+                        const parsed = parseFloat(barWeightInput);
+                        if (!isNaN(parsed) && parsed >= 0) {
+                          setBarWeight(parsed);
+                          if (barOnly) setValue(parsed);
+                        } else {
+                          setBarWeightInput(String(barWeight));
+                        }
+                        setEditingBarWeight(false);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') e.target.blur();
+                      }}
+                    />
+                  ) : (
+                    <span
+                      className="text-lg font-bold text-white cursor-pointer"
+                      onClick={() => {
+                        setBarWeightInput(String(barWeight));
+                        setEditingBarWeight(true);
+                        triggerHaptic();
+                      }}
+                    >
+                      {barWeight}
+                    </span>
+                  )}
+                  <span className="text-sm text-white/40">{weightUnit}</span>
+                </div>
+              </div>
+
+              {/* Bar Only toggle */}
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !barOnly;
+                  setBarOnly(next);
+                  if (next) {
+                    setValue(barWeight);
+                  }
+                  triggerHaptic();
+                }}
+                className={`mt-2 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
+                  barOnly
+                    ? 'bg-violet-600/30 text-violet-300 border border-violet-500/50'
+                    : 'bg-white/[0.04] text-white/40 border border-white/10'
+                }`}
+              >
+                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors ${
+                  barOnly ? 'border-violet-400' : 'border-white/30'
+                }`}>
+                  {barOnly && <div className="w-2 h-2 rounded-full bg-violet-400" />}
+                </div>
+                {baseOnlyLabel}
+              </button>
+            </div>
+          )}
+
           {/* Picker */}
           <div className="mb-8">
             {fieldType === 'weight' ? (
-              <RulerPicker
-                value={value}
-                onValueChange={setValue}
-                unit={weightUnit}
-                onUnitChange={setWeightUnit}
-              />
+              <div className={barOnly && hasBaseWeight ? 'opacity-30 pointer-events-none' : ''}>
+                <RulerPicker
+                  value={value}
+                  onValueChange={(v) => {
+                    setValue(v);
+                    if (barOnly) setBarOnly(false);
+                  }}
+                  unit={weightUnit}
+                  onUnitChange={setWeightUnit}
+                />
+              </div>
             ) : (
               <WheelPicker
                 value={value}

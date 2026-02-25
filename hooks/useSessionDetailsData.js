@@ -43,7 +43,7 @@ export default function useSessionDetailsData({ logId, equipment, exercise }) {
   // 1. Fetch session log from Firestore
   // ────────────────────────────────────────────────────
   useEffect(() => {
-    if (!logId || !user?.uid) { setLogLoading(false); return; }
+    if (!logId || !user?.uid) return; // keep loading=true until params arrive
 
     setLogLoading(true);
     getWorkoutLogByPath(user.uid, equipment || '', exercise || '', logId)
@@ -62,7 +62,7 @@ export default function useSessionDetailsData({ logId, equipment, exercise }) {
   // 2. Fetch analytics from Firestore
   // ────────────────────────────────────────────────────
   useEffect(() => {
-    if (!logId || !user?.uid) { setAnalyticsLoading(false); return; }
+    if (!logId || !user?.uid) return; // keep loading=true until params arrive
 
     const fetchAnalytics = async () => {
       setAnalyticsLoading(true);

@@ -70,6 +70,14 @@ export default function VelocityLossChart({
 
     const thresholdVelocity = baselineVelocity * (1 - thresholdPercent / 100);
 
+    // Coefficient of Variation for variability (order-independent)
+    const allVelocityValues = velocities.map(v => v.velocity).filter(v => v > 0);
+    const meanVel = allVelocityValues.length > 0 ? allVelocityValues.reduce((s, v) => s + v, 0) / allVelocityValues.length : 0;
+    const stdDevVel = allVelocityValues.length > 1
+      ? Math.sqrt(allVelocityValues.reduce((sum, v) => sum + Math.pow(v - meanVel, 2), 0) / (allVelocityValues.length - 1))
+      : 0;
+    const velocityCV = meanVel > 0 ? (stdDevVel / meanVel) * 100 : 0;
+
     let fatigueOnsetRep = -1;
     const enrichedVelocities = velocities.map((v, idx) => {
       const isEffective = v.velocity >= thresholdVelocity;
@@ -93,6 +101,7 @@ export default function VelocityLossChart({
       baselineVelocity: Math.round(baselineVelocity * 100) / 100,
       thresholdVelocity: Math.round(thresholdVelocity * 100) / 100,
       velocityLoss: Math.round(velocityLoss * 10) / 10,
+      velocityCV: Math.round(velocityCV * 10) / 10,
       effectiveReps,
       totalReps: velocities.length,
       fatigueOnsetRep
@@ -140,15 +149,15 @@ export default function VelocityLossChart({
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-base font-semibold text-white">Velocity Analysis</h3>
         <div className={`px-3 py-1.5 rounded-full text-xs font-semibold ${
-          chartMetrics.velocityLoss < 10 
+          chartMetrics.velocityCV < 8
             ? 'bg-green-600 text-white'
-            : chartMetrics.velocityLoss < 20
+            : chartMetrics.velocityCV < 15
               ? 'bg-yellow-500 text-white'
-              : chartMetrics.velocityLoss < 30
+              : chartMetrics.velocityCV < 25
                 ? 'bg-orange-500 text-white'
                 : 'bg-red-500 text-white'
         }`}>
-          {chartMetrics.velocityLoss > 0 ? `-${chartMetrics.velocityLoss}%` : 'Stable'}
+          {chartMetrics.velocityCV}% CV
         </div>
       </div>
 
@@ -160,29 +169,32 @@ export default function VelocityLossChart({
           <p className="text-[10px] text-gray-500">m/s</p>
         </div>
         <div className="bg-black/30 rounded-xl p-3 text-center">
-          <p className="text-xs text-gray-400 mb-1">Effective Reps</p>
+          <p className="text-xs text-gray-400 mb-1">Variability</p>
+          <p className={`text-lg font-bold ${chartMetrics.velocityCV < 8 ? 'text-green-400' : chartMetrics.velocityCV < 15 ? 'text-yellow-400' : 'text-red-400'}`}>{chartMetrics.velocityCV}%</p>
+          <p className="text-[10px] text-gray-500">CV%</p>
+        </div>
+        <div className="bg-black/30 rounded-xl p-3 text-center">
+          <p className="text-xs text-gray-400 mb-1">Effective</p>
           <p className="text-lg font-bold text-cyan-400">{chartMetrics.effectiveReps}</p>
           <p className="text-[10px] text-gray-500">of {chartMetrics.totalReps}</p>
         </div>
-        <div className="bg-black/30 rounded-xl p-3 text-center">
-          <p className="text-xs text-gray-400 mb-1">Threshold</p>
-          <p className="text-lg font-bold text-cyan-400">{thresholdPercent}%</p>
-          <p className="text-[10px] text-gray-500">velocity loss</p>
-        </div>
       </div>
 
-      {/* Bar Chart — Large, no axis labels */}
+      {/* Bar Chart — scrollable horizontally */}
       <div className="relative bg-black/40 rounded-2xl overflow-hidden" style={{ height: `${chartHeight + 16}px` }}>
+        <div className="overflow-x-auto scrollbar-hide h-full">
         <svg 
-          className="w-full h-full" 
-          viewBox={`0 0 ${chartWidth} ${chartHeight + 8}`}
-          preserveAspectRatio="xMidYMid meet"
+          className="h-full" 
+          style={{ width: `${Math.max(chartWidth, chartMetrics.velocities.length * 36 + 30)}px`, minWidth: '100%' }}
+          viewBox={`0 0 ${Math.max(chartWidth, chartMetrics.velocities.length * 36 + 30)} ${chartHeight + 8}`}
+          preserveAspectRatio="none"
         >
           {/* Subtle horizontal grid lines — no labels */}
           {[0.25, 0.5, 0.75].map(frac => {
+            const svgW = Math.max(chartWidth, chartMetrics.velocities.length * 36 + 30);
             const y = padding.top + plotHeight * (1 - frac);
             return (
-              <line key={frac} x1={padding.left} y1={y} x2={chartWidth - padding.right} y2={y}
+              <line key={frac} x1={padding.left} y1={y} x2={svgW - padding.right} y2={y}
                 stroke="#374151" strokeWidth="1" strokeDasharray="4,4" opacity="0.3" />
             );
           })}
@@ -190,12 +202,12 @@ export default function VelocityLossChart({
           {/* Threshold line */}
           <line
             x1={padding.left} y1={thresholdY}
-            x2={chartWidth - padding.right} y2={thresholdY}
+            x2={Math.max(chartWidth, chartMetrics.velocities.length * 36 + 30) - padding.right} y2={thresholdY}
             stroke="#22d3ee" strokeWidth="1.5" strokeDasharray="6,3" opacity="0.8"
           />
           {/* Threshold label — small, right-aligned */}
           <text
-            x={chartWidth - padding.right - 4} y={thresholdY - 6}
+            x={Math.max(chartWidth, chartMetrics.velocities.length * 36 + 30) - padding.right - 4} y={thresholdY - 6}
             fill="#22d3ee" fontSize="9" textAnchor="end" opacity="0.8"
           >
             {chartMetrics.thresholdVelocity.toFixed(2)}
@@ -204,8 +216,9 @@ export default function VelocityLossChart({
           {/* Bars */}
           {chartMetrics.velocities.map((data, idx) => {
             const barHeight = Math.max(3, ((data.velocity - minVelocity) / yRange) * plotHeight);
+            const svgW = Math.max(chartWidth, chartMetrics.velocities.length * 36 + 30);
             const totalBarsWidth = barCount * barWidth + (barCount - 1) * barGap;
-            const startX = padding.left + (plotWidth - totalBarsWidth) / 2;
+            const startX = padding.left + (svgW - padding.left - padding.right - totalBarsWidth) / 2;
             const x = startX + idx * (barWidth + barGap);
             const y = getY(data.velocity);
             
@@ -257,6 +270,7 @@ export default function VelocityLossChart({
             );
           })}
         </svg>
+        </div>
 
         {/* Legend — overlaid bottom-right */}
         <div className="absolute bottom-2 right-3 flex items-center gap-3 text-[10px]">
@@ -274,21 +288,21 @@ export default function VelocityLossChart({
       {/* Insight text */}
       <div className="mt-4 px-3 py-2.5 bg-white/5 rounded-xl">
         <p className="text-xs sm:text-sm text-center leading-relaxed">
-          {chartMetrics.velocityLoss < 10 ? (
+          {chartMetrics.velocityCV < 8 ? (
             <span className="text-cyan-300">
-              Excellent velocity maintenance! You stayed above the {thresholdPercent}% threshold for {chartMetrics.effectiveReps} of {chartMetrics.totalReps} reps — optimal for power & strength gains.
+              <strong>Very consistent</strong> — only {chartMetrics.velocityCV}% velocity variability across {chartMetrics.totalReps} reps. Stable motor pattern ideal for strength & power development.
             </span>
-          ) : chartMetrics.velocityLoss < 20 ? (
+          ) : chartMetrics.velocityCV < 15 ? (
             <span className="text-yellow-300">
-              Good performance. Velocity dropped {chartMetrics.velocityLoss}% by the end. {chartMetrics.effectiveReps} reps were in the effective zone for strength development.
+              <strong>Moderate variability</strong> ({chartMetrics.velocityCV}% CV). Some rep-to-rep fluctuation is normal — momentum shifts or mid-set fatigue. {chartMetrics.effectiveReps}/{chartMetrics.totalReps} reps stayed effective.
             </span>
-          ) : chartMetrics.velocityLoss < 30 ? (
+          ) : chartMetrics.velocityCV < 25 ? (
             <span className="text-orange-300">
-              Moderate fatigue detected. Velocity loss of {chartMetrics.velocityLoss}% indicates muscle fatigue. This range is good for hypertrophy training.
+              <strong>High variability</strong> ({chartMetrics.velocityCV}% CV). Velocity fluctuated significantly — possible fatigue dips followed by momentum compensation. Focus on consistent tempo.
             </span>
           ) : (
             <span className="text-red-300">
-              High fatigue ({chartMetrics.velocityLoss}% velocity loss). Consider reducing weight or adding rest time for power-focused training.
+              <strong>Very inconsistent</strong> ({chartMetrics.velocityCV}% CV). Large velocity swings suggest fatigue compensation or form breakdown. Consider reducing weight or reps.
             </span>
           )}
         </p>

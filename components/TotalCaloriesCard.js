@@ -203,7 +203,7 @@ export default function TotalCaloriesCard({ logs = [], hasData = false }) {
       {/* Main content – all right-aligned */}
       <div className="flex-1 px-2 flex flex-col items-end justify-center">
         {/* Large calorie number with smooth slide transition */}
-        <div className="relative overflow-hidden h-16 flex items-center justify-end w-full">
+        <div className="relative overflow-hidden mt-2 h-16 flex items-center justify-end w-full">
           <span
             ref={slideInRef}
             className="font-extrabold text-white leading-none"

@@ -102,19 +102,24 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
         vels.push({ rep: rep.repNumber || i + 1, set: set.setNumber, v: Math.round((parseFloat(rep.peakVelocity) || 0) * 100) / 100 });
       })
     );
-    if (vels.length === 0) return { vels: [], baseline: 0, drop: 0, max: 0, effective: 0, total: 0 };
+    if (vels.length === 0) return { vels: [], baseline: 0, cv: 0, max: 0, effective: 0, total: 0 };
 
     const baseSize = Math.min(2, vels.length);
     const baseline = vels.slice(0, baseSize).reduce((s, x) => s + x.v, 0) / baseSize;
-    const last = vels[vels.length - 1]?.v || 0;
-    const drop = baseline > 0 ? ((baseline - last) / baseline) * 100 : 0;
     const max = Math.max(...vels.map((x) => x.v), 0.5);
+    
+    // Coefficient of Variation — captures variability regardless of rep order
+    const allV = vels.map((x) => x.v).filter((v) => v > 0);
+    const meanV = allV.length > 0 ? allV.reduce((s, v) => s + v, 0) / allV.length : 0;
+    const stdV = allV.length > 1 ? Math.sqrt(allV.reduce((sum, v) => sum + Math.pow(v - meanV, 2), 0) / (allV.length - 1)) : 0;
+    const cv = meanV > 0 ? (stdV / meanV) * 100 : 0;
+    
     const enriched = vels.map((x) => {
       const d = baseline > 0 ? ((baseline - x.v) / baseline) * 100 : 0;
       return { ...x, dropPct: Math.round(d * 10) / 10, isEff: d < 10 };
     });
 
-    return { vels: enriched, baseline: Math.round(baseline * 100) / 100, drop: Math.round(drop * 10) / 10, max, effective: enriched.filter((x) => x.isEff).length, total: vels.length };
+    return { vels: enriched, baseline: Math.round(baseline * 100) / 100, cv: Math.round(cv * 10) / 10, max, effective: enriched.filter((x) => x.isEff).length, total: vels.length };
   }, [setsData, selectedSet]);
 
   // Colors
@@ -200,7 +205,7 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
 
         {/* ═══ Slide 2: Velocity Loss ═══ */}
         <div className="w-full shrink-0 snap-center snap-always p-5 pb-3" style={{ minWidth: '100%' }}>
-          <h3 className="text-[15px] font-bold text-white mb-3">Velocity Loss</h3>
+          <h3 className="text-[15px] font-bold text-white mb-3">Velocity Analysis</h3>
 
           {velocity.vels.length === 0 ? (
             <div className="flex items-center justify-center rounded-2xl bg-white/[0.03]" style={{ height: `${BAR_H}px` }}>
@@ -211,7 +216,7 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
               <div className="flex gap-2 mb-3">
                 {[
                   { label: 'Peak', value: `${velocity.baseline}`, unit: 'm/s', color: 'text-cyan-400' },
-                  { label: 'Drop', value: velocity.drop > 0 ? `-${velocity.drop}` : '0', unit: '%', color: velocity.drop < 10 ? 'text-green-400' : velocity.drop < 25 ? 'text-yellow-400' : 'text-red-400' },
+                  { label: 'Variability', value: `${velocity.cv}`, unit: '%', color: velocity.cv < 8 ? 'text-green-400' : velocity.cv < 15 ? 'text-yellow-400' : 'text-red-400' },
                   { label: 'Effective', value: `${velocity.effective}`, unit: `/${velocity.total}`, color: 'text-white' },
                 ].map((m, i) => (
                   <div key={i} className="flex-1 rounded-xl bg-white/[0.04] px-3 py-2.5 text-center">
@@ -222,16 +227,19 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
               </div>
 
               <div className="relative rounded-2xl bg-white/[0.03] overflow-hidden" style={{ height: `${BAR_H}px` }}>
-                <svg className="w-full h-full" viewBox={`0 0 320 ${BAR_H}`} preserveAspectRatio="xMidYMid meet">
+                <div className="overflow-x-auto scrollbar-hide h-full">
+                <svg className="h-full" style={{ width: `${Math.max(320, velocity.vels.length * 32 + 20)}px`, minWidth: '100%' }} viewBox={`0 0 ${Math.max(320, velocity.vels.length * 32 + 20)} ${BAR_H}`} preserveAspectRatio="none">
                   {[0.25, 0.5, 0.75].map((f) => {
+                    const svgW = Math.max(320, velocity.vels.length * 32 + 20);
                     const y = P.t + plotH * (1 - f);
-                    return <line key={f} x1="0" y1={y} x2="320" y2={y} stroke="rgba(255,255,255,0.04)" strokeWidth="1" />;
+                    return <line key={f} x1="0" y1={y} x2={svgW} y2={y} stroke="rgba(255,255,255,0.04)" strokeWidth="1" />;
                   })}
                   {velocity.vels.map((d, i) => {
                     const count = velocity.vels.length;
+                    const svgW = Math.max(320, count * 32 + 20);
                     const gap = Math.max(3, Math.min(6, 80 / count));
                     const totalGaps = gap * (count + 1);
-                    const barW = Math.max(14, (320 - P.l - P.r - totalGaps) / count);
+                    const barW = Math.max(14, (svgW - P.l - P.r - totalGaps) / count);
                     const x = P.l + gap + i * (barW + gap);
                     const hFrac = velocity.max > 0 ? d.v / velocity.max : 0;
                     const barH = Math.max(4, hFrac * plotH);
@@ -251,6 +259,7 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
                     );
                   })}
                 </svg>
+                </div>
               </div>
             </>
           )}

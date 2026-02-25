@@ -211,12 +211,22 @@ export default function FatigueVelocityCarousel({
       ? firstNonExtreme.reduce((s, v) => s + v, 0) / firstNonExtreme.length 
       : (allVels[0] || 0);
     
-    // For velocity drop: compare baseline to average of last portion (excluding extremes)
+    // For velocity variability: use Coefficient of Variation (CV%)
+    // CV% = (SD / mean) * 100 — measures consistency regardless of order
+    // Better than "drop" because it captures non-sequential fluctuations
+    const meanVelocity = nonExtremeVels.length > 0
+      ? nonExtremeVels.reduce((s, v) => s + v, 0) / nonExtremeVels.length
+      : 0;
+    const stdDev = nonExtremeVels.length > 1
+      ? Math.sqrt(nonExtremeVels.reduce((sum, v) => sum + Math.pow(v - meanVelocity, 2), 0) / (nonExtremeVels.length - 1))
+      : 0;
+    const velocityCV = meanVelocity > 0 ? (stdDev / meanVelocity) * 100 : 0;
+    
+    // Keep sequential drop as secondary metric
     const lastThird = nonExtremeVels.slice(-Math.max(1, Math.floor(nonExtremeVels.length / 3)));
     const avgLastVelocity = lastThird.length > 0 
       ? lastThird.reduce((s, v) => s + v, 0) / lastThird.length 
       : 0;
-    
     const velocityDrop = baselineVelocity > 0 ? ((baselineVelocity - avgLastVelocity) / baselineVelocity) * 100 : 0;
     const maxVelocity = Math.max(...velocities.map(v => v.velocity), 0.5);
 
@@ -237,7 +247,8 @@ export default function FatigueVelocityCarousel({
     return {
       velocities: enriched,
       baselineVelocity: Math.round(baselineVelocity * 100) / 100,
-      velocityDrop: Math.max(0, Math.round(velocityDrop * 10) / 10), // Clamp to 0 minimum
+      velocityDrop: Math.max(0, Math.round(velocityDrop * 10) / 10),
+      velocityCV: Math.round(velocityCV * 10) / 10,
       maxVelocity,
       effectiveReps: enriched.filter(v => v.isEffective).length,
       totalReps: velocities.length,
@@ -278,7 +289,7 @@ export default function FatigueVelocityCarousel({
       {/* Header */}
       <div className="px-5 pt-5 pb-3">
         <h3 className="text-base font-semibold text-white">
-          {activeSlide === 0 ? 'Fatigue Analysis' : 'Velocity Loss'}
+          {activeSlide === 0 ? 'Fatigue Analysis' : 'Velocity Analysis'}
         </h3>
       </div>
 
@@ -365,9 +376,9 @@ export default function FatigueVelocityCarousel({
                   <p className="text-lg font-bold text-cyan-400">{velocityMetrics.baselineVelocity}<span className="text-[10px] text-gray-500 ml-0.5">m/s</span></p>
                 </div>
                 <div className="flex-1 rounded-xl bg-white/[0.04] px-3 py-2.5 text-center">
-                  <p className="text-[10px] text-gray-500 mb-0.5">Drop</p>
-                  <p className={`text-lg font-bold ${velocityMetrics.velocityDrop < 10 ? 'text-green-400' : velocityMetrics.velocityDrop < 25 ? 'text-yellow-400' : 'text-red-400'}`}>
-                    {velocityMetrics.velocityDrop > 0 ? `-${velocityMetrics.velocityDrop}` : '0'}<span className="text-[10px] text-gray-500 ml-0.5">%</span>
+                  <p className="text-[10px] text-gray-500 mb-0.5">Variability</p>
+                  <p className={`text-lg font-bold ${velocityMetrics.velocityCV < 8 ? 'text-green-400' : velocityMetrics.velocityCV < 15 ? 'text-yellow-400' : 'text-red-400'}`}>
+                    {velocityMetrics.velocityCV}<span className="text-[10px] text-gray-500 ml-0.5">%</span>
                   </p>
                 </div>
                 <div className="flex-1 rounded-xl bg-white/[0.04] px-3 py-2.5 text-center">
@@ -376,21 +387,29 @@ export default function FatigueVelocityCarousel({
                 </div>
               </div>
 
-              {/* Bar Chart — no axis labels, clean */}
+              {/* Bar Chart — horizontally scrollable when many reps */}
               <div className="relative rounded-2xl bg-white/[0.03] overflow-hidden" style={{ height: `${barChartHeight}px` }}>
-                <svg className="w-full h-full" viewBox={`0 0 320 ${barChartHeight}`} preserveAspectRatio="xMidYMid meet">
+                <div className="overflow-x-auto scrollbar-hide h-full">
+                  <svg
+                    className="h-full"
+                    style={{ width: `${Math.max(320, velocityMetrics.velocities.length * 32 + 20)}px`, minWidth: '100%' }}
+                    viewBox={`0 0 ${Math.max(320, velocityMetrics.velocities.length * 32 + 20)} ${barChartHeight}`}
+                    preserveAspectRatio="none"
+                  >
                   {/* Subtle horizontal grid */}
                   {[0.25, 0.5, 0.75].map(frac => {
+                    const svgW = Math.max(320, velocityMetrics.velocities.length * 32 + 20);
                     const y = barPadding.top + plotH * (1 - frac);
-                    return <line key={frac} x1="0" y1={y} x2="320" y2={y} stroke="rgba(255,255,255,0.04)" strokeWidth="1" />;
+                    return <line key={frac} x1="0" y1={y} x2={svgW} y2={y} stroke="rgba(255,255,255,0.04)" strokeWidth="1" />;
                   })}
 
                   {/* Bars */}
                   {velocityMetrics.velocities.map((data, idx) => {
                     const count = velocityMetrics.velocities.length;
+                    const svgW = Math.max(320, count * 32 + 20);
                     const gap = Math.max(3, Math.min(6, 80 / count));
                     const totalGaps = gap * (count + 1);
-                    const barW = Math.max(14, (320 - barPadding.left - barPadding.right - totalGaps) / count);
+                    const barW = Math.max(14, (svgW - barPadding.left - barPadding.right - totalGaps) / count);
                     const x = barPadding.left + gap + idx * (barW + gap);
                     const heightFrac = velocityMetrics.maxVelocity > 0 ? data.velocity / velocityMetrics.maxVelocity : 0;
                     const barH = Math.max(4, heightFrac * plotH);
@@ -418,7 +437,8 @@ export default function FatigueVelocityCarousel({
                       </g>
                     );
                   })}
-                </svg>
+                  </svg>
+                </div>
 
                 {/* Legend overlay bottom-right */}
                 <div className="absolute bottom-1.5 right-2.5 flex items-center gap-3">

@@ -71,7 +71,7 @@ BARBELL WEIGHTS (always include bar in total): Olympic 20kg, Women's 15kg, EZ 8k
 - IMPORTANT: recommendedLoad = bar + plates combined. weightBreakdown must show EXACTLY what to load.
 - Barbell example: recommendedLoad=30 → weightBreakdown "20kg bar + 5kg per side"
 - Barbell bar only: recommendedLoad=20 → weightBreakdown "Bar only (20kg)"
-- Dumbbell: specify handle + plate per hand, e.g. recommendedLoad=6 → weightBreakdown "2kg handle + 4kg plates per hand"
+- Dumbbell: just show total weight (e.g. "9.5kg" or "2kg handle + 7.5kg plates"). Do NOT say "per hand".
 - Weight Stack / Machine: recommendedLoad=25 → weightBreakdown "25kg on stack"
 - Always tell user exactly what plates/weight to load — never just show a total
 
@@ -84,10 +84,11 @@ SAFETY RULES:
 
 STARTING WEIGHTS (beginners/first-time):
 - Barbell: empty bar only (20kg)
-- Dumbbell: 3-5kg per hand
+- Dumbbell: 3-5kg total
 - Weight Stack: 20-25kg
 
-REP RANGES: Strength 1-5 (85-100% 1RM, rest 2-5min), Hypertrophy 6-12 (65-85%, rest 60-120s), Endurance 12+ (<65%, rest 30-60s)
+REP RANGES: **PRIORITIZE HYPERTROPHY** — Hypertrophy 6-10 (65-85%, rest 60-120s), Strength 3-5 (85-100%, rest 2-5min), Endurance 10-12 (<65%, rest 30-60s)
+**Default to hypertrophy range (6-10 reps) for muscle building.** Be conservative with reps — prefer 6-10 range. Never exceed 12 reps unless explicitly requested.
 
 LOAD DECISIONS (based on ML data):
 - Increase: clean reps >=80%, fatigue <25%, consistency >=75%
@@ -102,7 +103,7 @@ OUTPUT FORMAT (JSON only, no markdown):
   "restTimeSeconds": <int>,
   "estimatedCalories": <int>,
   "recommendedRestDays": <1-3>,
-  "weightBreakdown": "<e.g. 'Bar only (20kg)' or '20kg bar + 10kg plates' or '5kg per hand'>",
+  "weightBreakdown": "<e.g. 'Bar only (20kg)' or '20kg bar + 10kg plates' or '2kg handle + 7.5kg plates'>",
   "rationale": "<2-3 sentences referencing specific data if available>",
   "safetyNote": "<1 sentence>",
   "guideline": "<max 15 words>",
@@ -194,9 +195,9 @@ function generateWeightBreakdown(totalWeight, equipment) {
   if (eq.includes('dumbbell')) {
     // Assume ~2kg handle for adjustable dumbbells
     const handle = 2;
-    if (totalWeight <= handle) return `Handle only (${totalWeight}kg per hand)`;
+    if (totalWeight <= handle) return `Handle only (${totalWeight}kg)`;
     const plates = totalWeight - handle;
-    return `${handle}kg handle + ${plates}kg plates per hand`;
+    return `${handle}kg handle + ${plates}kg plates`;
   }
   if (eq.includes('weight stack') || eq.includes('machine') || eq.includes('cable')) {
     return `${totalWeight}kg on stack`;
@@ -362,7 +363,7 @@ export default async function handler(req, res) {
     // Safety bounds — clamp values to sane ranges
     weight = Math.max(0, Math.min(500, Number(weight) || 0));
     sets = Math.max(1, Math.min(10, Math.round(Number(sets) || 3)));
-    reps = Math.max(1, Math.min(30, Math.round(Number(reps) || 8)));
+    reps = Math.max(1, Math.min(15, Math.round(Number(reps) || 8)));
     restTimeSeconds = Math.max(15, Math.min(600, Math.round(Number(restTimeSeconds) || 90)));
     estimatedCalories = Math.max(5, Math.min(500, Math.round(Number(estimatedCalories) || 45)));
 

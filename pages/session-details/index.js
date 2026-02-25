@@ -50,6 +50,16 @@ export default function SessionDetailsPage() {
     exercise: ex || '',
   });
 
+  // Wait for Next.js router hydration (query params empty on refresh until isReady)
+  if (!router.isReady) {
+    return (
+      <>
+        <Head><title>Session Details — AppLift</title></Head>
+        <SessionDetailsSkeleton />
+      </>
+    );
+  }
+
   // Error state
   if (!isLoading && (error || !viewModel) && logId) {
     return (
