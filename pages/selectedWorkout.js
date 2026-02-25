@@ -533,7 +533,16 @@ export default function SelectedWorkout() {
               totalReps = Object.values(dist).reduce((sum, c) => sum + c, 0);
               cleanReps = dist['Clean'] || dist['0'] || 0;
               cleanRepPct = totalReps > 0 ? Math.round((cleanReps / totalReps) * 100) : null;
-              mlSummary = `Clean: ${cleanRepPct}%, Other: ${100 - cleanRepPct}%`;
+              // Build full distribution breakdown (e.g. "Clean: 37%, Uncontrolled Movement: 53%, Abrupt Initiation: 10%")
+              if (totalReps > 0) {
+                const parts = Object.entries(dist)
+                  .filter(([_, count]) => count > 0)
+                  .map(([label, count]) => `${label}: ${Math.round((count / totalReps) * 100)}%`)
+                  .join(', ');
+                mlSummary = parts;
+              } else {
+                mlSummary = null;
+              }
             }
             
             // Calculate reps per set for better context

@@ -90,10 +90,11 @@ STARTING WEIGHTS (beginners/first-time):
 REP RANGES: **PRIORITIZE HYPERTROPHY** — Hypertrophy 6-10 (65-85%, rest 60-120s), Strength 3-5 (85-100%, rest 2-5min), Endurance 10-12 (<65%, rest 30-60s)
 **Default to hypertrophy range (6-10 reps) for muscle building.** Be conservative with reps — prefer 6-10 range. Never exceed 12 reps unless explicitly requested.
 
-LOAD DECISIONS (based on ML data):
-- Increase: clean reps >=80%, fatigue <25%, consistency >=75%
-- Maintain: clean reps 60-79%, fatigue 25-40%
-- Decrease: clean reps <60%, fatigue >40%, consistency <60%
+LOAD DECISIONS (based on ML data — STRICTLY ENFORCED):
+- Increase: ONLY if cleanRepPct >=80% AND fatigue <25% AND consistency >=75%
+- Maintain: cleanRepPct 60-79%, OR fatigue 25-40%
+- Decrease: cleanRepPct <60%, OR fatigue >40%, OR consistency <60%
+CRITICAL: cleanRepPct is the percentage of reps classified as "Clean" by our ML model. If cleanRepPct < 60%, you MUST recommend the SAME or LOWER load than last session. NEVER increase load when form quality is poor. Reference the actual cleanRepPct value in your rationale.
 
 OUTPUT FORMAT (JSON only, no markdown):
 {
@@ -170,12 +171,21 @@ function buildUserPrompt({ userProfile, equipment, exerciseName, pastSessions })
     pastSessions.slice(0, 3).forEach((s, i) => {
       prompt += `S${i+1}: ${s.weight || 0}kg × ${s.sets || 0}s × ${s.reps || 0}r`;
       if (s.quality) prompt += `, form: ${s.quality}`;
+      if (s.cleanRepPct != null) prompt += `, cleanRepPct: ${s.cleanRepPct}%`;
       if (s.fatigueScore != null) prompt += `, fatigue: ${s.fatigueScore}%`;
       if (s.consistencyScore != null) prompt += `, consistency: ${s.consistencyScore}%`;
       if (s.mlClassification) prompt += `, ML: ${s.mlClassification}`;
       if (s.date) prompt += ` (${s.date})`;
       prompt += `\n`;
     });
+
+    // Add explicit form quality warning based on most recent session
+    const mostRecent = pastSessions[0];
+    if (mostRecent?.cleanRepPct != null && mostRecent.cleanRepPct < 60) {
+      prompt += `\n⚠️ FORM WARNING: Most recent session had only ${mostRecent.cleanRepPct}% clean reps. Per LOAD DECISIONS rules, you MUST decrease or maintain load. DO NOT increase load.\n`;
+    } else if (mostRecent?.cleanRepPct != null && mostRecent.cleanRepPct < 80) {
+      prompt += `\n⚠️ FORM NOTE: Most recent session had ${mostRecent.cleanRepPct}% clean reps. Per LOAD DECISIONS rules, maintain current load — do not increase.\n`;
+    }
   } else {
     prompt += `FIRST TIME: No past data. Use conservative starting weights.\n`;
   }

@@ -5,7 +5,7 @@ import FatigueVelocityCarousel from '../components/workoutFinished/FatigueVeloci
 import LiftPhases from '../components/workoutFinished/LiftPhases';
 import ConsistencyScore from '../components/workoutFinished/ConsistencyScore';
 import ClassificationDistribution from '../components/workoutFinished/ClassificationDistribution';
-import TotalRepsCard from '../components/workoutFinished/TotalRepsCard';
+import WorkoutBreakdownCard from '../components/WorkoutBreakdownCard';
 import { useWorkoutLogging } from '../context/WorkoutLoggingContext';
 import { useWorkoutStreak } from '../utils/useWorkoutStreak';
 import { useWorkoutAnalysis, transformAnalysisForUI } from '../hooks/useWorkoutAnalysis';
@@ -442,11 +442,15 @@ export default function WorkoutFinished() {
           }}
         />
 
-        {/* Total Reps Progress Card */}
-        <TotalRepsCard
-          setsData={mergedSetsData}
-          recommendedSets={recommendedSets}
-          recommendedReps={recommendedReps}
+        {/* Workout Breakdown Card */}
+        <WorkoutBreakdownCard
+          totalReps={parseInt(totalReps) || 0}
+          plannedReps={(parseInt(recommendedSets) || 0) * (parseInt(recommendedReps) || 0)}
+          completedSets={mergedSetsData?.length || 0}
+          plannedSets={parseInt(recommendedSets) || 0}
+          weight={parseFloat(weight) || 0}
+          weightUnit={weightUnit || 'kg'}
+          equipment={equipment || ''}
         />
 
         {/* Global Set Filter */}
