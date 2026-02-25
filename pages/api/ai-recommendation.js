@@ -330,19 +330,17 @@ export default async function handler(req, res) {
     const model = process.env.VERTEX_AI_MODEL || 'gemini-2.5-flash';
 
     // ============================================================
-    // MODEL PARAMETERS (optimized for speed & cost)
+    // MODEL PARAMETERS (stable & cost-efficient)
     // ============================================================
-    // temperature: 0.1 = very deterministic (was 0.2)
-    // topP: 0.6 = more focused sampling (was 0.7)  
-    // topK: 15 = fewer tokens considered (was 20)
-    // maxOutputTokens: 256 = much shorter responses (was 512)
+    // Cost savings come from shorter prompts (input), NOT from restricting model params
+    // maxOutputTokens: 512 = enough for JSON response without truncation
     const generativeModel = vertexAI.preview.getGenerativeModel({
       model,
       generationConfig: {
-        temperature: 0.1,        // More deterministic for consistent format
-        topP: 0.6,               // More focused sampling
-        topK: 15,                // Faster token selection
-        maxOutputTokens: 256,    // Reduced further for cost savings
+        temperature: 0.2,
+        topP: 0.7,
+        topK: 20,
+        maxOutputTokens: 512,
         responseMimeType: 'application/json',
       },
       systemInstruction: {
