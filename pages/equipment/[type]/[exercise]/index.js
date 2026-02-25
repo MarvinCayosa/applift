@@ -769,7 +769,7 @@ export default function ExerciseDetailPage() {
 
                         {/* Slide 2: Last Sessions Timeline */}
                         <div className="w-full shrink-0 snap-center snap-always p-4 pt-0 flex flex-col" style={{ minWidth: '100%' }}>
-                          {qualityComparison.length > 0 ? (
+                          {qualityComparison.length >= 3 ? (
                             <div className="flex-1 flex flex-col">
                               {/* Trend badge */}
                               {(() => {
@@ -884,7 +884,7 @@ export default function ExerciseDetailPage() {
                               </div>
                             </div>
                           ) : (
-                            <p className="text-white/25 text-xs text-center py-8 flex-1 flex items-center justify-center">Need at least 2 sessions</p>
+                            <p className="text-white/25 text-xs text-center py-8 flex-1 flex items-center justify-center">Need at least 3 sessions</p>
                           )}
                         </div>
                       </div>
