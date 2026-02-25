@@ -126,6 +126,7 @@ export const createWorkoutLog = async (userId, workoutDetails) => {
       reps: workoutDetails.plannedReps || 0,
       weight: workoutDetails.weight || 0,
       weightUnit: workoutDetails.weightUnit || 'kg',
+      weightBreakdown: workoutDetails.weightBreakdown || '',
     },
     results: null, // Will be populated after workout
     imuDataPath: null, // Will be set after GCS upload

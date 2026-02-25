@@ -14,6 +14,7 @@ export default function AIReasoningPanel({ reasoning, recommendation, isFromCach
   if (!reasoning) return null;
 
   const restDays = recommendation?.recommendedRestDays;
+  const weightBreakdown = recommendation?.weightBreakdown;
 
   return (
     <div className="rounded-2xl bg-white/[0.06] border border-white/10 overflow-hidden transition-all duration-300">
@@ -25,9 +26,7 @@ export default function AIReasoningPanel({ reasoning, recommendation, isFromCach
         <div className="flex items-center gap-2.5">
           {/* Gemini AI icon */}
           <div className="w-7 h-7 rounded-full bg-violet-500/20 flex items-center justify-center flex-shrink-0">
-            <svg className="w-3.5 h-3.5 text-violet-400" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12 1L21 6V18L12 23L3 18V6L12 1Z M12 3.5L5.5 7V17L12 20.5L18.5 17V7L12 3.5Z M12 6L18 9.5V14.5L12 18L6 14.5V9.5L12 6Z"/>
-            </svg>
+            <img src="/images/gemini.png" alt="Gemini" className="w-4 h-4" />
           </div>
           <div className="text-left">
             <p className="text-xs font-semibold text-white/90">AI Insight</p>
@@ -71,6 +70,19 @@ export default function AIReasoningPanel({ reasoning, recommendation, isFromCach
                 <p className="text-[10px] font-semibold text-violet-400 uppercase tracking-wide">Why</p>
               </div>
               <p className="text-xs text-white/70 leading-relaxed text-justify">{reasoning.rationale}</p>
+            </div>
+          )}
+
+          {/* Weight Breakdown */}
+          {weightBreakdown && (
+            <div>
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <svg className="w-3 h-3 text-cyan-400" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M20.57 14.86L22 13.43 20.57 12 17 15.57 8.43 7 12 3.43 10.57 2 9.14 3.43 7.71 2 5.57 4.14 4.14 2.71 2.71 4.14l1.43 1.43L2 7.71l1.43 1.43L2 10.57 3.43 12 7 8.43 15.57 17 12 20.57 13.43 22l1.43-1.43L16.29 22l2.14-2.14 1.43 1.43 1.43-1.43-1.43-1.43L22 16.29z"/>
+                </svg>
+                <p className="text-[10px] font-semibold text-cyan-400 uppercase tracking-wide">Weight Breakdown</p>
+              </div>
+              <p className="text-xs text-white/60 leading-relaxed text-justify">{weightBreakdown}</p>
             </div>
           )}
 

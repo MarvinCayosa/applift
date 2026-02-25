@@ -213,6 +213,7 @@ export const initializeStreaming = async (config) => {
     plannedReps,
     weight,
     weightUnit,
+    weightBreakdown = '',
     setType = 'recommended'
   } = config;
 
@@ -239,6 +240,7 @@ export const initializeStreaming = async (config) => {
     plannedReps: parseInt(plannedReps) || 0,
     weight: parseFloat(weight) || 0,
     weightUnit: weightUnit || 'kg',
+    weightBreakdown,
     setType,
     startTime: new Date().toISOString(),
     sets: [
@@ -261,6 +263,7 @@ export const initializeStreaming = async (config) => {
     plannedReps: parseInt(plannedReps) || 0,
     weight: parseFloat(weight) || 0,
     weightUnit: weightUnit || 'kg',
+    weightBreakdown,
     completedSets: 0,
     completedReps: 0,
     totalReps: 0,

@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
+import WorkoutBreakdownCard from '../WorkoutBreakdownCard';
 
 export default function WorkoutSummaryCard({ 
   workoutName, 
@@ -9,6 +10,10 @@ export default function WorkoutSummaryCard({
   totalWorkoutTime,
   setsData,
   totalReps,
+  weight = 0,
+  weightUnit = 'kg',
+  recommendedSets = 0,
+  recommendedReps = 0,
   onSeeMore
 }) {
   const canvasRef = useRef(null);
@@ -258,65 +263,16 @@ export default function WorkoutSummaryCard({
         <canvas ref={canvasRef} className="w-full h-full" />
       </div>
 
-      {/* Metrics Display - 3 cards with icons */}
-      <div className="grid grid-cols-3 gap-2">
-        {/* Total Reps and Sets */}
-        <div className="flex flex-col items-center justify-center bg-transparent p-1">
-          <div className="flex items-center gap-1 mb-1">
-            <img 
-              src="/images/equipment-icon/Barbell.png" 
-              alt="Reps" 
-              className="w-4 h-4 object-contain"
-              style={{ filter: 'drop-shadow(0 0 12px rgba(168, 85, 247, 1)) drop-shadow(0 0 20px rgba(168, 85, 247, 0.6))' }}
-            />
-            <span className="text-[9px] text-gray-400">Sets & Reps</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <span className="text-2xl font-bold text-purple-300">{setsData?.length || 0}</span>
-            <span className="text-xl font-bold text-white">x</span>
-            <span className="text-2xl font-bold text-white">{setsData?.length ? Math.round(totalReps / setsData.length) : totalReps || 0}</span>
-          </div>
-          {/* Incomplete sets indicator */}
-          {setsData?.some(s => s.incomplete) && (
-            <div className="flex items-center gap-1 mt-0.5">
-              <span className="text-[9px] text-yellow-400 font-medium">
-                {setsData.filter(s => s.incomplete).length} incomplete
-              </span>
-            </div>
-          )}
-        </div>
-
-        {/* Time Duration */}
-        <div className="flex flex-col items-center justify-center bg-transparent p-1">
-          <div className="flex items-center gap-1 mb-1">
-            <img 
-              src="/images/icons/time.png" 
-              alt="Time" 
-              className="w-4 h-4 object-contain"
-              style={{ filter: 'drop-shadow(0 0 12px rgba(59, 130, 246, 1)) drop-shadow(0 0 20px rgba(59, 130, 246, 0.6))' }}
-            />
-            <span className="text-[9px] text-gray-400">Time</span>
-          </div>
-          <span className="text-2xl font-bold text-white">{formatTime(totalWorkoutTime || 0)}</span>
-        </div>
-
-        {/* Calories Burnt */}
-        <div className="flex flex-col items-center justify-center bg-transparent p-1">
-          <div className="flex items-center gap-1 mb-1">
-            <img 
-              src="/images/icons/burn.png" 
-              alt="Calories" 
-              className="w-4 h-4 object-contain"
-              style={{ filter: 'drop-shadow(0 0 8px rgba(249, 115, 22, 0.8))' }}
-            />
-            <span className="text-[9px] text-gray-400">Calories</span>
-          </div>
-          <div className="flex items-baseline gap-0.5">
-            <span className="text-2xl font-bold text-white">{totalCalories || 0}</span>
-            <span className="text-xs text-gray-400">kcal</span>
-          </div>
-        </div>
-      </div>
+      {/* Workout Breakdown */}
+      <WorkoutBreakdownCard
+        totalReps={parseInt(totalReps) || 0}
+        plannedReps={(parseInt(recommendedSets) || setsData?.length || 1) * (parseInt(recommendedReps) || 10)}
+        completedSets={setsData?.length || 0}
+        plannedSets={parseInt(recommendedSets) || setsData?.length || 0}
+        weight={parseFloat(weight) || 0}
+        weightUnit={weightUnit}
+        equipment={equipment}
+      />
     </div>
   );
 }

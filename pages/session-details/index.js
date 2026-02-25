@@ -138,6 +138,9 @@ export default function SessionDetailsPage() {
             plannedRepsPerSet={vm.plannedRepsPerSet}
             totalReps={vm.totalReps}
             totalSets={vm.totalSets}
+            weight={vm.weight}
+            weightUnit={vm.weightUnit}
+            equipment={vm.equipmentName}
           />
 
           {/* Execution Quality + Consistency — 2-column row */}

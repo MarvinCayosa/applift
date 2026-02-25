@@ -224,6 +224,7 @@ async function saveWorkoutToFirestore(userId, workoutId, metadata) {
         reps: metadata.plannedReps,
         weight: metadata.weight,
         weightUnit: metadata.weightUnit,
+        weightBreakdown: metadata.weightBreakdown || '',
       },
       results: {
         completedSets: metadata.completedSets,

@@ -50,6 +50,8 @@ export default function RecommendedSetCard({
   onCustomFieldClick = () => {},
   // Callback when carousel slide changes
   onActiveIndexChange = () => {},
+  // Weight breakdown from AI
+  weightBreakdown = '',
   // AI recommendation callbacks
   onRefresh = null,
   aiLoading = false,
@@ -111,7 +113,8 @@ export default function RecommendedSetCard({
       reps: recommendedReps,
       time,
       timeUnit,
-      burnCalories
+      burnCalories,
+      weightBreakdown,
     }] : []),
     {
       type: 'custom',
@@ -322,6 +325,9 @@ export default function RecommendedSetCard({
                                 </p>
                                 <p className="text-xs text-white/70 leading-none">{card.weightUnit}</p>
                               </div>
+                              {card.weightBreakdown && (
+                                <p className="text-[9px] text-white/40 mt-0.5 leading-tight">{card.weightBreakdown}</p>
+                              )}
                             </div>
                             <span className="text-white/50 text-xl font-light">|</span>
                             <div className="flex-1 py-0.5 text-center">
@@ -382,9 +388,12 @@ export default function RecommendedSetCard({
                         </div>
                         
                         {/* Powered by */}
-                        <p className="text-[9px] text-white leading-tight text-right opacity-50">
-                          Powered by<br />Vertex AI Studio
-                        </p>
+                        <div className="flex items-center gap-1 opacity-60">
+                          <img src="/images/gemini.png" alt="Gemini" className="w-3 h-3" />
+                          <p className="text-[9px] text-white leading-tight text-right">
+                            Powered by<br />Gemini
+                          </p>
+                        </div>
                       </div>
                     )}
                     {card.type === 'custom' && (
@@ -566,6 +575,9 @@ export default function RecommendedSetCard({
                                 </p>
                                 <p className="text-xs text-white/70 leading-none">{card.weightUnit}</p>
                               </div>
+                              {card.weightBreakdown && (
+                                <p className="text-[10px] text-white/40 mt-1 leading-tight">{card.weightBreakdown}</p>
+                              )}
                             </div>
                             <span className="text-white/50 text-3xl font-light">|</span>
                             <div className="flex-1 py-1 text-center">
@@ -626,9 +638,12 @@ export default function RecommendedSetCard({
                         </div>
                         
                         {/* Powered by */}
-                        <p className="text-[10px] text-white leading-tight text-right opacity-50">
-                          Powered by<br />Vertex AI Studio
-                        </p>
+                        <div className="flex items-center gap-1.5 opacity-60">
+                          <img src="/images/gemini.png" alt="Gemini" className="w-3.5 h-3.5" />
+                          <p className="text-[10px] text-white leading-tight text-right">
+                            Powered by<br />Gemini
+                          </p>
+                        </div>
                       </div>
                     )}
                     {card.type === 'custom' && (

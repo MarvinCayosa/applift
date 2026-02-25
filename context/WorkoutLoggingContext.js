@@ -99,6 +99,7 @@ export function WorkoutLoggingProvider({ children }) {
         plannedReps: config.plannedReps,
         weight: config.weight,
         weightUnit: config.weightUnit,
+        weightBreakdown: config.weightBreakdown || '',
         setType: config.setType || 'recommended'
       });
 
@@ -729,6 +730,7 @@ export function WorkoutLoggingProvider({ children }) {
         plannedReps: details.reps,
         weight: details.weight,
         weightUnit: details.weightUnit,
+        weightBreakdown: details.weightBreakdown || '',
         setType: details.setType || 'recommended'
       });
       return { logId: 'pending', sessionId: 'pending' };

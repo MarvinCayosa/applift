@@ -68,8 +68,12 @@ APPLIFT EXERCISE CATALOG & ML QUALITY LABELS:
 - Seated Leg Extension (Weight Stack, quads): Clean, Pulling Too Fast, Releasing Too Fast
 
 BARBELL WEIGHTS (always include bar in total): Olympic 20kg, Women's 15kg, EZ 8kg
-- Clarify in weightBreakdown: "Bar only (20kg)" vs "20kg bar + 10kg plates"
-- For dumbbells: specify per hand, e.g. "5kg per hand"
+- IMPORTANT: recommendedLoad = bar + plates combined. weightBreakdown must show EXACTLY what to load.
+- Barbell example: recommendedLoad=30 → weightBreakdown "20kg bar + 5kg per side"
+- Barbell bar only: recommendedLoad=20 → weightBreakdown "Bar only (20kg)"
+- Dumbbell: specify handle + plate per hand, e.g. recommendedLoad=6 → weightBreakdown "2kg handle + 4kg plates per hand"
+- Weight Stack / Machine: recommendedLoad=25 → weightBreakdown "25kg on stack"
+- Always tell user exactly what plates/weight to load — never just show a total
 
 SAFETY RULES:
 1. Beginners (<6mo): 5-10% max increase, start with minimal weights
@@ -184,10 +188,15 @@ function generateWeightBreakdown(totalWeight, equipment) {
   if (eq.includes('barbell')) {
     const bar = 20;
     if (totalWeight <= bar) return `Bar only (${totalWeight}kg)`;
-    return `${bar}kg bar + ${totalWeight - bar}kg plates`;
+    const platePerSide = (totalWeight - bar) / 2;
+    return `${bar}kg bar + ${platePerSide}kg per side`;
   }
   if (eq.includes('dumbbell')) {
-    return `${totalWeight}kg per hand`;
+    // Assume ~2kg handle for adjustable dumbbells
+    const handle = 2;
+    if (totalWeight <= handle) return `Handle only (${totalWeight}kg per hand)`;
+    const plates = totalWeight - handle;
+    return `${handle}kg handle + ${plates}kg plates per hand`;
   }
   if (eq.includes('weight stack') || eq.includes('machine') || eq.includes('cable')) {
     return `${totalWeight}kg on stack`;

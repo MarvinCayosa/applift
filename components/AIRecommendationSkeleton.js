@@ -11,9 +11,7 @@ export default function AIRecommendationSkeleton({ equipmentColor = '#8B5CF6' })
       {/* Generating text */}
       <div className="flex items-center justify-center gap-2">
         <div className="relative flex items-center gap-1.5">
-          <svg className="w-4 h-4 text-violet-400 animate-pulse" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M12 2L14.09 8.26L20 9.27L15.55 13.97L16.91 20L12 16.9L7.09 20L8.45 13.97L4 9.27L9.91 8.26L12 2Z" />
-          </svg>
+          <img src="/images/gemini.png" alt="Gemini" className="w-4 h-4 animate-pulse" />
           <p className="text-sm font-medium bg-gradient-to-r from-violet-400 via-purple-300 to-violet-400 bg-clip-text text-transparent animate-pulse">
             Generating AI Recommendation...
           </p>

@@ -39,6 +39,8 @@ export default function WorkoutFinished() {
     hasCSV,
     recommendedSets,
     recommendedReps,
+    weight,
+    weightUnit,
     workoutId,
     gcsPath
   } = router.query;
@@ -410,6 +412,10 @@ export default function WorkoutFinished() {
           totalWorkoutTime={parseInt(totalTime) || analysisData?.activeTime || 0}
           setsData={mergedSetsData}
           totalReps={parseInt(totalReps) || 0}
+          weight={parseFloat(weight) || 0}
+          weightUnit={weightUnit || 'kg'}
+          recommendedSets={parseInt(recommendedSets) || 0}
+          recommendedReps={parseInt(recommendedReps) || 0}
           onSeeMore={() => {
             // Mark that we're navigating to details page
             if (typeof window !== 'undefined' && workoutId) {

@@ -789,6 +789,7 @@ export default function SelectedWorkout() {
             recommendedSets={aiRec?.sets ?? details.recommendedSets}
             recommendedReps={aiRec?.reps ?? details.recommendedReps}
             weight={aiRec?.weight ?? 5}
+            weightBreakdown={aiRec?.weightBreakdown || ''}
             time={aiRec?.restTimeSeconds ?? 45}
             burnCalories={aiRec?.estimatedCalories ?? 45}
             image={workoutImage}
@@ -927,6 +928,7 @@ export default function SelectedWorkout() {
                 const finalWeight = isCustomSet ? (customWeight || 0) : aiWeight;
                 const finalWeightUnit = isCustomSet ? customWeightUnit : 'kg';
                 const finalRestTime = isCustomSet ? customRestTime : aiRestTime;
+                const finalWeightBreakdown = isCustomSet ? '' : (aiRec?.weightBreakdown || '');
 
                 console.log('🏋️ Starting Workout:', {
                   exercise: workout,
@@ -936,6 +938,7 @@ export default function SelectedWorkout() {
                   reps: finalReps,
                   weight: finalWeight,
                   weightUnit: finalWeightUnit,
+                  weightBreakdown: finalWeightBreakdown,
                 });
 
                 // Initialize workout log before navigating
@@ -947,6 +950,7 @@ export default function SelectedWorkout() {
                   reps: finalReps,
                   weight: finalWeight,
                   weightUnit: finalWeightUnit,
+                  weightBreakdown: finalWeightBreakdown,
                   setType: setType,
                 });
 
@@ -960,6 +964,7 @@ export default function SelectedWorkout() {
                     plannedReps: finalReps,
                     weight: finalWeight,
                     weightUnit: finalWeightUnit,
+                    weightBreakdown: finalWeightBreakdown,
                     setType: setType,
                     restTime: finalRestTime,
                   }
