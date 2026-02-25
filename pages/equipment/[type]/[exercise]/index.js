@@ -126,12 +126,12 @@ export default function ExerciseDetailPage() {
   const progressiveOverload = useMemo(() => computeProgressiveOverloadScore(sessions, analyticsMap), [sessions, analyticsMap])
   const weeklyComparison = useMemo(() => computeWeeklyComparison(sessions, analyticsMap, chartMetric), [sessions, analyticsMap, chartMetric])
 
-  /* ── quality comparison for last 3 sessions ── */
+  /* ── quality comparison for last sessions (timeline) ── */
   const qualityComparison = useMemo(() => {
-    const last3Sessions = sessions.slice(0, 3)
-    if (last3Sessions.length === 0) return []
+    const lastSessions = sessions.slice(0, 5)
+    if (lastSessions.length === 0) return []
 
-    return last3Sessions.map((session, index) => {
+    return lastSessions.map((session, index) => {
       const analytics = analyticsMap[session.id]
       const qualityData = computeQualityBreakdown([session], analytics ? {[session.id]: analytics} : {}, slug)
       const date = getLogDate(session) || new Date()
@@ -142,8 +142,8 @@ export default function ExerciseDetailPage() {
       
       // Calculate trend (compared to previous session)
       let trend = null
-      if (index < last3Sessions.length - 1) {
-        const prevSession = last3Sessions[index + 1]
+      if (index < lastSessions.length - 1) {
+        const prevSession = lastSessions[index + 1]
         const prevAnalytics = analyticsMap[prevSession.id]
         const prevQualityData = computeQualityBreakdown([prevSession], prevAnalytics ? {[prevSession.id]: prevAnalytics} : {}, slug)
         const prevCleanItem = prevQualityData.find(item => item.name === 'Clean')
@@ -610,72 +610,124 @@ export default function ExerciseDetailPage() {
                           )}
                         </div>
 
-                        {/* Slide 2: Last 3 Sessions Comparison */}
+                        {/* Slide 2: Last Sessions Timeline */}
                         <div className="w-full shrink-0 snap-center snap-always p-4 pt-0 flex flex-col" style={{ minWidth: '100%' }}>
                           {qualityComparison.length > 0 ? (
                             <div className="flex-1 flex flex-col">
-                              <p className="text-xs text-white/60 mb-3 text-center">Last 3 Sessions</p>
-                              
-                              <div className="space-y-3 flex-1">
-                                {qualityComparison.map((session, idx) => (
-                                  <div key={idx} className="bg-white/5 rounded-xl p-3 flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                      <div className="text-center">
-                                        <p className="text-xs text-white/50">{session.date}</p>
-                                        <p className="text-[10px] text-white/40">{session.weight}kg · {session.totalReps}reps</p>
-                                      </div>
-                                      
-                                      <div className="flex items-center gap-2">
-                                        <div className="w-3 h-3 rounded-full bg-green-500" />
-                                        <span className="text-sm font-bold text-white">{session.cleanPct}%</span>
-                                      </div>
+                              {/* Trend badge */}
+                              {(() => {
+                                const trends = qualityComparison.filter(s => s.trend).map(s => s.trend)
+                                const upCount = trends.filter(t => t === 'up').length
+                                const downCount = trends.filter(t => t === 'down').length
+                                const trendLabel = upCount > downCount ? 'Improving' : downCount > upCount ? 'Declining' : 'Stable'
+                                const trendColor = upCount > downCount ? '#22C55E' : downCount > upCount ? '#EF4444' : '#A1A1AA'
+                                const trendArrow = upCount > downCount ? '↑' : downCount > upCount ? '↓' : '→'
+                                const avgQuality = Math.round(qualityComparison.reduce((sum, s) => sum + s.cleanPct, 0) / qualityComparison.length)
+                                return (
+                                  <div className="flex items-center justify-between mb-3">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-lg font-bold text-white">{avgQuality}%</span>
+                                      <span className="text-[10px] text-white/40">avg</span>
                                     </div>
-
-                                    <div className="flex items-center">
-                                      {session.trend === 'up' && (
-                                        <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20">
-                                          <path fillRule="evenodd" d="M3.293 9.707a1 1 0 010-1.414l6-6a1 1 0 011.414 0l6 6a1 1 0 01-1.414 1.414L11 5.414V17a1 1 0 11-2 0V5.414L4.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                                        </svg>
-                                      )}
-                                      {session.trend === 'down' && (
-                                        <svg className="w-4 h-4 text-red-400" fill="currentColor" viewBox="0 0 20 20">
-                                          <path fillRule="evenodd" d="M16.707 10.293a1 1 0 010 1.414l-6 6a1 1 0 01-1.414 0l-6-6a1 1 0 111.414-1.414L9 14.586V3a1 1 0 012 0v11.586l4.293-4.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                        </svg>
-                                      )}
-                                      {session.trend === 'same' && (
-                                        <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                                          <path fillRule="evenodd" d="M3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
-                                        </svg>
-                                      )}
+                                    <div
+                                      className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                                      style={{ backgroundColor: `${trendColor}20`, color: trendColor }}
+                                    >
+                                      <span>{trendArrow}</span>
+                                      <span>{trendLabel}</span>
                                     </div>
                                   </div>
-                                ))}
-                              </div>
+                                )
+                              })()}
 
-                              <div className="mt-4 bg-white/5 rounded-xl p-3">
-                                <div className="flex items-center justify-between text-xs">
-                                  <span className="text-white/60">Average Quality</span>
-                                  <span className="font-bold text-white">
-                                    {Math.round(qualityComparison.reduce((sum, s) => sum + s.cleanPct, 0) / qualityComparison.length)}%
-                                  </span>
-                                </div>
-                                <div className="flex items-center justify-between text-xs mt-1">
-                                  <span className="text-white/60">Trend</span>
-                                  <span className="font-bold text-white">
-                                    {(() => {
-                                      const trends = qualityComparison.filter(s => s.trend).map(s => s.trend)
-                                      const upCount = trends.filter(t => t === 'up').length
-                                      const downCount = trends.filter(t => t === 'down').length
-                                      if (upCount > downCount) return '📈 Improving'
-                                      if (downCount > upCount) return '📉 Declining'  
-                                      return '➡️ Stable'
-                                    })()}
-                                  </span>
-                                </div>
+                              {/* Timeline */}
+                              <div className="flex-1 relative">
+                                {qualityComparison.map((session, idx) => {
+                                  const isLatest = idx === 0
+                                  const isLast = idx === qualityComparison.length - 1
+                                  const pctColor = session.cleanPct >= 80 ? '#22C55E' : session.cleanPct >= 50 ? '#f59e0b' : '#EF4444'
+                                  const diff = session.trend === 'up' ? '+' : session.trend === 'down' ? '' : ''
+                                  const prevPct = idx < qualityComparison.length - 1 ? qualityComparison[idx + 1].cleanPct : null
+                                  const pctDiff = prevPct !== null ? session.cleanPct - prevPct : null
+
+                                  return (
+                                    <div key={idx} className="flex gap-3 relative" style={{ paddingBottom: isLast ? 0 : 12 }}>
+                                      {/* Timeline stem */}
+                                      <div className="flex flex-col items-center" style={{ width: 16 }}>
+                                        {/* Node */}
+                                        <div
+                                          className="relative z-10 flex-shrink-0 rounded-full flex items-center justify-center"
+                                          style={{
+                                            width: isLatest ? 16 : 10,
+                                            height: isLatest ? 16 : 10,
+                                            backgroundColor: isLatest ? pctColor : 'transparent',
+                                            border: isLatest ? 'none' : `2px solid ${pctColor}60`,
+                                            marginTop: isLatest ? 0 : 3,
+                                          }}
+                                        >
+                                          {isLatest && (
+                                            <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                                          )}
+                                        </div>
+                                        {/* Connector line */}
+                                        {!isLast && (
+                                          <div
+                                            className="flex-1"
+                                            style={{
+                                              width: 1.5,
+                                              background: `linear-gradient(to bottom, ${pctColor}50, ${
+                                                qualityComparison[idx + 1].cleanPct >= 80 ? '#22C55E' : qualityComparison[idx + 1].cleanPct >= 50 ? '#f59e0b' : '#EF4444'
+                                              }50)`,
+                                              minHeight: 12,
+                                            }}
+                                          />
+                                        )}
+                                      </div>
+
+                                      {/* Content */}
+                                      <div className="flex-1 pb-1" style={{ marginTop: isLatest ? -2 : 0 }}>
+                                        <div className="flex items-baseline justify-between">
+                                          <div className="flex items-baseline gap-1.5">
+                                            <span className={`font-bold text-white ${isLatest ? 'text-base' : 'text-sm opacity-70'}`}>
+                                              {session.cleanPct}%
+                                            </span>
+                                            {pctDiff !== null && pctDiff !== 0 && (
+                                              <span
+                                                className="text-[10px] font-semibold"
+                                                style={{ color: pctDiff > 0 ? '#22C55E' : '#EF4444' }}
+                                              >
+                                                {pctDiff > 0 ? '+' : ''}{pctDiff}
+                                              </span>
+                                            )}
+                                          </div>
+                                          <span className={`text-white/40 ${isLatest ? 'text-[11px]' : 'text-[10px]'}`}>
+                                            {session.date}
+                                          </span>
+                                        </div>
+                                        {/* Progress bar */}
+                                        <div className="mt-1.5 h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                                          <div
+                                            className="h-full rounded-full transition-all duration-700"
+                                            style={{
+                                              width: `${session.cleanPct}%`,
+                                              background: `linear-gradient(90deg, ${pctColor}, ${pctColor}AA)`,
+                                              opacity: isLatest ? 1 : 0.6,
+                                            }}
+                                          />
+                                        </div>
+                                        <div className="flex items-center gap-1 mt-1">
+                                          <span className="text-[9px] text-white/30">{session.weight}kg</span>
+                                          <span className="text-[9px] text-white/20">·</span>
+                                          <span className="text-[9px] text-white/30">{session.totalReps} reps</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )
+                                })}
                               </div>
                             </div>
                           ) : (
-                            <p className="text-white/25 text-xs text-center py-8 flex-1 flex items-center justify-center">Need at least 3 sessions</p>
+                            <p className="text-white/25 text-xs text-center py-8 flex-1 flex items-center justify-center">Need at least 2 sessions</p>
                           )}
                         </div>
                       </div>

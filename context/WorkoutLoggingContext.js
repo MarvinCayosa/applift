@@ -575,28 +575,55 @@ export function WorkoutLoggingProvider({ children }) {
 
       // Save to Firestore via API (skip when offline)
       if (user && online) {
+        const saveToFirestore = async (attempt = 1) => {
+          try {
+            const token = await user.getIdToken();
+            const controller = new AbortController();
+            // 15s timeout (Vercel cold starts can take 5-10s)
+            const tid = setTimeout(() => controller.abort(), 15000);
+            await fetch('/api/imu-stream', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                action: 'completeWorkout',
+                userId: user.uid,
+                workoutId: result.workoutId,
+                metadata: result.metadata
+              }),
+              signal: controller.signal,
+            });
+            clearTimeout(tid);
+            console.log(`[WorkoutLogging] Firestore save succeeded (attempt ${attempt})`);
+          } catch (fsErr) {
+            console.warn(`[WorkoutLogging] Firestore save failed (attempt ${attempt}):`, fsErr.message);
+            if (attempt < 3) {
+              // Retry after a short delay
+              await new Promise(r => setTimeout(r, 1000 * attempt));
+              return saveToFirestore(attempt + 1);
+            }
+            console.error('[WorkoutLogging] Firestore save failed after 3 attempts');
+          }
+        };
+        await saveToFirestore();
+
+        // Invalidate exercise stats cache so History page shows fresh data
         try {
-          const token = await user.getIdToken();
-          const controller = new AbortController();
-          const tid = setTimeout(() => controller.abort(), 6000);
-          await fetch('/api/imu-stream', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({
-              action: 'completeWorkout',
-              userId: user.uid,
-              workoutId: result.workoutId,
-              metadata: result.metadata
-            }),
-            signal: controller.signal,
-          });
-          clearTimeout(tid);
-        } catch (fsErr) {
-          console.warn('[WorkoutLogging] Firestore save failed (will sync later):', fsErr.message);
-        }
+          const eq = (result.metadata?.equipment || '').trim()
+            .replace(/([a-z])([A-Z])/g, '$1-$2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
+            .toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').replace(/-+/g, '-').replace(/^-|-$/g, '');
+          const ex = (result.metadata?.exercise || '').trim()
+            .replace(/([a-z])([A-Z])/g, '$1-$2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
+            .toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').replace(/-+/g, '-').replace(/^-|-$/g, '');
+          const prefix = `exStats_${user.uid}_${eq}_${ex}_`;
+          for (let i = sessionStorage.length - 1; i >= 0; i--) {
+            const key = sessionStorage.key(i);
+            if (key?.startsWith(prefix)) sessionStorage.removeItem(key);
+          }
+          console.log('[WorkoutLogging] Cleared exercise stats cache:', prefix);
+        } catch (_) {}
       }
       
       return result;

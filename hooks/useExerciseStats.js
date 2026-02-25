@@ -62,21 +62,23 @@ export default function useExerciseStats(equipmentSlug, exerciseKey) {
   const [loading, setLoading] = useState(true)
   const fetchedRef = useRef(false)
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (bypassCache = false) => {
     if (!uid || !equipmentSlug || !exerciseKey) { setLoading(false); return }
 
     const logsCacheKey = cacheKey(uid, equipmentSlug, exerciseKey, 'logs')
     const analyticsCacheKey = cacheKey(uid, equipmentSlug, exerciseKey, 'analytics')
 
-    // Try cache first
-    const cachedLogs = getFromCache(logsCacheKey)
-    const cachedAnalytics = getFromCache(analyticsCacheKey)
+    // Try cache first (unless bypassing)
+    if (!bypassCache) {
+      const cachedLogs = getFromCache(logsCacheKey)
+      const cachedAnalytics = getFromCache(analyticsCacheKey)
 
-    if (cachedLogs && cachedAnalytics) {
-      setLogs(reviveDates(cachedLogs))
-      setAnalytics(reviveDates(cachedAnalytics))
-      setLoading(false)
-      return
+      if (cachedLogs && cachedAnalytics) {
+        setLogs(reviveDates(cachedLogs))
+        setAnalytics(reviveDates(cachedAnalytics))
+        setLoading(false)
+        return
+      }
     }
 
     // Fetch from Firestore – logs and analytics in parallel
@@ -119,5 +121,18 @@ export default function useExerciseStats(equipmentSlug, exerciseKey) {
     fetchData()
   }, [fetchData])
 
-  return { logs, analytics, loading, refetch: fetchData }
+  // Refetch when page becomes visible (e.g., user comes back from workout)
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && fetchedRef.current) {
+        fetchData(true) // bypass cache
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [fetchData])
+
+  const refetch = useCallback(() => fetchData(true), [fetchData])
+
+  return { logs, analytics, loading, refetch }
 }
