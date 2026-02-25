@@ -8,6 +8,7 @@ import {
   CartesianGrid, Tooltip,
   PieChart, Pie, Cell,
 } from 'recharts'
+import Body from '@mjcdev/react-body-highlighter'
 import BottomNav from '../../../../components/BottomNav'
 import { equipmentConfig } from '../../../../components/equipment'
 import ExerciseHeader from '../../../../components/exercise/ExerciseHeader'
@@ -23,6 +24,7 @@ import {
   computeProgressiveOverloadScore,
   computeWeeklyComparison,
 } from '../../../../utils/exerciseStatsHelper'
+import { useUserProfile } from '../../../../utils/userProfileStore'
 
 /*───────────────────────────  CONSTANTS  ───────────────────────────*/
 
@@ -31,6 +33,56 @@ const PERIOD_OPTIONS = [
   { key: 'month', label: 'This Month' },
   { key: 'all',   label: 'All Time' },
 ]
+
+// Muscle group mappings for exercises
+// Valid slugs: trapezius, upper-back, lower-back, chest, biceps, triceps,
+// forearm, deltoids, abs, obliques, adductors, hamstring,
+// quadriceps, calves, gluteal, knees, tibialis, neck, hands, feet
+const EXERCISE_MUSCLES = {
+  'overhead-triceps-extension': {
+    muscles: [
+      { slug: 'triceps', intensity: 3, label: 'Triceps' }
+    ],
+    sides: ['front']
+  },
+  'concentration-curls': {
+    muscles: [
+      { slug: 'biceps', intensity: 3, label: 'Biceps' },
+      { slug: 'forearm', intensity: 1, label: 'Forearm' }
+    ],
+    sides: ['front']
+  },
+  'flat-bench-barbell-press': {
+    muscles: [
+      { slug: 'chest', intensity: 3, label: 'Chest' },
+      { slug: 'triceps', intensity: 2, label: 'Triceps' },
+      { slug: 'deltoids', intensity: 2, label: 'Front Deltoids' }
+    ],
+    sides: ['front']
+  },
+  'back-squats': {
+    muscles: [
+      { slug: 'quadriceps', intensity: 3, label: 'Quadriceps' },
+      { slug: 'gluteal', intensity: 3, label: 'Glutes' },
+      { slug: 'hamstring', intensity: 2, label: 'Hamstrings' }
+    ],
+    sides: ['front', 'back']
+  },
+  'lateral-pulldown': {
+    muscles: [
+      { slug: 'upper-back', intensity: 3, label: 'Upper Back (Lats)' },
+      { slug: 'deltoids', intensity: 2, label: 'Rear Deltoids' },
+      { slug: 'biceps', intensity: 1, label: 'Biceps' }
+    ],
+    sides: ['back', 'front']
+  },
+  'seated-leg-extension': {
+    muscles: [
+      { slug: 'quadriceps', intensity: 3, label: 'Quadriceps' }
+    ],
+    sides: ['front']
+  }
+}
 
 /*───────────────────────────  SMALL UI  ───────────────────────────*/
 
@@ -58,6 +110,8 @@ const Dots = ({ count, active }) => (
 export default function ExerciseDetailPage() {
   const router = useRouter()
   const { type, exercise: exerciseSlug } = router.query
+  const { profile } = useUserProfile()
+  const userGender = profile?.gender === 'female' ? 'female' : 'male'
   const slug = typeof type === 'string' ? type : ''
 
   const config = equipmentConfig[slug]
@@ -104,6 +158,7 @@ export default function ExerciseDetailPage() {
   const [activeSlide, setActiveSlide] = useState(0)
   const qualityCarouselRef = useRef(null)
   const [activeQualitySlide, setActiveQualitySlide] = useState(0)
+  const [selectedMuscle, setSelectedMuscle] = useState(null)
   const handleCarouselScroll = useCallback(() => {
     const el = carouselRef.current
     if (!el) return
@@ -128,7 +183,7 @@ export default function ExerciseDetailPage() {
 
   /* ── quality comparison for last sessions (timeline) ── */
   const qualityComparison = useMemo(() => {
-    const lastSessions = sessions.slice(0, 5)
+    const lastSessions = sessions.slice(0, 3)
     if (lastSessions.length === 0) return []
 
     return lastSessions.map((session, index) => {
@@ -269,6 +324,108 @@ export default function ExerciseDetailPage() {
                     </div>
                   </div>
                 </div>
+
+                {/* ═══ Targeted Muscle Groups ═══ */}
+                <section className="content-fade-up-2">
+                  <h2 className="text-lg font-bold text-white">Targeted Muscles</h2>
+                  <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: 'rgba(0,0,0,0.3)' }}>
+                    {(() => {
+                      const muscleData = EXERCISE_MUSCLES[exerciseCfg.key];
+                      if (!muscleData) {
+                        return (
+                          <div className="text-center py-8">
+                            <p className="text-white/40 text-sm">Muscle data not available</p>
+                          </div>
+                        );
+                      }
+
+                      const bodyData = selectedMuscle
+                        ? muscleData.muscles.filter(m => m.slug === selectedMuscle).map(m => ({ slug: m.slug, intensity: 3 }))
+                        : muscleData.muscles.map(m => ({ slug: m.slug, intensity: m.intensity }));
+
+                      const bodyColors = [
+                        `${bgColor}40`,
+                        `${bgColor}80`,
+                        bgColor,
+                      ];
+
+                      return (
+                        <div className="flex items-stretch">
+                          {/* Left — body diagrams (always front + back) */}
+                          <div
+                            className="flex items-center justify-center py-3 flex-shrink-0"
+                            style={{
+                              width: '55%',
+                              minWidth: 140,
+                              background: 'linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%)',
+                            }}
+                          >
+                            {['front', 'back'].map((s) => (
+                              <div key={s} className="flex flex-col items-center">
+                                <Body
+                                  data={bodyData}
+                                  gender={userGender}
+                                  side={s}
+                                  scale={0.55}
+                                  border="none"
+                                  colors={bodyColors}
+                                />
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Divider */}
+                          <div className="w-px bg-white/[0.06] my-3" />
+
+                          {/* Right — muscle breakdown */}
+                          <div className="flex-1 flex flex-col justify-start py-3 px-2 gap-1.5 min-w-0">
+                            {muscleData.muscles.map((muscle) => {
+                              const isPrimary = muscle.intensity === 3;
+                              const isSelected = selectedMuscle === muscle.slug;
+                              const tagLabel = isPrimary ? 'Primary' : muscle.intensity === 2 ? 'Secondary' : 'Stabilizer';
+                              return (
+                                <div
+                                  key={muscle.slug}
+                                  onClick={() => setSelectedMuscle(isSelected ? null : muscle.slug)}
+                                  className="flex items-center gap-2 rounded-lg p-2 transition-all cursor-pointer active:scale-[0.98]"
+                                  style={{
+                                    backgroundColor: isSelected ? `${bgColor}30` : isPrimary ? `${bgColor}15` : 'rgba(255,255,255,0.03)',
+                                  }}
+                                >
+                                  {/* Intensity bar - single wide bar */}
+                                  <div
+                                    className="rounded-sm flex-shrink-0"
+                                    style={{
+                                      width: 4,
+                                      height: 20,
+                                      background: `linear-gradient(to top, ${bgColor} ${muscle.intensity * 33.3}%, rgba(255,255,255,0.1) ${muscle.intensity * 33.3}%)`,
+                                    }}
+                                  />
+
+                                  {/* Text */}
+                                  <p className="flex-1 text-xs font-semibold leading-tight text-white/70">
+                                    {muscle.label}
+                                  </p>
+
+                                  {/* Tag pill - filled solid */}
+                                  <span
+                                    className="text-[8px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full flex-shrink-0"
+                                    style={{
+                                      color: isPrimary ? '#fff' : 'rgba(255,255,255,0.7)',
+                                      backgroundColor: isPrimary ? bgColor : 'rgba(255,255,255,0.12)',
+                                    }}
+                                  >
+                                    {tagLabel}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </section>
 
                 {/* ═══ Workout Progression ═══ */}
                 <section className="content-fade-up-2">

@@ -208,31 +208,35 @@ const WorkoutLogCard = memo(({ log, analytics, accentColor = '#3B82F6', onClick,
       </div>
 
       {/* ═══ Bottom Row: Duration, Calories, Date, Time ═══ */}
-      <div className="flex items-center justify-between mt-2 sm:mt-3 gap-2">
+      <div className="flex items-center justify-between mt-3 sm:mt-4 gap-2">
         {/* Duration + Calories pill */}
-        <div className="inline-flex items-center flex-shrink-0 px-1.5 py-1 sm:px-2.5 sm:py-1.5 gap-1 sm:gap-1.5" style={{ backgroundColor: 'rgb(15 15 15)', borderRadius: '8px' }}>
+        <div className="inline-flex items-center flex-shrink-0 px-2.5 py-1.5 sm:px-3 sm:py-2 gap-1.5 sm:gap-2" style={{ backgroundColor: 'rgb(15 15 15)', borderRadius: '10px' }}>
           {/* Timer icon */}
-          <svg className="flex-shrink-0 w-3 h-3 sm:w-4 sm:h-4" viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="13" r="8" stroke="#3b82f6" strokeWidth="2"/>
-            <path d="M12 9v4l2.5 2.5" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round"/>
-            <path d="M12 5V3" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round"/>
-            <path d="M9 3h6" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round"/>
+          <svg className="flex-shrink-0 w-4 h-4 sm:w-5 sm:h-5" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="13" r="8" stroke={accentColor} strokeWidth="2"/>
+            <path d="M12 9v4l2.5 2.5" stroke={accentColor} strokeWidth="2" strokeLinecap="round"/>
+            <path d="M12 5V3" stroke={accentColor} strokeWidth="2" strokeLinecap="round"/>
+            <path d="M9 3h6" stroke={accentColor} strokeWidth="2" strokeLinecap="round"/>
           </svg>
-          <span className="text-[10px] sm:text-[12px] font-bold text-white whitespace-nowrap">{duration}</span>
+          <span className="text-xs sm:text-sm font-bold text-white whitespace-nowrap">{duration}</span>
+
+          {/* Divider */}
+          <div className="w-px h-3.5 bg-white/15 mx-0.5" />
 
           {/* Flame icon */}
-          <svg className="flex-shrink-0 ml-0.5 sm:ml-1 w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" viewBox="0 0 24 24" fill="#3b82f6">
-            <path d="M12 23c-3.5 0-7-2.5-7-7 0-3 1.5-5 3-6.5.5-.5 1-.5 1.5-.5.5 0 .5.5.5 1v2c0 .5.5 1 1 .5.5-.5 2-3 2-5.5 0-1 0-2.5-.5-4-.5-.5 0-1.5.5-1.5h.5c3 1 6.5 4.5 6.5 9.5 0 6-4 12-8 12z"/>
+          <svg className="flex-shrink-0 w-4 h-4 sm:w-5 sm:h-5" viewBox="0 0 24 24" fill="none">
+            <path d="M12 2C12 2 7 7.5 7 12.5C7 16.09 9.24 19 12 19C14.76 19 17 16.09 17 12.5C17 7.5 12 2 12 2Z" fill={accentColor} opacity="0.3"/>
+            <path d="M12 2C12 2 7 7.5 7 12.5C7 16.09 9.24 19 12 19C14.76 19 17 16.09 17 12.5C17 7.5 12 2 12 2ZM12 17C10.35 17 9 15.54 9 12.5C9 10.12 10.5 7.69 12 5.78C13.5 7.69 15 10.12 15 12.5C15 15.54 13.65 17 12 17Z" fill={accentColor}/>
           </svg>
-          <span className="text-[10px] sm:text-[12px] font-bold text-white whitespace-nowrap">{calories} Kcal</span>
+          <span className="text-xs sm:text-sm font-bold text-white whitespace-nowrap">{calories} Kcal</span>
         </div>
 
         {/* Date + Time */}
         <div className="flex items-center gap-1 sm:gap-2 min-w-0 flex-shrink">
-          <span className="text-[10px] sm:text-[12px] text-white/40 font-medium truncate">{dateStr}</span>
+          <span className="text-[11px] sm:text-xs text-white/40 font-medium truncate">{dateStr}</span>
           <span
-            className="text-[10px] sm:text-[12px] font-medium text-white/50 flex-shrink-0 px-1 py-0.5 sm:px-1.5 sm:py-0.5"
-            style={{ backgroundColor: 'rgb(45 45 45)', borderRadius: '4px' }}
+            className="text-[11px] sm:text-xs font-medium text-white/50 flex-shrink-0 px-1.5 py-0.5 sm:px-2 sm:py-1"
+            style={{ backgroundColor: 'rgb(45 45 45)', borderRadius: '6px' }}
           >
             {timeStr}
           </span>

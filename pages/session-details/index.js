@@ -22,7 +22,6 @@ import ExecutionConsistencyCard from '../../components/sessionDetails/ExecutionC
 import FatigueCarousel from '../../components/sessionDetails/FatigueCarousel';
 import MovementPhasesSection from '../../components/sessionDetails/MovementPhasesSection';
 import WorkoutProgressCard from '../../components/sessionDetails/WorkoutProgressCard';
-import SetBreakdownCard from '../../components/sessionDetails/SetBreakdownCard';
 import SessionDetailsSkeleton from '../../components/sessionDetails/SessionDetailsSkeleton';
 import BottomNav from '../../components/BottomNav';
 import { equipmentConfig } from '../../components/equipment';
@@ -154,14 +153,6 @@ export default function SessionDetailsPage() {
             weight={vm.weight}
             weightUnit={vm.weightUnit}
             equipment={vm.equipmentName}
-          />
-
-          {/* Set Breakdown — per-set rep dots with incomplete / skipped indicators */}
-          <SetBreakdownCard
-            setsData={vm.mergedSetsData}
-            plannedSets={vm.plannedSets}
-            plannedRepsPerSet={vm.plannedRepsPerSet}
-            primaryColor={primaryColor}
           />
 
           {/* Execution Quality + Consistency — 2-column row */}
