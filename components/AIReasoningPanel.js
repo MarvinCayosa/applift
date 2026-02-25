@@ -8,10 +8,12 @@
 
 import { useState } from 'react';
 
-export default function AIReasoningPanel({ reasoning, isFromCache, regenCount, maxRegen, hasPastSessions }) {
+export default function AIReasoningPanel({ reasoning, recommendation, isFromCache, regenCount, maxRegen, hasPastSessions }) {
   const [expanded, setExpanded] = useState(false);
 
   if (!reasoning) return null;
+
+  const restDays = recommendation?.recommendedRestDays;
 
   return (
     <div className="rounded-2xl bg-white/[0.06] border border-white/10 overflow-hidden transition-all duration-300">
@@ -30,7 +32,8 @@ export default function AIReasoningPanel({ reasoning, isFromCache, regenCount, m
           <div className="text-left">
             <p className="text-xs font-semibold text-white/90">AI Insight</p>
             <p className="text-[10px] text-white/40">
-              {isFromCache ? 'Cached' : 'Generated'}{hasPastSessions ? ' · Based on your history' : ' · First time'}
+              {isFromCache ? 'Cached' : 'Generated'}{hasPastSessions ? ' · Based on history' : ' · First time'}
+              {restDays && ` · Rest ${restDays}d`}
             </p>
           </div>
         </div>
@@ -65,9 +68,9 @@ export default function AIReasoningPanel({ reasoning, isFromCache, regenCount, m
                 <svg className="w-3 h-3 text-violet-400" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z"/>
                 </svg>
-                <p className="text-[10px] font-semibold text-violet-400 uppercase tracking-wide">Why This Recommendation</p>
+                <p className="text-[10px] font-semibold text-violet-400 uppercase tracking-wide">Why</p>
               </div>
-              <p className="text-xs text-white/70 leading-relaxed">{reasoning.rationale}</p>
+              <p className="text-xs text-white/70 leading-relaxed text-justify">{reasoning.rationale}</p>
             </div>
           )}
 
@@ -80,7 +83,22 @@ export default function AIReasoningPanel({ reasoning, isFromCache, regenCount, m
                 </svg>
                 <p className="text-[10px] font-semibold text-green-400 uppercase tracking-wide">Safety</p>
               </div>
-              <p className="text-xs text-white/60 leading-relaxed">{reasoning.safetyJustification}</p>
+              <p className="text-xs text-white/60 leading-relaxed text-justify">{reasoning.safetyJustification}</p>
+            </div>
+          )}
+
+          {/* Recommended Rest Days */}
+          {restDays && (
+            <div>
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <svg className="w-3 h-3 text-blue-400" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM9 10H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2zm-8 4H7v2h2v-2zm4 0h-2v2h2v-2z"/>
+                </svg>
+                <p className="text-[10px] font-semibold text-blue-400 uppercase tracking-wide">Rest Interval</p>
+              </div>
+              <p className="text-xs text-white/60 leading-relaxed text-justify">
+                Wait {restDays} day{restDays > 1 ? 's' : ''} before repeating this exercise for optimal recovery.
+              </p>
             </div>
           )}
 
@@ -91,9 +109,9 @@ export default function AIReasoningPanel({ reasoning, isFromCache, regenCount, m
                 <svg className="w-3 h-3 text-amber-400" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6h-6z"/>
                 </svg>
-                <p className="text-[10px] font-semibold text-amber-400 uppercase tracking-wide">Next Session</p>
+                <p className="text-[10px] font-semibold text-amber-400 uppercase tracking-wide">Next</p>
               </div>
-              <p className="text-xs text-white/60 leading-relaxed">{reasoning.progressionNotes}</p>
+              <p className="text-xs text-white/60 leading-relaxed text-justify">{reasoning.progressionNotes}</p>
             </div>
           )}
         </div>

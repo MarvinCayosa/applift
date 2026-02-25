@@ -65,7 +65,13 @@ export async function cacheRecommendation(uid, equipment, exerciseName, recommen
     };
 
     if (existing.exists()) {
-      data.regenCount = increment(1);
+      // Reset regen count to 0 when new session triggers refresh (user gets 5 fresh regens)
+      // Only increment for manual 'regenerate' trigger
+      if (triggeredBy === 'new_session' || triggeredBy === 'initial') {
+        data.regenCount = 0; // Reset counter on new workout
+      } else {
+        data.regenCount = increment(1); // Increment for manual regen
+      }
       await updateDoc(docRef, data);
     } else {
       data.regenCount = 0;

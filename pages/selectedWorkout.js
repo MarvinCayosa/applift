@@ -522,21 +522,31 @@ export default function SelectedWorkout() {
               console.log('[SelectedWorkout] Could not fetch analytics for session:', err.message);
             }
             
-            // Extract ML classification summary
+            // Extract ML classification summary and clean rep percentage
             let mlSummary = null;
+            let cleanRepPct = null;
+            let cleanReps = 0;
+            let totalReps = 0;
             if (analytics?.mlClassification?.distribution) {
               const dist = analytics.mlClassification.distribution;
-              const total = Object.values(dist).reduce((sum, c) => sum + c, 0);
-              const cleanCount = dist['Clean'] || dist['0'] || 0;
-              mlSummary = `${Math.round((cleanCount / total) * 100)}% clean reps`;
+              totalReps = Object.values(dist).reduce((sum, c) => sum + c, 0);
+              cleanReps = dist['Clean'] || dist['0'] || 0;
+              cleanRepPct = totalReps > 0 ? Math.round((cleanReps / totalReps) * 100) : null;
+              mlSummary = `Clean: ${cleanRepPct}%, Other: ${100 - cleanRepPct}%`;
             }
+            
+            // Calculate reps per set for better context
+            const sets = data.results?.totalSets || data.planned?.sets || 0;
+            const reps = data.results?.totalReps || data.planned?.reps || 0;
+            const repsPerSet = sets > 0 ? Math.round(reps / sets) : 0;
             
             return {
               date: data.timestamps?.completed?.toDate?.()?.toISOString?.() || null,
               weight: data.results?.weight || data.planned?.weight || 0,
               weightUnit: data.results?.weightUnit || data.planned?.weightUnit || 'kg',
-              sets: data.results?.totalSets || data.planned?.sets || 0,
-              reps: data.results?.totalReps || data.planned?.reps || 0,
+              sets: sets,
+              reps: reps,
+              repsPerSet: repsPerSet,
               // Form quality from results
               quality: data.results?.avgFormScore 
                 ? (data.results.avgFormScore >= 80 ? 'good form' : data.results.avgFormScore >= 60 ? 'moderate form' : 'needs improvement')
@@ -549,6 +559,9 @@ export default function SelectedWorkout() {
               consistencyScore: analytics?.consistencyScore ?? null,
               keyFindings: analytics?.performanceReport?.keyFindings || null,
               mlClassification: mlSummary,
+              // ML Clean rep metrics for AI decision making
+              cleanRepPct: cleanRepPct,
+              cleanReps: cleanReps,
               // Comprehensive performance summary
               performance: buildPerformanceSummary(data, analytics),
             };
@@ -803,6 +816,7 @@ export default function SelectedWorkout() {
           <div className="content-fade-up-2 flex-shrink-0 px-1" style={{ animationDelay: '0.5s' }}>
             <AIReasoningPanel
               reasoning={aiReasoning}
+              recommendation={aiRec}
               regenCount={regenCount}
               maxRegen={maxRegen}
               isFromCache={isFromCache}

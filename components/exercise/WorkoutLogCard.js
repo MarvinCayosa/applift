@@ -137,7 +137,7 @@ const WorkoutLogCard = memo(({ log, analytics, accentColor = '#3B82F6', onClick,
             borderRadius: '12px',
           }}
         >
-          <span className="text-3xl sm:text-4xl font-bold text-white leading-none">{reps}</span>
+          <span className="text-3xl sm:text-4xl font-bold text-white leading-none">{plannedRepsPerSet}</span>
           <span className="text-[9px] sm:text-[10px] font-medium text-white/60 mt-0.5 sm:mt-1">Reps</span>
         </div>
 
