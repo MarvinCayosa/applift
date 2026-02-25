@@ -55,99 +55,116 @@ setInterval(() => {
 }, 5 * 60 * 1000);
 
 // ============================================================
-// SYSTEM PROMPT — APPLIFT AI COACH (OPTIMIZED FOR COST)
+// SYSTEM PROMPT — APPLIFT AI COACH (COMPREHENSIVE INPUT, CONCISE OUTPUT)
 // ============================================================
-const SYSTEM_PROMPT = `AppLift AI Coach: Evidence-based recommendations (NSCA/ACSM).
+const SYSTEM_PROMPT = `You are AppLift's certified AI strength coach. Your recommendations are trusted by users for their accuracy and safety.
 
-EXERCISES & QUALITY LABELS:
-• Concentration Curls (Dumbbell): Clean, Uncontrolled Movement, Abrupt Initiation
-• Overhead Extension (Dumbbell): Clean, Uncontrolled Movement, Abrupt Initiation  
-• Bench Press (Barbell): Clean, Uncontrolled Movement, Inclination Asymmetry
-• Back Squat (Barbell): Clean, Uncontrolled Movement, Inclination Asymmetry
-• Lateral Pulldown (Weight Stack): Clean, Pulling Too Fast, Releasing Too Fast
-• Seated Leg Extension (Weight Stack): Clean, Pulling Too Fast, Releasing Too Fast
+═══════════════════════════════════════════════════════════════
+APPLIFT EXERCISE CATALOG
+═══════════════════════════════════════════════════════════════
 
-BARBELL WEIGHTS: Olympic 20kg, Women's 15kg, EZ 8kg, Trap 22kg (include in total)
-- Always clarify if recommendation is "bar only" or "bar + plates"
-- Example: 20kg = "Bar only", 30kg = "20kg bar + 10kg plates"
+EQUIPMENT TYPES:
+┌─────────────┬────────────────────────────────────────────────┐
+│ Dumbbell    │ Free weights, unilateral/bilateral movements   │
+│ Barbell     │ Olympic bar (20kg) or women's bar (15kg)       │
+│ Weight Stack│ Cable machines with adjustable pin selection   │
+└─────────────┴────────────────────────────────────────────────┘
 
-DUMBBELL WEIGHTS: Always specify per-hand weight for clarity
-- Example: 10kg total = "5kg per hand", 20kg total = "10kg per hand"
+SUPPORTED EXERCISES & QUALITY LABELS:
+┌─────────────────────────┬─────────────┬──────────────────────────────────────────────┐
+│ Exercise                │ Equipment   │ Quality Labels (0=Clean, 1=Issue, 2=Issue)   │
+├─────────────────────────┼─────────────┼──────────────────────────────────────────────┤
+│ Concentration Curls     │ Dumbbell    │ Clean, Uncontrolled Movement, Abrupt Init    │
+│ Overhead Extension      │ Dumbbell    │ Clean, Uncontrolled Movement, Abrupt Init    │
+│ Bench Press             │ Barbell     │ Clean, Uncontrolled Movement, Incline Asym   │
+│ Back Squat              │ Barbell     │ Clean, Uncontrolled Movement, Incline Asym   │
+│ Lateral Pulldown        │ Weight Stack│ Clean, Pulling Too Fast, Releasing Too Fast  │
+│ Seated Leg Extension    │ Weight Stack│ Clean, Pulling Too Fast, Releasing Too Fast  │
+└─────────────────────────┴─────────────┴──────────────────────────────────────────────┘
 
-PROGRESSION RULES:
-• Beginner (<6mo): 0-5% increase, start conservative
-• Intermediate (6mo-2y): 5-10% if form good
-• Advanced (2y+): 5-15% with periodization
+TARGET MUSCLES:
+- Concentration Curls: Biceps brachii (isolated)
+- Overhead Extension: Triceps brachii (long head emphasis)
+- Bench Press: Pectoralis major, anterior deltoids, triceps
+- Back Squat: Quadriceps, glutes, hamstrings, core
+- Lateral Pulldown: Latissimus dorsi, biceps, rear deltoids
+- Seated Leg Extension: Quadriceps (isolated)
 
-LOAD DECISIONS:
-• Increase: Clean reps ≥80%, Fatigue <25%, Consistency ≥75%
-• Maintain: Clean reps 60-79%, Fatigue 25-40%, Consistency 60-74%  
-• Decrease: Clean reps <60%, Fatigue >40%, Consistency <60%
+═══════════════════════════════════════════════════════════════
+EVIDENCE-BASED GUIDELINES (NSCA/ACSM/STE)
+═══════════════════════════════════════════════════════════════
 
-REP RANGES: Strength 1-5, Hypertrophy 6-12, Endurance 12+
-REST: Strength 2-5min, Hyper 60-120s, Endurance 30-60s
+PROGRESSIVE OVERLOAD BY EXPERIENCE:
+┌─────────────────┬─────────────────────────────────────────────┐
+│ Beginner (<6mo) │ 5-10% load increase MAX, prioritize form    │
+│ Intermediate    │ 5-15% increase if consistency >80%          │
+│ Advanced (2yr+) │ Standard periodization, deload every 4-6wk  │
+└─────────────────┴─────────────────────────────────────────────┘
 
-OUTPUT JSON:
+REP RANGES BY GOAL:
+┌──────────────────┬────────┬─────────────┬─────────────────────┐
+│ Goal             │ Reps   │ %1RM        │ Rest Between Sets   │
+├──────────────────┼────────┼─────────────┼─────────────────────┤
+│ Max Strength     │ 1-5    │ 85-100%     │ 2-5 minutes         │
+│ Hypertrophy      │ 6-12   │ 65-85%      │ 60-120 seconds      │
+│ Muscular Endur.  │ 12-20+ │ <65%        │ 30-60 seconds       │
+│ General Fitness  │ 8-15   │ 50-70%      │ 60-90 seconds       │
+└──────────────────┴────────┴─────────────┴─────────────────────┘
+
+BARBELL WEIGHTS (include in total load):
+- Standard Olympic bar: 20kg
+- Women's Olympic bar: 15kg
+- EZ curl bar: 7-10kg (typically 8kg)
+- Trap/hex bar: 20-25kg
+
+CONSERVATIVE STARTING WEIGHTS (first-time users):
+┌─────────────────────┬────────────────────────────────────────┐
+│ Barbell exercises   │ 20kg (empty Olympic bar)               │
+│ Dumbbell exercises  │ 3-5kg per hand                         │
+│ Weight stack machine│ 20-30kg (bottom 1/3 of stack)          │
+└─────────────────────┴────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════
+DECISION LOGIC FOR RECOMMENDATIONS
+═══════════════════════════════════════════════════════════════
+
+WHEN TO INCREASE LOAD:
+✓ Clean rep percentage ≥80%
+✓ Fatigue score <25%
+✓ Consistency score ≥75%
+✓ All prescribed reps completed
+✓ Tempo controlled (concentric 1-2s, eccentric 2-3s)
+
+WHEN TO MAINTAIN LOAD:
+● Clean rep percentage 60-79%
+● Fatigue score 25-40%
+● Consistency score 60-74%
+● Missed 1-2 reps
+
+WHEN TO DECREASE LOAD:
+✗ Clean rep percentage <60%
+✗ Fatigue score >40%
+✗ Consistency score <60%
+✗ User reported injury/illness
+✗ Tempo too fast (jerky movements)
+
+═══════════════════════════════════════════════════════════════
+OUTPUT FORMAT (JSON ONLY — NO MARKDOWN, NO EXPLANATIONS)
+═══════════════════════════════════════════════════════════════
 {
-  "recommendedLoad": <kg>,
-  "sets": <int>,
-  "reps": <int>, 
-  "restTimeSeconds": <int>,
+  "recommendedLoad": <int kg, total weight including bar>,
+  "sets": <int 2-6>,
+  "reps": <int 1-20>,
+  "restTimeSeconds": <int 30-300>,
   "estimatedCalories": <int>,
-  "recommendedRestDays": <1-3>,
-  "weightBreakdown": "<clear breakdown like 'Bar only (20kg)' or '20kg bar + 10kg plates' or '5kg per hand'>",
-  "rationale": "<max 2 sentences>",
-  "safetyNote": "<max 8 words>", 
-  "guideline": "<max 6 words>",
-  "nextSteps": "<max 10 words>"
-}`;
-
-// ============================================================
-// BUILD USER CONTEXT PROMPT (COMPACT)
-// ============================================================
-function buildUserPrompt({ userProfile, equipment, exerciseName, pastSessions }) {
-  let prompt = `EXERCISE: ${exerciseName} (${equipment})\n`;
-  
-  // User basics
-  prompt += `USER: ${userProfile.age || '?'}y ${userProfile.gender || '?'} ${userProfile.weight || '?'}kg, `;
-  prompt += `exp: ${userProfile.strengthExperience || 'beginner'}, goal: ${userProfile.fitnessGoal || 'fitness'}\n`;
-  
-  // Injuries
-  if (userProfile.injuries?.length) {
-    prompt += `INJURIES: ${userProfile.injuries.filter(i => i?.trim()).join(', ')}\n`;
-  }
-  
-  // Past sessions (compact format)
-  if (pastSessions?.length > 0) {
-    const stats = calculateAggregateStats(pastSessions);
-    prompt += `HISTORY (${pastSessions.length} sessions): avg ${stats.avgWeight.toFixed(0)}kg, max ${stats.maxWeight}kg, `;
-    prompt += `${stats.avgCleanRepPct.toFixed(0)}% clean, ${stats.avgFatigue.toFixed(0)}% fatigue, `;
-    prompt += `${stats.avgConsistency.toFixed(0)}% consistency, trend: ${stats.trend}\n`;
-    
-    // Recent session details (most important)
-    const recent = pastSessions[0];
-    if (recent) {
-      prompt += `LAST: ${recent.weight || 0}kg × ${recent.sets || 0}s × ${recent.repsPerSet || 0}r`;
-      if (recent.cleanRepPct != null) prompt += `, ${recent.cleanRepPct}% clean`;
-      if (recent.fatigueScore != null) prompt += `, ${recent.fatigueScore}% fatigue`;
-      if (recent.consistencyScore != null) prompt += `, ${recent.consistencyScore}% consistency`;
-      prompt += `\n`;
-    }
-    
-    // Decision guidance (minimal)
-    if (stats.avgCleanRepPct >= 80 && stats.avgFatigue < 25) {
-      prompt += `GUIDANCE: Safe to increase load\n`;
-    } else if (stats.avgCleanRepPct < 60 || stats.avgFatigue > 40) {
-      prompt += `GUIDANCE: Reduce load, improve form\n`;
-    } else {
-      prompt += `GUIDANCE: Maintain current load\n`;
-    }
-  } else {
-    prompt += `FIRST TIME: Use conservative starting weights\n`;
-  }
-  
-  return prompt;
+  "recommendedRestDays": <int 1-3>,
+  "rationale": "<1-2 sentences referencing specific metrics if available>",
+  "safetyNote": "<max 10 words>",
+  "guideline": "<max 8 words>",
+  "nextSteps": "<max 12 words>"
 }
+
+Be precise. Reference data when available. Users trust your expertise.`;
 
 // ============================================================
 // VERTEX AI CLIENT INITIALIZATION
@@ -175,9 +192,204 @@ function getVertexAIClient() {
   return vertexAI;
 }
 
-// ─── Helper: Calculate aggregate stats (compact) ───
+// ============================================================
+// BUILD USER CONTEXT PROMPT (COMPREHENSIVE INPUT)
+// ============================================================
+function buildUserPrompt({ userProfile, equipment, exerciseName, pastSessions }) {
+  // ─── Exercise & Equipment Context ───
+  let prompt = `═══ RECOMMENDATION REQUEST ═══\n\n`;
+  prompt += `EXERCISE: ${exerciseName}\n`;
+  prompt += `EQUIPMENT: ${equipment}\n`;
+  
+  // Add exercise-specific context
+  const exerciseContext = getExerciseContext(exerciseName, equipment);
+  prompt += `TARGET MUSCLES: ${exerciseContext.muscles}\n`;
+  prompt += `MOVEMENT TYPE: ${exerciseContext.movementType}\n`;
+  prompt += `QUALITY LABELS FOR THIS EXERCISE: ${exerciseContext.qualityLabels.join(', ')}\n\n`;
+
+  // ─── User Profile (Complete) ───
+  prompt += `═══ USER PROFILE ═══\n`;
+  prompt += `Age: ${userProfile.age || 'Not specified'}\n`;
+  prompt += `Sex: ${userProfile.gender || 'Not specified'}\n`;
+  prompt += `Body Weight: ${userProfile.weight || 'Not specified'} ${userProfile.weightUnit || 'kg'}\n`;
+  prompt += `Height: ${userProfile.height || 'Not specified'} ${userProfile.heightUnit || 'cm'}\n`;
+  prompt += `Training Experience: ${userProfile.strengthExperience || 'Not specified (assume beginner)'}\n`;
+  prompt += `Activity Level: ${userProfile.activityLevel || 'Not specified'}\n`;
+  prompt += `Primary Fitness Goal: ${userProfile.fitnessGoal || 'General fitness'}\n`;
+  prompt += `Training Priority: ${userProfile.trainingPriority || 'Balanced'}\n`;
+
+  // Calculate experience level
+  const experienceLevel = getExperienceLevel(userProfile.strengthExperience);
+  prompt += `\nEXPERIENCE CLASSIFICATION: ${experienceLevel.level} (${experienceLevel.description})\n`;
+  prompt += `RECOMMENDED LOAD INCREASE RANGE: ${experienceLevel.loadIncreaseRange}\n`;
+
+  // ─── Injury/Illness Constraints ───
+  if (userProfile.injuries && userProfile.injuries.length > 0) {
+    const validInjuries = userProfile.injuries.filter(i => i && i.trim());
+    if (validInjuries.length > 0) {
+      prompt += `\n═══ MEDICAL CONSTRAINTS (MUST ACCOMMODATE) ═══\n`;
+      validInjuries.forEach((injury) => {
+        prompt += `⚠️ ${injury}\n`;
+      });
+      prompt += `ACTION REQUIRED: Reduce load, modify movement, or avoid if contraindicated.\n`;
+    }
+  }
+
+  // ─── Past Session Data (Detailed Metrics) ───
+  if (pastSessions && pastSessions.length > 0) {
+    prompt += `\n═══ PAST SESSION DATA (${pastSessions.length} sessions, most recent first) ═══\n`;
+    
+    // Calculate aggregate stats across sessions
+    const aggregateStats = calculateAggregateStats(pastSessions);
+    prompt += `\nAGGREGATE METRICS:\n`;
+    prompt += `├─ Total sessions: ${pastSessions.length}\n`;
+    prompt += `├─ Avg load used: ${aggregateStats.avgWeight.toFixed(1)} kg\n`;
+    prompt += `├─ Max load achieved: ${aggregateStats.maxWeight} kg\n`;
+    prompt += `├─ Avg clean rep %: ${aggregateStats.avgCleanRepPct.toFixed(0)}%\n`;
+    prompt += `├─ Avg fatigue score: ${aggregateStats.avgFatigue.toFixed(0)}%\n`;
+    prompt += `├─ Avg consistency: ${aggregateStats.avgConsistency.toFixed(0)}%\n`;
+    prompt += `├─ Trend: ${aggregateStats.trend}\n`;
+    prompt += `└─ Days since last session: ${aggregateStats.daysSinceLastSession}\n`;
+
+    prompt += `\nSESSION DETAILS:\n`;
+    pastSessions.slice(0, 5).forEach((session, i) => {
+      prompt += `\n┌─ Session ${i + 1} ${i === 0 ? '(MOST RECENT)' : ''}\n`;
+      prompt += `├─ Date: ${session.date || 'Unknown'}\n`;
+      prompt += `├─ Load: ${session.weight || 0} ${session.weightUnit || 'kg'}\n`;
+      prompt += `├─ Volume: ${session.sets || 0} sets × ${session.repsPerSet || Math.round((session.reps || 0) / (session.sets || 1))} reps = ${session.reps || 0} total reps\n`;
+      
+      // ML Classification data
+      if (session.cleanRepPct != null) {
+        prompt += `├─ ML Clean Reps: ${session.cleanRepPct}% (${session.cleanReps || 0}/${session.reps || 0})\n`;
+      }
+      if (session.mlClassification) {
+        prompt += `├─ ML Quality Distribution: ${session.mlClassification}\n`;
+      }
+      
+      // Tempo/movement data
+      if (session.avgConcentric || session.avgEccentric) {
+        prompt += `├─ Rep Tempo: ${session.avgEccentric?.toFixed(2) || '?'}s eccentric / ${session.avgConcentric?.toFixed(2) || '?'}s concentric\n`;
+      }
+      
+      // Fatigue & consistency
+      if (session.fatigueScore != null) {
+        const fatigueLevel = session.fatigueScore < 20 ? 'LOW' : session.fatigueScore < 40 ? 'MODERATE' : 'HIGH';
+        prompt += `├─ Fatigue: ${session.fatigueScore}% (${fatigueLevel})\n`;
+      }
+      if (session.consistencyScore != null) {
+        const consistencyLevel = session.consistencyScore >= 80 ? 'EXCELLENT' : session.consistencyScore >= 60 ? 'GOOD' : 'NEEDS WORK';
+        prompt += `├─ Consistency: ${session.consistencyScore}% (${consistencyLevel})\n`;
+      }
+      
+      // Form quality
+      if (session.quality) {
+        prompt += `├─ Overall Form: ${session.quality}\n`;
+      }
+      
+      // Key findings
+      if (session.keyFindings && session.keyFindings.length > 0) {
+        prompt += `├─ Key Findings: ${session.keyFindings.slice(0, 3).join('; ')}\n`;
+      }
+      
+      prompt += `└─────────────────────────────\n`;
+    });
+
+    // Add decision guidance based on metrics
+    prompt += `\n═══ DECISION GUIDANCE ═══\n`;
+    const guidance = generateGuidance(aggregateStats, pastSessions[0]);
+    prompt += guidance;
+
+  } else {
+    prompt += `\n═══ NO PAST SESSION DATA ═══\n`;
+    prompt += `This is the user's FIRST TIME performing ${exerciseName}.\n`;
+    prompt += `\nREQUIRED ACTIONS:\n`;
+    prompt += `1. Use CONSERVATIVE starting weight from guidelines\n`;
+    prompt += `2. Prioritize movement learning over load\n`;
+    prompt += `3. Start at lower end of rep range (8-10 for hypertrophy)\n`;
+    prompt += `4. Allow longer rest periods for learning (90-120s)\n`;
+    
+    if (experienceLevel.level === 'BEGINNER') {
+      prompt += `\n⚠️ BEGINNER + FIRST-TIME: Use absolute minimum starting weights.\n`;
+      if (equipment.toLowerCase().includes('barbell')) {
+        prompt += `   For barbell: Start with empty bar (20kg) ONLY.\n`;
+      } else if (equipment.toLowerCase().includes('dumbbell')) {
+        prompt += `   For dumbbells: Start with 3-4kg per hand MAX.\n`;
+      } else {
+        prompt += `   For machines: Start at bottom 1/4 of weight stack (15-25kg).\n`;
+      }
+    }
+  }
+
+  prompt += `\n═══ GENERATE RECOMMENDATION NOW ═══\n`;
+  prompt += `Output JSON only. Be precise and reference the data above.\n`;
+  
+  return prompt;
+}
+
+// ─── Helper: Get exercise-specific context ───
+function getExerciseContext(exerciseName, equipment) {
+  const exerciseMap = {
+    'concentration curls': {
+      muscles: 'Biceps brachii (isolated)',
+      movementType: 'Single-joint, unilateral isolation',
+      qualityLabels: ['Clean', 'Uncontrolled Movement', 'Abrupt Initiation']
+    },
+    'overhead extension': {
+      muscles: 'Triceps brachii (long head emphasis)',
+      movementType: 'Single-joint isolation',
+      qualityLabels: ['Clean', 'Uncontrolled Movement', 'Abrupt Initiation']
+    },
+    'bench press': {
+      muscles: 'Pectoralis major, anterior deltoids, triceps',
+      movementType: 'Multi-joint compound push',
+      qualityLabels: ['Clean', 'Uncontrolled Movement', 'Inclination Asymmetry']
+    },
+    'back squat': {
+      muscles: 'Quadriceps, glutes, hamstrings, core stabilizers',
+      movementType: 'Multi-joint compound, lower body dominant',
+      qualityLabels: ['Clean', 'Uncontrolled Movement', 'Inclination Asymmetry']
+    },
+    'lateral pulldown': {
+      muscles: 'Latissimus dorsi, biceps, rear deltoids, rhomboids',
+      movementType: 'Multi-joint vertical pull',
+      qualityLabels: ['Clean', 'Pulling Too Fast', 'Releasing Too Fast']
+    },
+    'seated leg extension': {
+      muscles: 'Quadriceps (isolated)',
+      movementType: 'Single-joint isolation, machine-guided',
+      qualityLabels: ['Clean', 'Pulling Too Fast', 'Releasing Too Fast']
+    }
+  };
+
+  const key = exerciseName.toLowerCase();
+  return exerciseMap[key] || {
+    muscles: 'Target muscles vary',
+    movementType: 'Standard resistance exercise',
+    qualityLabels: ['Clean', 'Form Issue Type 1', 'Form Issue Type 2']
+  };
+}
+
+// ─── Helper: Classify experience level ───
+function getExperienceLevel(strengthExperience) {
+  if (!strengthExperience) {
+    return { level: 'BEGINNER', description: 'No experience data, assume new', loadIncreaseRange: '0-5% max' };
+  }
+  
+  const exp = strengthExperience.toLowerCase();
+  if (exp.includes('advanced') || exp.includes('3+') || exp.includes('4+') || exp.includes('5+')) {
+    return { level: 'ADVANCED', description: '2+ years consistent training', loadIncreaseRange: '5-10% with periodization' };
+  }
+  if (exp.includes('intermediate') || exp.includes('1-2') || exp.includes('1 year') || exp.includes('2 year')) {
+    return { level: 'INTERMEDIATE', description: '6 months to 2 years', loadIncreaseRange: '5-10% if form is solid' };
+  }
+  return { level: 'BEGINNER', description: 'Less than 6 months or new', loadIncreaseRange: '0-5% max, prioritize form' };
+}
+
+// ─── Helper: Calculate aggregate stats from sessions ───
 function calculateAggregateStats(sessions) {
-  if (!sessions.length) return { avgWeight: 0, maxWeight: 0, avgCleanRepPct: 0, avgFatigue: 0, avgConsistency: 0, trend: 'N/A', daysSinceLastSession: 0 };
+  if (!sessions.length) {
+    return { avgWeight: 0, maxWeight: 0, avgCleanRepPct: 0, avgFatigue: 0, avgConsistency: 0, trend: 'N/A', daysSinceLastSession: 0 };
+  }
 
   let totalWeight = 0, maxWeight = 0, totalCleanPct = 0, cleanPctCount = 0;
   let totalFatigue = 0, fatigueCount = 0, totalConsistency = 0, consistencyCount = 0;
@@ -192,13 +404,13 @@ function calculateAggregateStats(sessions) {
     if (s.consistencyScore != null) { totalConsistency += s.consistencyScore; consistencyCount++; }
   });
 
-  // Calculate trend
+  // Calculate trend (comparing first vs last session weights)
   let trend = 'STABLE';
   if (sessions.length >= 2) {
     const recent = sessions[0].weight || 0;
     const older = sessions[sessions.length - 1].weight || 0;
-    if (recent > older) trend = 'UP';
-    else if (recent < older) trend = 'DOWN';
+    if (recent > older) trend = 'INCREASING ↑';
+    else if (recent < older) trend = 'DECREASING ↓';
   }
 
   // Days since last session
@@ -219,29 +431,48 @@ function calculateAggregateStats(sessions) {
   };
 }
 
-// ─── Helper: Generate weight breakdown explanation ───
-function generateWeightBreakdown(totalWeight, equipment) {
-  const equipmentType = equipment.toLowerCase();
+// ─── Helper: Generate decision guidance ───
+function generateGuidance(stats, mostRecentSession) {
+  let guidance = '';
   
-  if (equipmentType.includes('barbell')) {
-    const barWeight = 20; // Standard Olympic bar
-    if (totalWeight <= barWeight) {
-      return `Bar only (${totalWeight}kg)`;
-    } else {
-      const plateWeight = totalWeight - barWeight;
-      return `${barWeight}kg bar + ${plateWeight}kg plates`;
-    }
-  } 
-  else if (equipmentType.includes('dumbbell')) {
-    const perHand = totalWeight / 2;
-    return `${perHand}kg per hand (${totalWeight}kg total)`;
-  } 
-  else if (equipmentType.includes('weight stack') || equipmentType.includes('machine')) {
-    return `${totalWeight}kg on weight stack`;
-  } 
-  else {
-    return `${totalWeight}kg total weight`;
+  // Clean rep analysis
+  if (stats.avgCleanRepPct >= 80) {
+    guidance += `✓ CLEAN REP % HIGH (${stats.avgCleanRepPct.toFixed(0)}%): User demonstrates good form. Safe to progress load.\n`;
+  } else if (stats.avgCleanRepPct >= 60) {
+    guidance += `● CLEAN REP % MODERATE (${stats.avgCleanRepPct.toFixed(0)}%): Maintain current load, focus on form refinement.\n`;
+  } else if (stats.avgCleanRepPct > 0) {
+    guidance += `✗ CLEAN REP % LOW (${stats.avgCleanRepPct.toFixed(0)}%): REDUCE load to improve movement quality.\n`;
   }
+
+  // Fatigue analysis
+  if (stats.avgFatigue < 25) {
+    guidance += `✓ FATIGUE LOW (${stats.avgFatigue.toFixed(0)}%): Recovery good. Can handle load increase.\n`;
+  } else if (stats.avgFatigue < 40) {
+    guidance += `● FATIGUE MODERATE (${stats.avgFatigue.toFixed(0)}%): Monitor recovery. Small increase OK if form is good.\n`;
+  } else {
+    guidance += `✗ FATIGUE HIGH (${stats.avgFatigue.toFixed(0)}%): Consider maintaining or reducing load. User may need longer recovery.\n`;
+  }
+
+  // Consistency analysis
+  if (stats.avgConsistency >= 80) {
+    guidance += `✓ CONSISTENCY EXCELLENT (${stats.avgConsistency.toFixed(0)}%): Movement patterns stable. Good candidate for progression.\n`;
+  } else if (stats.avgConsistency >= 60) {
+    guidance += `● CONSISTENCY MODERATE (${stats.avgConsistency.toFixed(0)}%): Some variability in movement. Maintain load.\n`;
+  } else if (stats.avgConsistency > 0) {
+    guidance += `✗ CONSISTENCY LOW (${stats.avgConsistency.toFixed(0)}%): Movement patterns unstable. Reduce load for motor learning.\n`;
+  }
+
+  // Rest days recommendation
+  if (stats.daysSinceLastSession === 0) {
+    guidance += `⚠️ SAME DAY SESSION: Be cautious, muscles may not be fully recovered.\n`;
+  } else if (stats.daysSinceLastSession >= 7) {
+    guidance += `ℹ️ LONG BREAK (${stats.daysSinceLastSession} days): Consider starting slightly lighter to readapt.\n`;
+  }
+
+  // Trend analysis
+  guidance += `LOAD TREND: ${stats.trend}\n`;
+
+  return guidance;
 }
 
 // ============================================================
@@ -330,17 +561,20 @@ export default async function handler(req, res) {
     const model = process.env.VERTEX_AI_MODEL || 'gemini-2.5-flash';
 
     // ============================================================
-    // MODEL PARAMETERS (stable & cost-efficient)
+    // MODEL PARAMETERS (tuned for speed & reliability)
     // ============================================================
-    // Cost savings come from shorter prompts (input), NOT from restricting model params
-    // maxOutputTokens: 512 = enough for JSON response without truncation
+    // temperature: 0.2 = more deterministic/consistent outputs (0-1 scale)
+    // topP: 0.7 = nucleus sampling, limits token selection pool
+    // topK: 20 = limits to top 20 tokens (faster inference)
+    // maxOutputTokens: 512 = shorter responses = faster generation
+    // responseMimeType: 'application/json' = structured output
     const generativeModel = vertexAI.preview.getGenerativeModel({
       model,
       generationConfig: {
-        temperature: 0.2,
-        topP: 0.7,
-        topK: 20,
-        maxOutputTokens: 512,
+        temperature: 0.2,        // Lower = more consistent recommendations
+        topP: 0.7,               // Focused sampling
+        topK: 20,                // Faster token selection
+        maxOutputTokens: 512,    // Reduced for speed (was 4096)
         responseMimeType: 'application/json',
       },
       systemInstruction: {
@@ -378,9 +612,9 @@ export default async function handler(req, res) {
     }
 
     // Normalize response — handle both flat and nested formats from the model
-    // Flat format: { recommendedLoad, sets, reps, restTimeSeconds, estimatedCalories, weightBreakdown, safetyJustification, ... }
+    // Flat format: { recommendedLoad, sets, reps, restTimeSeconds, estimatedCalories, safetyJustification, ... }
     // Nested format: { recommendation: { weight, sets, reps, restTimeSeconds, estimatedCalories }, reasoning: { safetyJustification, ... } }
-    let weight, sets, reps, restTimeSeconds, estimatedCalories, weightBreakdown, safetyJustification, guidelineReference, progressionNotes;
+    let weight, sets, reps, restTimeSeconds, estimatedCalories, safetyJustification, guidelineReference, progressionNotes;
 
     if (parsed.recommendation && typeof parsed.recommendation === 'object') {
       // Nested format
@@ -389,7 +623,6 @@ export default async function handler(req, res) {
       reps = parsed.recommendation.reps ?? 8;
       restTimeSeconds = parsed.recommendation.restTimeSeconds ?? 90;
       estimatedCalories = parsed.recommendation.estimatedCalories ?? parsed.estimatedCalories ?? 45;
-      weightBreakdown = parsed.recommendation.weightBreakdown ?? parsed.weightBreakdown ?? '';
       safetyJustification = parsed.reasoning?.safetyNote ?? parsed.reasoning?.safetyJustification ?? parsed.safetyNote ?? parsed.safetyJustification ?? '';
       guidelineReference = parsed.reasoning?.guideline ?? parsed.reasoning?.guidelineReference ?? parsed.guideline ?? parsed.guidelineReference ?? '';
       progressionNotes = parsed.reasoning?.nextSteps ?? parsed.reasoning?.progressionNotes ?? parsed.nextSteps ?? parsed.progressionNotes ?? '';
@@ -400,15 +633,9 @@ export default async function handler(req, res) {
       reps = parsed.reps ?? 8;
       restTimeSeconds = parsed.restTimeSeconds ?? 90;
       estimatedCalories = parsed.estimatedCalories ?? 45;
-      weightBreakdown = parsed.weightBreakdown ?? '';
       safetyJustification = parsed.safetyNote ?? parsed.safetyJustification ?? '';
       guidelineReference = parsed.guideline ?? parsed.guidelineReference ?? '';
       progressionNotes = parsed.nextSteps ?? parsed.progressionNotes ?? '';
-    }
-
-    // Generate fallback weight breakdown if AI didn't provide one
-    if (!weightBreakdown) {
-      weightBreakdown = generateWeightBreakdown(weight, equipment);
     }
 
     // Safety bounds — clamp values to sane ranges
@@ -422,7 +649,7 @@ export default async function handler(req, res) {
     let recommendedRestDays = parsed.recommendedRestDays ?? parsed.recommendation?.recommendedRestDays ?? 2;
     recommendedRestDays = Math.max(1, Math.min(4, Math.round(Number(recommendedRestDays) || 2)));
 
-    console.log('[AI API] Parsed recommendation:', { weight, sets, reps, restTimeSeconds, estimatedCalories, recommendedRestDays, weightBreakdown });
+    console.log('[AI API] Parsed recommendation:', { weight, sets, reps, restTimeSeconds, estimatedCalories, recommendedRestDays });
 
     // Extract rationale (new field) with fallback
     const rationale = parsed.rationale || '';
@@ -435,7 +662,6 @@ export default async function handler(req, res) {
         restTimeSeconds,
         estimatedCalories,
         recommendedRestDays,
-        weightBreakdown,
       },
       reasoning: {
         rationale: rationale || 'Based on your profile and NSCA/ACSM guidelines.',
