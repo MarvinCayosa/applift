@@ -484,6 +484,8 @@ export default function SessionSummaryPage() {
               <div className="space-y-2">
                 {setData.map((set, idx) => {
                   const setReps = set.reps || set.repsData?.length || 0
+                  const planned = set.plannedReps || (log?.planned?.reps) || setReps
+                  const isIncomplete = set.incomplete === true || (planned > 0 && setReps < planned)
                   return (
                     <div
                       key={idx}
@@ -497,8 +499,17 @@ export default function SessionSummaryPage() {
                           {set.setNumber || idx + 1}
                         </div>
                         <div>
-                          <p className="text-sm font-semibold text-white">Set {set.setNumber || idx + 1}</p>
-                          <p className="text-xs text-white/50">{setReps} reps · {weight}kg</p>
+                          <p className="text-sm font-semibold text-white">
+                            Set {set.setNumber || idx + 1}
+                            {isIncomplete && (
+                              <span className="ml-1.5 text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400/80">
+                                Incomplete
+                              </span>
+                            )}
+                          </p>
+                          <p className="text-xs text-white/50">
+                            {isIncomplete ? `${setReps}/${planned}` : setReps} reps · {weight}kg
+                          </p>
                         </div>
                       </div>
                       {/* Classification badge (if available) */}
@@ -510,6 +521,40 @@ export default function SessionSummaryPage() {
                     </div>
                   )
                 })}
+
+                {/* Show placeholder cards for completely skipped sets */}
+                {(() => {
+                  const doneSets = setData.length
+                  const planned = log?.planned?.sets || sets
+                  if (planned <= doneSets) return null
+                  return Array.from({ length: planned - doneSets }).map((_, i) => {
+                    const setNum = doneSets + i + 1
+                    return (
+                      <div
+                        key={`skipped-${setNum}`}
+                        className="border border-dashed border-white/10 bg-white/[0.02] rounded-2xl p-4 flex items-center justify-between"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold"
+                            style={{ border: `1.5px dashed ${bgColor}50`, color: `${bgColor}80` }}
+                          >
+                            {setNum}
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-white/30">
+                              Set {setNum}
+                              <span className="ml-1.5 text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-white/[0.06] text-white/25">
+                                Skipped
+                              </span>
+                            </p>
+                            <p className="text-xs text-white/20">0/{log?.planned?.reps || 0} reps</p>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })
+                })()}
               </div>
             </section>
           )}

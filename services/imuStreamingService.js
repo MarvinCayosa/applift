@@ -698,11 +698,12 @@ export const endStreaming = async (userFinished = true) => {
   workoutData.completedSets = workoutMetadata.completedSets;
   workoutData.completedReps = completedTotalReps;
 
-  // Upload complete workout data JSON to GCS
-  await uploadWorkoutData();
-  
-  // Final metadata upload
-  await uploadMetadata();
+  // Only upload to GCS if user actually finished (not canceled)
+  // Canceled workouts are hard-deleted via /api/delete-workout anyway
+  if (userFinished) {
+    await uploadWorkoutData();
+    await uploadMetadata();
+  }
 
   console.log(`[IMUStreaming] Workout ended with status: ${workoutMetadata.status}`);
   console.log(`[IMUStreaming] Completed: ${workoutMetadata.completedSets}/${workoutMetadata.plannedSets} sets, ${completedTotalReps}/${plannedTotalReps} reps`);

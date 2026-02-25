@@ -27,11 +27,22 @@ export default function HeaderSection({
   isCustomSet,
   exerciseImage,
   primaryColor = '#a855f7',
+  totalSets,
+  totalReps,
 }) {
   const router = useRouter();
   const dateStr = formatSessionDate(date);
   // `reps` is already per-set (plannedRepsPerSet from viewModel)
   const repsPerSet = reps;
+
+  // Determine if the workout was completed in full
+  const actualSets = totalSets ?? sets;
+  const setsIncomplete = actualSets != null && sets != null && actualSets < sets;
+  const setsLabel = setsIncomplete ? `${actualSets}/${sets}` : (sets ?? '—');
+
+  const totalPlannedReps = (sets || 0) * (reps || 0);
+  const actualTotalReps = totalReps ?? totalPlannedReps;
+  const repsIncomplete = totalPlannedReps > 0 && actualTotalReps < totalPlannedReps;
 
   return (
     <div className="relative w-full overflow-hidden">
@@ -103,7 +114,7 @@ export default function HeaderSection({
             className="flex-1 rounded-2xl backdrop-blur-md flex items-center justify-evenly"
             style={{ backgroundColor: 'rgb(0 0 0 / 65%)' }}
           >
-            <StatItem value={sets} label="Sets" />
+            <StatItem value={setsLabel} label="Sets" warn={setsIncomplete} />
             <div className="w-px self-stretch my-5 bg-white/[0.08]" />
             <StatItem value={repsPerSet} label="Reps" />
             <div className="w-px self-stretch my-5 bg-white/[0.08]" />
@@ -187,11 +198,16 @@ export default function HeaderSection({
 }
 
 /* ── Stat column (Sets / Reps / Rest) ── */
-function StatItem({ value, label, suffix }) {
+function StatItem({ value, label, suffix, warn }) {
   return (
     <div className="flex flex-col items-center py-2">
       <div className="flex items-baseline gap-[2px]">
-        <span className="text-[28px] font-bold text-white leading-none">{value ?? '—'}</span>
+        <span
+          className="text-[28px] font-bold leading-none"
+          style={{ color: warn ? '#fbbf24' : 'white' }}
+        >
+          {value ?? '—'}
+        </span>
         {suffix && <span className="text-[12px] text-gray-400 font-medium">{suffix}</span>}
       </div>
       <span className="text-[11px] text-gray-400 mt-1 font-medium">{label}</span>

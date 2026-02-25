@@ -635,7 +635,7 @@ export function WorkoutLoggingProvider({ children }) {
   }, [isStreaming, user, waitForBackgroundML]);
 
   /**
-   * Cancel the workout
+   * Cancel the workout — hard-delete all data from GCS & Firestore
    */
   const cancelWorkout = useCallback(async () => {
     try {
@@ -644,24 +644,31 @@ export function WorkoutLoggingProvider({ children }) {
       setIsStreaming(false);
       setWorkoutStatus('canceled');
       
-      console.log('[WorkoutLogging] Workout canceled');
+      console.log('[WorkoutLogging] Workout canceled — hard-deleting data');
       
-      // Save cancellation to Firestore
+      // Hard-delete GCS files & any Firestore docs instead of saving
       if (user && result) {
-        const token = await user.getIdToken();
-        await fetch('/api/imu-stream', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            action: 'completeWorkout',
-            userId: user.uid,
-            workoutId: result.workoutId,
-            metadata: result.metadata
-          })
-        });
+        try {
+          const token = await user.getIdToken();
+          const res = await fetch('/api/delete-workout', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              workoutId: result.workoutId,
+              gcsPath: result.metadata?.gcsPath || '',
+              equipment: result.metadata?.equipment || '',
+              exercise: result.metadata?.exercise || '',
+            }),
+          });
+          const data = await res.json().catch(() => ({}));
+          console.log('[WorkoutLogging] Hard-delete result:', data);
+        } catch (delErr) {
+          // Non-fatal — GCS data will remain as orphans but nothing is saved
+          console.warn('[WorkoutLogging] Hard-delete failed (non-fatal):', delErr.message);
+        }
       }
       
       return result;
