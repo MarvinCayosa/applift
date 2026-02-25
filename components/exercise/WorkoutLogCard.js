@@ -223,10 +223,9 @@ const WorkoutLogCard = memo(({ log, analytics, accentColor = '#3B82F6', onClick,
           {/* Divider */}
           <div className="w-px h-3.5 bg-white/15 mx-0.5" />
 
-          {/* Flame icon */}
-          <svg className="flex-shrink-0 w-4 h-4 sm:w-5 sm:h-5" viewBox="0 0 24 24" fill="none">
-            <path d="M12 2C12 2 7 7.5 7 12.5C7 16.09 9.24 19 12 19C14.76 19 17 16.09 17 12.5C17 7.5 12 2 12 2Z" fill={accentColor} opacity="0.3"/>
-            <path d="M12 2C12 2 7 7.5 7 12.5C7 16.09 9.24 19 12 19C14.76 19 17 16.09 17 12.5C17 7.5 12 2 12 2ZM12 17C10.35 17 9 15.54 9 12.5C9 10.12 10.5 7.69 12 5.78C13.5 7.69 15 10.12 15 12.5C15 15.54 13.65 17 12 17Z" fill={accentColor}/>
+          {/* Flame icon - Better fire icon */}
+          <svg className="flex-shrink-0 w-4 h-4 sm:w-5 sm:h-5" fill={accentColor} viewBox="0 0 24 24">
+            <path d="M12 23c-3.6 0-7-2.4-7-7 0-3.1 2.1-5.7 3.2-6.8.4-.4 1-.5 1.5-.2.5.2.8.7.8 1.2v.4c0 .6.2 1.2.6 1.7.1-.6.4-1.2.8-1.7l2.5-3.4c.3-.4.8-.6 1.3-.5s.9.5 1 1c.4 1.7 1.3 3.8 2.3 5.3.7 1 1 2.3 1 3.5 0 3.8-2.6 6.5-8 6.5z"/>
           </svg>
           <span className="text-xs sm:text-sm font-bold text-white whitespace-nowrap">{calories} Kcal</span>
         </div>

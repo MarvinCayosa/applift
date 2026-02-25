@@ -1511,6 +1511,63 @@ export default function Settings() {
                     </div>
                   </div>
 
+                  {/* BMI - Auto calculated */}
+                  <div className="px-5 py-4 flex items-center justify-between border-b border-white/10">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
+                        <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="12" cy="12" r="3" />
+                          <path d="M12 1v6m0 6v6" />
+                          <path d="m21 12-6-3-6 3-6-3" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-white">BMI</p>
+                        {(() => {
+                          // Get current weight and height values
+                          const currentWeight = userProfile?.weight || parseFloat(bodyForm.weight) || 0;
+                          const currentHeight = userProfile?.height || parseFloat(bodyForm.height) || 0;
+                          
+                          if (!currentWeight || !currentHeight) {
+                            return <p className="text-xs text-white/50">Enter weight and height to calculate</p>;
+                          }
+                          
+                          // Calculate BMI: weight(kg) / height(m)²
+                          const heightInMeters = currentHeight / 100;
+                          const bmi = currentWeight / (heightInMeters * heightInMeters);
+                          const bmiValue = bmi.toFixed(1);
+                          
+                          // Determine BMI category and color
+                          let category = '';
+                          let categoryColor = '';
+                          
+                          if (bmi < 18.5) {
+                            category = 'Underweight';
+                            categoryColor = 'text-blue-400';
+                          } else if (bmi >= 18.5 && bmi < 25) {
+                            category = 'Normal';
+                            categoryColor = 'text-green-400';
+                          } else if (bmi >= 25 && bmi < 30) {
+                            category = 'Overweight';
+                            categoryColor = 'text-yellow-400';
+                          } else {
+                            category = 'Obese';
+                            categoryColor = 'text-red-400';
+                          }
+                          
+                          return (
+                            <div className="flex items-center justify-between">
+                              <p className="text-xs text-white/50">{bmiValue}</p>
+                              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${categoryColor} bg-current bg-opacity-10`}>
+                                {category}
+                              </span>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Gender */}
                   <div className="px-5 py-4 flex items-center justify-between">
                     <div className="flex items-center gap-3">

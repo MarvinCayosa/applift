@@ -2,7 +2,9 @@ import Head from 'next/head';
 import { useState, useMemo, useRef, useEffect } from 'react';
 import BottomNav from '../components/BottomNav';
 import EquipmentCards from '../components/EquipmentCards';
+import CalendarView from '../components/CalendarView';
 import { useWorkoutLogs } from '../utils/useWorkoutLogs';
+import { useAuth } from '../context/AuthContext';
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -15,7 +17,7 @@ import {
 } from 'recharts';
 
 // Metric Cards Carousel Component matching the reference design
-function MetricCardsCarousel({ totalWorkouts, weekDuration, avgLoadPerWorkout }) {
+function MetricCardsCarousel({ totalWorkouts, weekDuration, avgLoadPerWorkout, consistencyScore }) {
   const scrollRef = useRef(null);
   const [activeIndex, setActiveIndex] = useState(0);
 
@@ -37,12 +39,12 @@ function MetricCardsCarousel({ totalWorkouts, weekDuration, avgLoadPerWorkout })
       labelColor: 'text-black/70'
     },
     {
-      label: 'Total Workouts',
-      value: totalWorkouts.toString(),
-      sublabel: null,
+      label: 'Consistency Score',
+      value: `${consistencyScore}%`,
+      sublabel: 'Last 30 days',
       bgColor: 'bg-violet-400',
       textColor: 'text-black',
-      labelColor: 'text-black/80'
+      labelColor: 'text-black/70'
     }
   ];
 
@@ -115,6 +117,8 @@ export default function Statistics() {
     limitCount: 500,
     includeStats: true 
   });
+  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState('statistics');
   const [liftViewType, setLiftViewType] = useState('week');
 
   // Helper: get load from a log entry
@@ -330,6 +334,29 @@ export default function Statistics() {
   // Calculate average load per workout
   const avgLoadPerWorkout = totalWorkouts > 0 ? Math.round(totalLoad / totalWorkouts) : 0;
 
+  // Calculate consistency score: active workout days in last 14 days
+  const consistencyScore = useMemo(() => {
+    const DAYS_OBSERVED = 30;
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    const startDate = new Date(today);
+    startDate.setDate(today.getDate() - (DAYS_OBSERVED - 1));
+    startDate.setHours(0, 0, 0, 0);
+
+    const activeDays = new Set();
+    logs.forEach((log) => {
+      const createdAt = getLogDate(log);
+      if (!createdAt) return;
+      const logDate = new Date(createdAt);
+      if (logDate >= startDate && logDate <= today) {
+        const dayKey = `${logDate.getFullYear()}-${logDate.getMonth()}-${logDate.getDate()}`;
+        activeDays.add(dayKey);
+      }
+    });
+
+    return Math.round((activeDays.size / DAYS_OBSERVED) * 100);
+  }, [logs]);
+
   return (
     <div className="min-h-screen bg-black text-white pb-32">
       <Head>
@@ -340,134 +367,166 @@ export default function Statistics() {
       
       <main className="w-full px-4 sm:px-6 md:px-8 pt-2.5 sm:pt-3.5 pt-pwa-dynamic pb-4 md:pb-6">
         <div className="w-full max-w-4xl mx-auto">
-          {/* Page Header */}
-          <div className="mb-6">
+          {/* Page Header + Tab Toggle */}
+          <div className="mb-5">
             <h1 className="text-2xl font-bold text-white">Statistics</h1>
-            <p className="text-sm text-white/60 mt-1">Track your workout progress</p>
+            <p className="text-sm text-white/60 mt-1 mb-4">Track your workout progress</p>
+
+            {/* Tab Toggle */}
+            <div className="flex border-b border-white/10">
+              {[
+                { key: 'statistics', label: 'Statistics' },
+                { key: 'calendar', label: 'History' },
+              ].map(tab => (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`flex-1 pb-2.5 text-sm font-semibold transition-colors relative ${
+                    activeTab === tab.key
+                      ? 'text-orange-400'
+                      : 'text-white/40'
+                  }`}
+                >
+                  {tab.label}
+                  {activeTab === tab.key && (
+                    <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-orange-400 rounded-full" />
+                  )}
+                </button>
+              ))}
+            </div>
           </div>
 
-          {/* Workout Load Chart */}
-          <section className="mb-6 opacity-0 animate-fade-up" style={{ animationDelay: '0.1s', animationFillMode: 'forwards' }}>
-            <div className="bg-zinc-900 rounded-3xl p-5 sm:p-6 shadow-2xl">
-              {/* Header with title and stats */}
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-white mb-2">Total Load Lifted</h3>
-                  <button 
-                    onClick={cycleViewType}
-                    className="text-xs text-white/60 capitalize bg-white/10 px-3 py-1 rounded-full hover:bg-white/20 transition-colors flex items-center gap-1"
-                  >
-                    {viewTypeLabels[liftViewType]}
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-                </div>
-                <div className="text-right">
-                  <div className={`text-2xl sm:text-3xl font-bold ${hasChartData ? 'text-yellow-300' : 'text-white/30'}`}>
-                    {totalLoad.toFixed(1)} kg
+          {/* ═══ Statistics Tab ═══ */}
+          {activeTab === 'statistics' && (
+            <>
+              {/* Workout Load Chart */}
+              <section className="mb-6 opacity-0 animate-fade-up" style={{ animationDelay: '0.1s', animationFillMode: 'forwards' }}>
+                <div className="bg-zinc-900 rounded-3xl p-5 sm:p-6 shadow-2xl">
+                  <div className="flex items-start justify-between mb-4">
+                    <div>
+                      <h3 className="text-lg font-semibold text-white mb-2">Total Load Lifted</h3>
+                      <button 
+                        onClick={cycleViewType}
+                        className="text-xs text-white/60 capitalize bg-white/10 px-3 py-1 rounded-full hover:bg-white/20 transition-colors flex items-center gap-1"
+                      >
+                        {viewTypeLabels[liftViewType]}
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div className="text-right">
+                      <div className={`text-2xl sm:text-3xl font-bold ${hasChartData ? 'text-yellow-300' : 'text-white/30'}`}>
+                        {totalLoad.toFixed(1)} kg
+                      </div>
+                      <div className="text-xs text-white/60">Total</div>
+                    </div>
                   </div>
-                  <div className="text-xs text-white/60">Total</div>
+                  <div className="w-full h-56 sm:h-64 relative">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ComposedChart data={currentLoadData} margin={{ top: 10, right: 10, left: 10, bottom: 10 }}>
+                        <CartesianGrid 
+                          strokeDasharray="3 3" 
+                          stroke="rgba(255,255,255,0.08)" 
+                          verticalCoordinatesGenerator={(props) => {
+                            const { width, offset } = props;
+                            const coordinates = [];
+                            currentLoadData.forEach((item, index) => {
+                              if (item.label && item.label.trim() !== '') {
+                                const x = offset.left + (index * (width - offset.left - offset.right) / (currentLoadData.length - 1 || 1));
+                                coordinates.push(x);
+                              }
+                            });
+                            return coordinates;
+                          }}
+                        />
+                        <XAxis 
+                          dataKey={dataKey} 
+                          stroke="rgba(255,255,255,0.5)" 
+                          style={{ fontSize: '11px' }}
+                          axisLine={false}
+                          tickLine={false}
+                          interval={0}
+                          tick={{ fill: 'rgba(255,255,255,0.5)' }}
+                        />
+                        <YAxis hide={true} domain={[0, hasChartData ? 'dataMax' : 100]} />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: 'rgba(0,0,0,0.95)',
+                            border: '1px solid rgba(255,255,255,0.2)',
+                            borderRadius: '12px',
+                            padding: '10px 14px',
+                          }}
+                          labelStyle={{ color: '#fef08a', fontWeight: 600 }}
+                          formatter={(value, name) => {
+                            if (name === 'areaFill') return null;
+                            return [`${value?.toFixed(1) || 0} kg`, 'Load'];
+                          }}
+                        />
+                        <defs>
+                          <linearGradient id="statsLoadAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#fef08a" stopOpacity={0.5} />
+                            <stop offset="100%" stopColor="#000000" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <Area
+                          type="monotone"
+                          dataKey="load"
+                          name="areaFill"
+                          stroke="none"
+                          fill="url(#statsLoadAreaGradient)"
+                          connectNulls={false}
+                          animationDuration={500}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="load"
+                          stroke="#fef08a"
+                          strokeWidth={5}
+                          connectNulls={false}
+                          name="Load"
+                          dot={(props) => {
+                            const { cx, cy, payload } = props;
+                            if (payload?.isToday || payload?.isCurrentWeek || payload?.isCurrentMonth) {
+                              return <circle cx={cx} cy={cy} r={5} fill="#fef08a" stroke="#fef08a" strokeWidth={2} />;
+                            }
+                            return null;
+                          }}
+                          activeDot={{ r: 6, fill: '#fef08a', stroke: '#fff', strokeWidth: 2 }}
+                          animationDuration={500}
+                        />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
-              </div>
+              </section>
 
-              {/* Line Chart - No Y axis labels, tap to reveal values */}
-              <div className="w-full h-56 sm:h-64 relative">
-                <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={currentLoadData} margin={{ top: 10, right: 10, left: 10, bottom: 10 }}>
-                    <CartesianGrid 
-                      strokeDasharray="3 3" 
-                      stroke="rgba(255,255,255,0.08)" 
-                      verticalCoordinatesGenerator={(props) => {
-                        const { xAxis, width, offset } = props;
-                        const coordinates = [];
-                        
-                        // Only show grid lines where we have labels
-                        currentLoadData.forEach((item, index) => {
-                          if (item.label && item.label.trim() !== '') {
-                            const x = offset.left + (index * (width - offset.left - offset.right) / (currentLoadData.length - 1 || 1));
-                            coordinates.push(x);
-                          }
-                        });
-                        
-                        return coordinates;
-                      }}
-                    />
-                    <XAxis 
-                      dataKey={dataKey} 
-                      stroke="rgba(255,255,255,0.5)" 
-                      style={{ fontSize: '11px' }}
-                      axisLine={false}
-                      tickLine={false}
-                      interval={0}
-                      tick={{ fill: 'rgba(255,255,255,0.5)' }}
-                    />
-                    <YAxis hide={true} domain={[0, hasChartData ? 'dataMax' : 100]} />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: 'rgba(0,0,0,0.95)',
-                        border: '1px solid rgba(255,255,255,0.2)',
-                        borderRadius: '12px',
-                        padding: '10px 14px',
-                      }}
-                      labelStyle={{ color: '#fef08a', fontWeight: 600 }}
-                      formatter={(value, name) => {
-                        // Only show Line data, not Area (which has name="areaFill")
-                        if (name === 'areaFill') return null;
-                        return [`${value?.toFixed(1) || 0} kg`, 'Load'];
-                      }}
-                    />
-                    <defs>
-                      <linearGradient id="statsLoadAreaGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#fef08a" stopOpacity={0.5} />
-                        <stop offset="100%" stopColor="#000000" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <Area
-                      type="monotone"
-                      dataKey="load"
-                      name="areaFill"
-                      stroke="none"
-                      fill="url(#statsLoadAreaGradient)"
-                      connectNulls={false}
-                      animationDuration={500}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="load"
-                      stroke="#fef08a"
-                      strokeWidth={5}
-                      connectNulls={false}
-                      name="Load"
-                      dot={(props) => {
-                        const { cx, cy, payload } = props;
-                        if (payload?.isToday || payload?.isCurrentWeek || payload?.isCurrentMonth) {
-                          return <circle cx={cx} cy={cy} r={5} fill="#fef08a" stroke="#fef08a" strokeWidth={2} />;
-                        }
-                        return null;
-                      }}
-                      activeDot={{ r: 6, fill: '#fef08a', stroke: '#fff', strokeWidth: 2 }}
-                      animationDuration={500}
-                    />
-                  </ComposedChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          </section>
+              {/* Metric Cards */}
+              <section className="mb-6 opacity-0 animate-fade-up" style={{ animationDelay: '0.3s', animationFillMode: 'forwards' }}>
+                <MetricCardsCarousel
+                  totalWorkouts={totalWorkouts}
+                  weekDuration={weekDuration}
+                  avgLoadPerWorkout={avgLoadPerWorkout}
+                  consistencyScore={consistencyScore}
+                />
+              </section>
 
-          {/* Colorful Metric Cards - Horizontal Carousel */}
-          <section className="mb-6 opacity-0 animate-fade-up" style={{ animationDelay: '0.3s', animationFillMode: 'forwards' }}>
-            <MetricCardsCarousel
-              totalWorkouts={totalWorkouts}
-              weekDuration={weekDuration}
-              avgLoadPerWorkout={avgLoadPerWorkout}
-            />
-          </section>
+              {/* Equipment Cards */}
+              <section className="mb-6 opacity-0 animate-fade-up" style={{ animationDelay: '0.5s', animationFillMode: 'forwards' }}>
+                <EquipmentCards />
+              </section>
+            </>
+          )}
 
-          {/* Equipment Cards - Links to equipment-specific pages */}
-          <section className="mb-6 opacity-0 animate-fade-up" style={{ animationDelay: '0.5s', animationFillMode: 'forwards' }}>
-            <EquipmentCards />
-          </section>
+          {/* ═══ Calendar Tab ═══ */}
+          {activeTab === 'calendar' && (
+            <section className="opacity-0 animate-fade-up" style={{ animationDelay: '0.05s', animationFillMode: 'forwards' }}>
+              <CalendarView
+                logs={logs}
+                userCreatedAt={user?.metadata?.creationTime}
+              />
+            </section>
+          )}
         </div>
       </main>
       

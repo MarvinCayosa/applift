@@ -343,10 +343,11 @@ export default function ExerciseDetailPage() {
                         ? muscleData.muscles.filter(m => m.slug === selectedMuscle).map(m => ({ slug: m.slug, intensity: 3 }))
                         : muscleData.muscles.map(m => ({ slug: m.slug, intensity: m.intensity }));
 
+                      // Red (primary/3), Orange (secondary/2), Yellow (stabilizer/1)
                       const bodyColors = [
-                        `${bgColor}40`,
-                        `${bgColor}80`,
-                        bgColor,
+                        '#FACC15',
+                        '#F97316',
+                        '#EF4444',
                       ];
 
                       return (
@@ -383,13 +384,14 @@ export default function ExerciseDetailPage() {
                               const isPrimary = muscle.intensity === 3;
                               const isSelected = selectedMuscle === muscle.slug;
                               const tagLabel = isPrimary ? 'Primary' : muscle.intensity === 2 ? 'Secondary' : 'Stabilizer';
+                              const intensityColor = muscle.intensity === 3 ? '#EF4444' : muscle.intensity === 2 ? '#F97316' : '#FACC15';
                               return (
                                 <div
                                   key={muscle.slug}
                                   onClick={() => setSelectedMuscle(isSelected ? null : muscle.slug)}
                                   className="flex items-center gap-2 rounded-lg p-2 transition-all cursor-pointer active:scale-[0.98]"
                                   style={{
-                                    backgroundColor: isSelected ? `${bgColor}30` : isPrimary ? `${bgColor}15` : 'rgba(255,255,255,0.03)',
+                                    backgroundColor: isSelected ? `${intensityColor}20` : isPrimary ? `${intensityColor}10` : 'rgba(255,255,255,0.03)',
                                   }}
                                 >
                                   {/* Intensity bar - single wide bar */}
@@ -398,7 +400,7 @@ export default function ExerciseDetailPage() {
                                     style={{
                                       width: 4,
                                       height: 20,
-                                      background: `linear-gradient(to top, ${bgColor} ${muscle.intensity * 33.3}%, rgba(255,255,255,0.1) ${muscle.intensity * 33.3}%)`,
+                                      background: `linear-gradient(to top, ${intensityColor} ${muscle.intensity * 33.3}%, rgba(255,255,255,0.1) ${muscle.intensity * 33.3}%)`,
                                     }}
                                   />
 
@@ -411,8 +413,8 @@ export default function ExerciseDetailPage() {
                                   <span
                                     className="text-[8px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full flex-shrink-0"
                                     style={{
-                                      color: isPrimary ? '#fff' : 'rgba(255,255,255,0.7)',
-                                      backgroundColor: isPrimary ? bgColor : 'rgba(255,255,255,0.12)',
+                                      color: '#fff',
+                                      backgroundColor: intensityColor,
                                     }}
                                   >
                                     {tagLabel}
@@ -627,9 +629,8 @@ export default function ExerciseDetailPage() {
                   <div className="grid grid-cols-2 gap-3">
                     {/* LEFT: Execution Quality – swipeable with overall + comparison views */}
                     <div className="row-span-2 bg-white/[0.05] rounded-2xl overflow-hidden flex flex-col" style={{ backgroundColor: `${bgColor}33` }}>
-                      <div className="p-4 pb-2 flex items-center justify-between">
+                      <div className="p-4 pb-2">
                         <p className="text-sm font-semibold text-white">Execution Quality</p>
-                        <Dots count={2} active={activeQualitySlide} />
                       </div>
 
                       <div
@@ -769,6 +770,7 @@ export default function ExerciseDetailPage() {
 
                         {/* Slide 2: Last Sessions Timeline */}
                         <div className="w-full shrink-0 snap-center snap-always p-4 pt-0 flex flex-col" style={{ minWidth: '100%' }}>
+                          <p className="text-[11px] text-white/40 mb-2">Comparison from last 3 sessions</p>
                           {qualityComparison.length >= 3 ? (
                             <div className="flex-1 flex flex-col">
                               {/* Trend badge */}
@@ -887,6 +889,18 @@ export default function ExerciseDetailPage() {
                             <p className="text-white/25 text-xs text-center py-8 flex-1 flex items-center justify-center">Need at least 3 sessions</p>
                           )}
                         </div>
+                      </div>
+                      
+                      {/* Dot indicators at bottom */}
+                      <div className="flex items-center justify-center gap-1.5 pb-4 pt-2">
+                        {Array.from({ length: 2 }).map((_, i) => (
+                          <div
+                            key={i}
+                            className={`rounded-full transition-all duration-300 ${
+                              activeQualitySlide === i ? 'w-5 h-1.5 bg-white' : 'w-1.5 h-1.5 bg-white/25'
+                            }`}
+                          />
+                        ))}
                       </div>
                     </div>
 
