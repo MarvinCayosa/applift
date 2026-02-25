@@ -71,9 +71,9 @@ BARBELL WEIGHTS (always include bar in total): Olympic 20kg, Women's 15kg, EZ 8k
 - IMPORTANT: recommendedLoad = bar + plates combined. weightBreakdown must show EXACTLY what to load.
 - Barbell example: recommendedLoad=30 → weightBreakdown "20kg bar + 5kg per side"
 - Barbell bar only: recommendedLoad=20 → weightBreakdown "Bar only (20kg)"
-- Dumbbell: just show total weight (e.g. "9.5kg" or "2kg handle + 7.5kg plates"). Do NOT say "per hand".
+- Dumbbell (2kg handle): recommendedLoad=10 → weightBreakdown "2kg handle + 8kg plates". Handle only: weightBreakdown "Handle only (2kg)"
 - Weight Stack / Machine: recommendedLoad=25 → weightBreakdown "25kg on stack"
-- Always tell user exactly what plates/weight to load — never just show a total
+- Always tell user exactly what plates/weight to load — never just show a total number
 
 SAFETY RULES:
 1. Beginners (<6mo): 5-10% max increase, start with minimal weights
@@ -104,7 +104,7 @@ OUTPUT FORMAT (JSON only, no markdown):
   "restTimeSeconds": <int>,
   "estimatedCalories": <int>,
   "recommendedRestDays": <1-3>,
-  "weightBreakdown": "<e.g. 'Bar only (20kg)' or '20kg bar + 10kg plates' or '2kg handle + 7.5kg plates'>",
+  "weightBreakdown": "<e.g. 'Bar only (20kg)' or '20kg bar + 10kg plates' or '2kg handle + 8kg plates' or '25kg on stack'>",
   "rationale": "<2-3 sentences referencing specific data if available>",
   "safetyNote": "<1 sentence>",
   "guideline": "<max 15 words>",
@@ -381,11 +381,9 @@ export default async function handler(req, res) {
     let recommendedRestDays = parsed.recommendedRestDays ?? parsed.recommendation?.recommendedRestDays ?? 2;
     recommendedRestDays = Math.max(1, Math.min(4, Math.round(Number(recommendedRestDays) || 2)));
 
-    // Weight breakdown — use AI's if provided, otherwise generate
-    let weightBreakdown = parsed.weightBreakdown ?? parsed.recommendation?.weightBreakdown ?? '';
-    if (!weightBreakdown) {
-      weightBreakdown = generateWeightBreakdown(weight, equipment);
-    }
+    // Weight breakdown — always generate server-side to ensure consistent format
+    // AI sometimes returns just a number (e.g. "25kg") instead of the handle+plates breakdown
+    let weightBreakdown = generateWeightBreakdown(weight, equipment);
 
     console.log('[AI API] Parsed recommendation:', { weight, sets, reps, restTimeSeconds, estimatedCalories, recommendedRestDays, weightBreakdown });
 

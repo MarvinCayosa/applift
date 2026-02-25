@@ -385,7 +385,8 @@ async function classifyWorkoutReps(sets, exercise) {
     console.log(`[Analyze API] Skipped ${skippedFromBackground} reps with background classification`);
   }
   
-  // Calculate distribution
+  // Calculate distribution — initialize with qualityLabels, then also count labels
+  // that come from background ML (which may use different label names)
   const distribution = {};
   for (const label of qualityLabels) {
     distribution[label] = 0;
@@ -394,6 +395,19 @@ async function classifyWorkoutReps(sets, exercise) {
   for (const c of classifications) {
     if (distribution.hasOwnProperty(c.label)) {
       distribution[c.label]++;
+    } else {
+      // Label from background ML doesn't match qualityLabels — add it directly
+      // This handles cases where background ML used exercise-specific labels
+      // but qualityLabels fell back to defaults
+      distribution[c.label] = (distribution[c.label] || 0) + 1;
+    }
+  }
+  
+  // Remove zero-count default labels that were never used
+  // (keeps distribution clean when background ML labels differ from defaults)
+  for (const label of qualityLabels) {
+    if (distribution[label] === 0 && Object.keys(distribution).length > qualityLabels.length) {
+      delete distribution[label];
     }
   }
   

@@ -59,15 +59,20 @@ export const QUALITY_LABELS_BY_EXERCISE = {
   // Dumbbell exercises
   'concentration_curls': ['Clean', 'Uncontrolled Movement', 'Abrupt Initiation'],
   'overhead_extensions': ['Clean', 'Uncontrolled Movement', 'Abrupt Initiation'],
+  'overhead_triceps_extension': ['Clean', 'Uncontrolled Movement', 'Abrupt Initiation'],
+  'overhead_extension': ['Clean', 'Uncontrolled Movement', 'Abrupt Initiation'],
   'bicep_curls': ['Clean', 'Uncontrolled Movement', 'Abrupt Initiation'],
   
   // Barbell exercises
   'bench_press': ['Clean', 'Uncontrolled Movement', 'Inclination Asymmetry'],
+  'flat_bench_barbell_press': ['Clean', 'Uncontrolled Movement', 'Inclination Asymmetry'],
   'back_squats': ['Clean', 'Uncontrolled Movement', 'Inclination Asymmetry'],
+  'back_squat': ['Clean', 'Uncontrolled Movement', 'Inclination Asymmetry'],
   
   // Weight Stack exercises
   'lateral_pulldown': ['Clean', 'Pulling Too Fast', 'Releasing Too Fast'],
   'leg_extension': ['Clean', 'Pulling Too Fast', 'Releasing Too Fast'],
+  'seated_leg_extension': ['Clean', 'Pulling Too Fast', 'Releasing Too Fast'],
 };
 
 // Default quality labels

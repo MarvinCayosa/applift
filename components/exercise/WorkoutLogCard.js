@@ -39,7 +39,7 @@ const WorkoutLogCard = memo(({ log, analytics, accentColor = '#3B82F6', onClick,
     : (log.results?.totalTime || 0)
   const calories     = log.results?.calories   || 0
   const duration     = fmtDur(durMs, durSec)
-  const equipmentType = log.exercise?.equipment || log.planned?.equipment || 'dumbbell'
+  const equipmentType = (log.exercise?.equipmentPath || log.exercise?.equipment || log.planned?.equipment || 'dumbbell').toLowerCase().replace(/\s+/g, '-')
 
   const dateStr = `${dt.toLocaleDateString('en-US', { weekday: 'short' })} \u00B7 ${dt.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}`
   const timeStr = fmtTime(dt)

@@ -143,7 +143,9 @@ export function computeQualityBreakdown(logs, analyticsMap = {}, equipmentType =
   const counts = {}
 
   // Resolve labels from equipment type (not exercise slug)
-  const qualityLabels = QUALITY_LABELS[equipmentType] || ['Clean', 'Poor Form', 'Bad Form']
+  // Normalize to lowercase to match QUALITY_LABELS keys
+  const normalizedEquipment = equipmentType ? equipmentType.toLowerCase().replace(/\s+/g, '-') : null
+  const qualityLabels = QUALITY_LABELS[normalizedEquipment] || QUALITY_LABELS[equipmentType] || ['Clean', 'Poor Form', 'Bad Form']
 
   logs.forEach((log) => {
     const a = analyticsMap[log.id]
