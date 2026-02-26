@@ -6,6 +6,7 @@ import { equipmentConfig } from '../../../../components/equipment'
 import { getWorkoutLogByPath } from '../../../../services/workoutLogService'
 import { useAuth } from '../../../../context/AuthContext'
 import { useWorkoutAnalysis, transformAnalysisForUI } from '../../../../hooks/useWorkoutAnalysis'
+import { loadCalibrationFromFirestore, loadCalibration } from '../../../../components/CalibrationModal'
 
 // Session Details / Workout Finished components (same as workout-finished page)
 import SessionDetailsSkeleton from '../../../../components/sessionDetails/SessionDetailsSkeleton'
@@ -41,6 +42,7 @@ export default function SessionSummaryPage() {
 
   // Analysis data
   const [analysisData, setAnalysisData] = useState(null)
+  const [romCalibration, setRomCalibration] = useState(null)
   const { getAnalysis, analyzeWorkout, analysis, isAnalyzing, error: analysisError } = useWorkoutAnalysis()
 
   // ---- Fetch the session log from correct Firestore path ----
@@ -127,6 +129,37 @@ export default function SessionSummaryPage() {
     fetchAnalysis()
   }, [log, user, logId, analysisData])
 
+  // ---- Load ROM calibration for this equipment+exercise ----
+  useEffect(() => {
+    if (!user?.uid || !eq || !ex) return
+    
+    // Try Firestore first, then fall back to localStorage
+    loadCalibrationFromFirestore(user.uid, eq, ex).then((calibrationData) => {
+      if (calibrationData && calibrationData.targetROM) {
+        setRomCalibration(calibrationData)
+        console.log('[Session] ✅ Loaded ROM calibration from Firestore:', calibrationData.targetROM)
+      } else {
+        // Fall back to localStorage
+        const localCalibration = loadCalibration(eq, ex)
+        if (localCalibration && localCalibration.targetROM) {
+          setRomCalibration(localCalibration)
+          console.log('[Session] ✅ Loaded ROM calibration from localStorage:', localCalibration.targetROM)
+        } else {
+          console.log('[Session] No ROM calibration found for', eq, ex)
+        }
+      }
+    }).catch(() => {
+      // On error, try localStorage
+      const localCalibration = loadCalibration(eq, ex)
+      if (localCalibration && localCalibration.targetROM) {
+        setRomCalibration(localCalibration)
+        console.log('[Session] ✅ Loaded ROM calibration from localStorage (after Firestore error):', localCalibration.targetROM)
+      } else {
+        console.log('[Session] No ROM calibration found')
+      }
+    })
+  }, [user?.uid, eq, ex])
+
   // Transform analysis when it arrives from hook
   useEffect(() => {
     if (analysis && !analysisData) {
@@ -134,6 +167,29 @@ export default function SessionSummaryPage() {
       setAnalysisData(transformed)
     }
   }, [analysis, analysisData])
+
+  // ---- Apply ROM calibration context to sets that have ROM data ----
+  const enhanceWithROMContext = (setData) => {
+    if (!romCalibration || !setData) return setData
+    
+    // Check if this set has any ROM data (from reps)
+    const hasROMData = setData.repsData?.some(rep => 
+      rep.rom != null || rep.romFulfillment != null
+    )
+    
+    console.log('[Session] enhanceWithROMContext - hasROMData:', hasROMData, 'setNumber:', setData.setNumber, 'repsWithROM:', setData.repsData?.filter(r => r.rom != null).length)
+    
+    if (hasROMData) {
+      return {
+        ...setData,
+        romCalibrated: true,
+        targetROM: romCalibration.targetROM,
+        romUnit: romCalibration.unit || '°',
+      }
+    }
+    
+    return setData
+  }
 
   // Guard
   if (!config || !exerciseCfg) {
@@ -181,17 +237,21 @@ export default function SessionSummaryPage() {
   // Merge analysis setsData with Firestore setsData
   const mergedSetsData = useMemo(() => {
     if (!setsData || setsData.length === 0) {
-      return analysisData?.setsData || []
+      // No local sets data, try analysis data with ROM enhancement
+      const analysisSets = analysisData?.setsData || []
+      return analysisSets.map(enhanceWithROMContext)
     }
     if (!analysisData?.setsData || analysisData.setsData.length === 0) {
-      return setsData
+      // No analysis data, enhance local sets with ROM calibration
+      console.log('[Session] No analysis data, enhancing raw setsData')
+      return setsData.map(enhanceWithROMContext)
     }
 
     return setsData.map((localSet, setIdx) => {
       const analysisSet = analysisData.setsData.find(s => s.setNumber === localSet.setNumber)
         || analysisData.setsData[setIdx]
 
-      if (!analysisSet) return localSet
+      if (!analysisSet) return enhanceWithROMContext(localSet)
 
       const mergedSet = {
         ...localSet,
@@ -203,6 +263,7 @@ export default function SessionSummaryPage() {
       mergedSet.targetROM = localSet.targetROM ?? analysisSet.targetROM ?? null
       mergedSet.romUnit = localSet.romUnit || analysisSet.romUnit || '°'
 
+      // First merge repsData, THEN apply ROM calibration context
       if (localSet.repsData && analysisSet.repsData && localSet.repsData.length === analysisSet.repsData.length) {
         mergedSet.repsData = localSet.repsData.map((localRep, repIdx) => {
           const analysisRep = analysisSet.repsData[repIdx]
@@ -225,9 +286,25 @@ export default function SessionSummaryPage() {
         mergedSet.reps = analysisSet.repsData.length
       }
 
-      return mergedSet
+      // Now apply ROM calibration context AFTER repsData is merged
+      return enhanceWithROMContext(mergedSet)
     })
-  }, [setsData, analysisData])
+  }, [setsData, analysisData, romCalibration])
+
+  // Debug: Log merged sets data for ROM debugging
+  useEffect(() => {
+    if (mergedSetsData?.length > 0) {
+      const firstSet = mergedSetsData[0]
+      console.log('[Session] mergedSetsData first set:', {
+        romCalibrated: firstSet.romCalibrated,
+        targetROM: firstSet.targetROM,
+        romUnit: firstSet.romUnit,
+        repsCount: firstSet.repsData?.length,
+        firstRepROM: firstSet.repsData?.[0]?.rom,
+        firstRepROMFulfillment: firstSet.repsData?.[0]?.romFulfillment,
+      })
+    }
+  }, [mergedSetsData])
 
   // Skeleton Loading
   if (loading) {

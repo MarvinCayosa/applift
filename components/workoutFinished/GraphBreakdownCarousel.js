@@ -48,7 +48,18 @@ export default function GraphBreakdownCarousel({
 
   // Determine whether ROM slide is relevant
   const romData = useMemo(() => {
+    // Debug: Log all sets to see what ROM data they have
+    console.log('[GraphBreakdownCarousel] setsData:', setsData?.map(s => ({
+      setNumber: s.setNumber,
+      romCalibrated: s.romCalibrated,
+      targetROM: s.targetROM,
+      repsCount: s.repsData?.length,
+      repsWithROMFulfillment: s.repsData?.filter(r => r.romFulfillment != null).length,
+    })));
+    
     const firstCalibratedSet = setsData?.find(s => s.romCalibrated && s.targetROM);
+    console.log('[GraphBreakdownCarousel] firstCalibratedSet:', firstCalibratedSet ? { romCalibrated: firstCalibratedSet.romCalibrated, targetROM: firstCalibratedSet.targetROM } : null);
+    
     if (!firstCalibratedSet) return null;
 
     const baselineROM = firstCalibratedSet.targetROM;
@@ -63,6 +74,7 @@ export default function GraphBreakdownCarousel({
       ? repsWithROM.reduce((sum, r) => sum + (parseFloat(r.rom) || 0), 0) / repsWithROM.length
       : null;
 
+    console.log('[GraphBreakdownCarousel] romData computed:', { baselineROM, avgFulfillment, avgROM });
     return { baselineROM, romUnit, avgFulfillment, avgROM };
   }, [setsData]);
 

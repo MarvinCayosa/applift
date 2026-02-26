@@ -375,8 +375,8 @@ export default function Statistics() {
             {/* Tab Toggle */}
             <div className="flex border-b border-white/10">
               {[
-                { key: 'statistics', label: 'Statistics' },
-                { key: 'calendar', label: 'History' },
+                { key: 'statistics', label: 'Analytics' },
+                { key: 'calendar', label: 'Calendar' },
               ].map(tab => (
                 <button
                   key={tab.key}

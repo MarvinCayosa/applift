@@ -2,6 +2,8 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { ROMComputer } from '../utils/ROMComputer';
 import { useBluetooth } from '../context/BluetoothProvider';
 import { KalmanFilter } from '../utils/KalmanFilter';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { db } from '../config/firestore';
 
 const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
 const CHARACTERISTIC_UUID_IMU = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
@@ -23,7 +25,22 @@ function getCalibrationKey(equipment, exercise) {
 }
 
 /**
+ * Sanitize string for Firestore document path
+ */
+function sanitizeForFirestore(str) {
+  return (str || 'unknown').trim()
+    .replace(/([a-z])([A-Z])/g, '$1-$2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9-]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+/**
  * Save ROM calibration data for an equipment+exercise combo
+ * Saves to both localStorage (for offline/fast access) and Firestore (for persistence)
  */
 export function saveCalibration(equipment, exercise, data) {
   try {
@@ -33,12 +50,58 @@ export function saveCalibration(equipment, exercise, data) {
       savedAt: new Date().toISOString()
     }));
   } catch (e) {
-    console.warn('Failed to save calibration:', e);
+    console.warn('Failed to save calibration to localStorage:', e);
   }
 }
 
 /**
- * Load saved ROM calibration data
+ * Save ROM calibration data to Firestore
+ * Path: userWorkouts/{userId}/{equipment}/{exercise}/calibration/rom
+ */
+export async function saveCalibrationToFirestore(userId, equipment, exercise, data) {
+  if (!userId || !equipment || !exercise) return;
+  try {
+    const eq = sanitizeForFirestore(equipment);
+    const ex = sanitizeForFirestore(exercise);
+    const docRef = doc(db, 'userWorkouts', userId, eq, ex, 'calibration', 'rom');
+    await setDoc(docRef, {
+      targetROM: data.targetROM ?? null,
+      repROMs: data.repROMs ?? [],
+      exerciseType: data.exerciseType ?? null,
+      romType: data.romType ?? null,
+      unit: data.unit ?? '°',
+      savedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }, { merge: true });
+    console.log('[CalibrationModal] ✅ Calibration saved to Firestore');
+  } catch (e) {
+    console.warn('[CalibrationModal] Failed to save calibration to Firestore:', e);
+  }
+}
+
+/**
+ * Load ROM calibration data from Firestore
+ * Path: userWorkouts/{userId}/{equipment}/{exercise}/calibration/rom
+ */
+export async function loadCalibrationFromFirestore(userId, equipment, exercise) {
+  if (!userId || !equipment || !exercise) return null;
+  try {
+    const eq = sanitizeForFirestore(equipment);
+    const ex = sanitizeForFirestore(exercise);
+    const docRef = doc(db, 'userWorkouts', userId, eq, ex, 'calibration', 'rom');
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      return snap.data();
+    }
+    return null;
+  } catch (e) {
+    console.warn('[CalibrationModal] Failed to load calibration from Firestore:', e);
+    return null;
+  }
+}
+
+/**
+ * Load saved ROM calibration data (from localStorage for fast access)
  */
 export function loadCalibration(equipment, exercise) {
   try {
@@ -51,7 +114,7 @@ export function loadCalibration(equipment, exercise) {
 }
 
 /**
- * Check if calibration exists for equipment+exercise
+ * Check if calibration exists for equipment+exercise (localStorage)
  */
 export function hasCalibration(equipment, exercise) {
   return loadCalibration(equipment, exercise) !== null;

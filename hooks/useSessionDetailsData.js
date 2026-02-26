@@ -18,6 +18,7 @@ import { getWorkoutLogByPath } from '../services/workoutLogService';
 import { transformAnalysisForUI } from './useWorkoutAnalysis';
 import { db } from '../config/firestore';
 import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
+import { loadCalibrationFromFirestore, loadCalibration } from '../components/CalibrationModal';
 
 /**
  * @param {Object} params
@@ -32,6 +33,7 @@ export default function useSessionDetailsData({ logId, equipment, exercise }) {
   const [log, setLog] = useState(null);
   const [rawAnalysis, setRawAnalysis] = useState(null);
   const [gcsData, setGcsData] = useState(null);
+  const [romCalibration, setRomCalibration] = useState(null);
 
   // Loading / error states
   const [logLoading, setLogLoading] = useState(true);
@@ -102,6 +104,37 @@ export default function useSessionDetailsData({ logId, equipment, exercise }) {
     fetchAnalytics();
   }, [logId, user?.uid, equipment, exercise]);
 
+  // ────────────────────────────────────────────────
+  // 2b. Load ROM calibration for this exercise
+  // ────────────────────────────────────────────────
+  useEffect(() => {
+    if (!user?.uid || !equipment || !exercise) return;
+    
+    // Try Firestore first, then fall back to localStorage
+    loadCalibrationFromFirestore(user.uid, equipment, exercise).then((calibrationData) => {
+      if (calibrationData && calibrationData.targetROM) {
+        setRomCalibration(calibrationData);
+        console.log('[useSessionDetailsData] ✅ Loaded ROM calibration from Firestore:', calibrationData.targetROM);
+      } else {
+        // Fall back to localStorage
+        const localCalibration = loadCalibration(equipment, exercise);
+        if (localCalibration && localCalibration.targetROM) {
+          setRomCalibration(localCalibration);
+          console.log('[useSessionDetailsData] ✅ Loaded ROM calibration from localStorage:', localCalibration.targetROM);
+        } else {
+          console.log('[useSessionDetailsData] No ROM calibration found for', equipment, exercise);
+        }
+      }
+    }).catch(() => {
+      // On error, try localStorage
+      const localCalibration = loadCalibration(equipment, exercise);
+      if (localCalibration && localCalibration.targetROM) {
+        setRomCalibration(localCalibration);
+        console.log('[useSessionDetailsData] ✅ Loaded ROM calibration from localStorage (after error):', localCalibration.targetROM);
+      }
+    });
+  }, [user?.uid, equipment, exercise]);
+
   // ────────────────────────────────────────────────────
   // 3. Fetch GCS workout_data.json once log is available
   // ────────────────────────────────────────────────────
@@ -155,7 +188,27 @@ export default function useSessionDetailsData({ logId, equipment, exercise }) {
     if (!rawAnalysis) return null;
     return transformAnalysisForUI(rawAnalysis);
   }, [rawAnalysis]);
-
+  // Helper to apply ROM calibration context to a set
+  const enhanceWithROMContext = useCallback((setData) => {
+    if (!romCalibration || !setData) return setData;
+    
+    // Check if this set has any ROM data (from reps)
+    const hasROMData = setData.repsData?.some(rep => 
+      rep.rom != null || rep.romFulfillment != null
+    );
+    
+    if (hasROMData) {
+      console.log('[useSessionDetailsData] Enhancing set', setData.setNumber, 'with ROM calibration:', romCalibration.targetROM);
+      return {
+        ...setData,
+        romCalibrated: true,
+        targetROM: romCalibration.targetROM,
+        romUnit: romCalibration.unit || '°',
+      };
+    }
+    
+    return setData;
+  }, [romCalibration]);
   const viewModel = useMemo(() => {
     if (!log) return null;
 
@@ -292,6 +345,22 @@ export default function useSessionDetailsData({ logId, equipment, exercise }) {
       });
     })();
 
+    // Apply ROM calibration context to all sets
+    const romEnhancedSetsData = mergedSetsData.map(enhanceWithROMContext);
+
+    // Debug log
+    if (romEnhancedSetsData.length > 0) {
+      const firstSet = romEnhancedSetsData[0];
+      console.log('[useSessionDetailsData] romEnhancedSetsData first set:', {
+        romCalibrated: firstSet.romCalibrated,
+        targetROM: firstSet.targetROM,
+        romUnit: firstSet.romUnit,
+        repsCount: firstSet.repsData?.length,
+        firstRepROM: firstSet.repsData?.[0]?.rom,
+        firstRepROMFulfillment: firstSet.repsData?.[0]?.romFulfillment,
+      });
+    }
+
     // Chart data from analysis or GCS
     const chartData =
       analysisUI?.chartData?.length > 0
@@ -325,7 +394,7 @@ export default function useSessionDetailsData({ logId, equipment, exercise }) {
       calories,
 
       // Sets data (merged with analysis)
-      mergedSetsData,
+      mergedSetsData: romEnhancedSetsData,
 
       // Overall chart data
       chartData,
@@ -362,7 +431,7 @@ export default function useSessionDetailsData({ logId, equipment, exercise }) {
       // GCS data (for movement graph)
       gcsData,
     };
-  }, [log, analysisUI, gcsData, logId, equipment, exercise]);
+  }, [log, analysisUI, gcsData, logId, equipment, exercise, enhanceWithROMContext]);
 
   // ────────────────────────────────────────────────────
   // Overall loading state

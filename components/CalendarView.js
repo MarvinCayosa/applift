@@ -128,7 +128,7 @@ export default function CalendarView({ logs = [], userCreatedAt }) {
         timestamp: ts,
       });
     });
-    Object.values(map).forEach(arr => arr.sort((a, b) => a.timestamp - b.timestamp));
+    Object.values(map).forEach(arr => arr.sort((a, b) => b.timestamp - a.timestamp));
     return map;
   }, [logs]);
 

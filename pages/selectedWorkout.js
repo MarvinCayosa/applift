@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import { useRef, useState, useEffect, useMemo, useCallback } from 'react';
 import AIReasoningPanel from '../components/AIReasoningPanel';
 import CalibrationHistoryPanel from '../components/CalibrationHistoryPanel';
-import CalibrationModal, { hasCalibration, loadCalibration } from '../components/CalibrationModal';
+import CalibrationModal, { hasCalibration, loadCalibration, saveCalibrationToFirestore, loadCalibrationFromFirestore } from '../components/CalibrationModal';
 import ConnectPill from '../components/ConnectPill';
 import CustomSetModal from '../components/CustomSetModal';
 import ExerciseInfoPanel from '../components/ExerciseInfoPanel';
@@ -15,7 +15,7 @@ import { useAuth } from '../context/AuthContext';
 import { useBluetooth } from '../context/BluetoothProvider';
 import { useWorkoutLogging } from '../context/WorkoutLoggingContext';
 import { useAIRecommendation } from '../hooks/useAIRecommendation';
-import { collection, getDocs, getDoc, doc, query, orderBy, limit as firestoreLimit } from 'firebase/firestore';
+import { collection, getDocs, getDoc, doc, setDoc, query, orderBy, limit as firestoreLimit } from 'firebase/firestore';
 import { db } from '../config/firestore';
 
 // Pastel colors for cards (including target muscles)
@@ -474,6 +474,7 @@ export default function SelectedWorkout() {
   const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
   
   // Carousel active index state (0 = AI Generated/Recommended, 1 = Custom)
+  // When AI is disabled, there's only one card (Custom) so index is always 0
   const [carouselActiveIndex, setCarouselActiveIndex] = useState(0);
   
   // Custom set values
@@ -739,15 +740,40 @@ export default function SelectedWorkout() {
   } = useBluetooth();
 
   // Check ROM calibration status on mount and when equipment/workout changes
+  // Try localStorage first (fast), then fall back to Firestore (persistent)
   useEffect(() => {
-    if (equipment && workout) {
-      const calibrated = hasCalibration(equipment, workout);
-      setIsROMCalibrated(calibrated);
-      if (calibrated) {
-        setSavedCalibrationData(loadCalibration(equipment, workout));
-      }
+    if (!equipment || !workout) return;
+    
+    // Check localStorage first (instant)
+    const localCalibrated = hasCalibration(equipment, workout);
+    if (localCalibrated) {
+      setIsROMCalibrated(true);
+      setSavedCalibrationData(loadCalibration(equipment, workout));
+      return;
     }
-  }, [equipment, workout]);
+    
+    // If not in localStorage, check Firestore
+    if (user?.uid) {
+      loadCalibrationFromFirestore(user.uid, equipment, workout).then((firestoreData) => {
+        if (firestoreData && firestoreData.targetROM) {
+          setIsROMCalibrated(true);
+          setSavedCalibrationData(firestoreData);
+          // Sync back to localStorage for fast access next time
+          try {
+            const { saveCalibration } = require('../components/CalibrationModal');
+            saveCalibration(equipment, workout, firestoreData);
+          } catch (e) { /* ignore */ }
+          console.log('[SelectedWorkout] ✅ Loaded calibration from Firestore');
+        } else {
+          setIsROMCalibrated(false);
+          setSavedCalibrationData(null);
+        }
+      });
+    } else {
+      setIsROMCalibrated(false);
+      setSavedCalibrationData(null);
+    }
+  }, [equipment, workout, user?.uid]);
 
   // Auto-open calibration modal if not calibrated and device is connected
   useEffect(() => {
@@ -785,8 +811,8 @@ export default function SelectedWorkout() {
         <title>{workout} — AppLift</title>
       </Head>
 
-      <main ref={mainRef} className="flex-1 w-full px-4 sm:px-6 md:px-8 pt-2.5 sm:pt-3.5 pt-pwa-dynamic pb-24 flex flex-col overflow-y-auto">
-        <div className="mx-auto w-full max-w-4xl flex flex-col flex-1 space-y-2">
+      <main ref={mainRef} className="flex-1 w-full px-4 sm:px-6 md:px-8 pt-2.5 sm:pt-3.5 pt-pwa-dynamic pb-32 flex flex-col overflow-y-auto">
+        <div className="mx-auto w-full max-w-4xl flex flex-col flex-1 space-y-4">
         {/* Header with back button and connection pill */}
         <div className="flex items-center justify-between content-fade-up-1 flex-shrink-0 relative">
           {/* Back button - stays visible */}
@@ -827,7 +853,7 @@ export default function SelectedWorkout() {
         </div>
 
         {/* Recommended Set Card */}
-        <div className="content-fade-up-2 flex-shrink-0" style={{ animationDelay: '0.4s' }}>
+        <div className="content-fade-up-2 flex-shrink-0 mt-2" style={{ animationDelay: '0.4s' }}>
           <RecommendedSetCard
             equipment={equipment}
             workout={workout}
@@ -884,7 +910,7 @@ export default function SelectedWorkout() {
 
         {/* AI Error Notice */}
         {aiEnabled && aiError && !aiLoading && (
-          <div className="content-fade-up-2 flex-shrink-0 px-1" style={{ animationDelay: '0.5s' }}>
+          <div className="content-fade-up-2 flex-shrink-0 px-1 mt-3" style={{ animationDelay: '0.5s' }}>
             <div className="rounded-xl bg-red-500/10 border border-red-500/20 px-4 py-3">
               <p className="text-xs text-red-400/80">
                 AI recommendation unavailable — using default values. {aiError}
@@ -894,6 +920,7 @@ export default function SelectedWorkout() {
         )}
 
         {/* Info & History Carousel */}
+        <div className="mt-4">
         <InfoHistoryCarousel
           equipment={equipment}
           workout={workout}
@@ -906,6 +933,7 @@ export default function SelectedWorkout() {
           isCalibrated={isROMCalibrated}
           calibrationData={savedCalibrationData}
         />
+        </div>
         </div>
       </main>
 
@@ -923,7 +951,7 @@ export default function SelectedWorkout() {
             </div>
           )}
           {/* Warm Up Banner - just above workout button */}
-          <div className="mb-3">
+          <div className="mb-4 mt-2">
             <WarmUpBanner />
           </div>
           <WorkoutActionButton
@@ -934,20 +962,31 @@ export default function SelectedWorkout() {
               // Check device connection first
               if (!connected) {
                 setCustomSetError('Please connect your device to start the workout');
+                setErrorVisible(true);
                 return;
               }
               
               // Check ROM calibration
               if (!isROMCalibrated) {
                 setCustomSetError('Please calibrate ROM before starting the workout');
+                setErrorVisible(true);
+                setIsCalibrationModalOpen(true);
                 return;
               }
               
-              // Validate custom set values if on custom card
-              const isCustomSet = carouselActiveIndex === 1;
-              if (isCustomSet && (!customWeight || !customSets || !customReps)) {
-                setCustomSetError('Please set Weight, Sets, and Reps for your custom workout');
-                return;
+              // Validate custom set values if on custom card - ALL fields required, no fallback
+              // When AI is disabled, the only card IS custom (index 0)
+              const isCustomSet = !aiEnabled || carouselActiveIndex === 1;
+              if (isCustomSet) {
+                const missingFields = [];
+                if (!customWeight && customWeight !== 0) missingFields.push('Weight');
+                if (!customSets) missingFields.push('Sets');
+                if (!customReps) missingFields.push('Reps');
+                if (missingFields.length > 0) {
+                  setCustomSetError(`Please set ${missingFields.join(', ')} for your custom workout`);
+                  setErrorVisible(true);
+                  return;
+                }
               }
               
               setCustomSetError('');
@@ -970,7 +1009,8 @@ export default function SelectedWorkout() {
                     : ['Quadriceps'];
                 
                 // Determine set type based on carousel selection
-                const isCustomSet = carouselActiveIndex === 1;
+                // When AI is disabled, there's only 1 card (custom), so index 0 = custom
+                const isCustomSet = !aiEnabled || carouselActiveIndex === 1;
                 const setType = isCustomSet ? 'custom' : 'recommended';
                 
                 // Parse recommended reps (e.g., "6-8" -> 6)
@@ -987,9 +1027,10 @@ export default function SelectedWorkout() {
                 const aiRestTime = aiRec?.restTimeSeconds ?? 30;
 
                 // Determine final values based on set type (AI recommendation vs custom)
-                const finalSets = isCustomSet ? (customSets || details.recommendedSets) : aiSets;
-                const finalReps = isCustomSet ? (customReps || parseReps(details.recommendedReps)) : parseReps(aiReps);
-                const finalWeight = isCustomSet ? (customWeight || 0) : aiWeight;
+                // Custom set: use ONLY user-set values, no AI fallback
+                const finalSets = isCustomSet ? customSets : aiSets;
+                const finalReps = isCustomSet ? customReps : parseReps(aiReps);
+                const finalWeight = isCustomSet ? customWeight : aiWeight;
                 const finalWeightUnit = isCustomSet ? customWeightUnit : 'kg';
                 const finalRestTime = isCustomSet ? customRestTime : aiRestTime;
                 
@@ -1082,10 +1123,14 @@ export default function SelectedWorkout() {
         onClose={() => setIsCalibrationModalOpen(false)}
         equipment={equipment}
         exercise={workout}
-        onCalibrate={(calibrationData) => {
+        onCalibrate={async (calibrationData) => {
           console.log('ROM Calibration saved:', calibrationData);
           setIsROMCalibrated(true);
           setSavedCalibrationData(calibrationData);
+          // Save calibration to Firestore for persistence across devices/sessions
+          if (user?.uid) {
+            await saveCalibrationToFirestore(user.uid, equipment, workout, calibrationData);
+          }
         }}
       />
       
