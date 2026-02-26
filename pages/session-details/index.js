@@ -16,12 +16,11 @@ import { useMemo } from 'react';
 
 import useSessionDetailsData from '../../hooks/useSessionDetailsData';
 import HeaderSection from '../../components/sessionDetails/HeaderSection';
-import MovementGraphCard from '../../components/sessionDetails/MovementGraphCard';
+import GraphBreakdownCarousel from '../../components/workoutFinished/GraphBreakdownCarousel';
 import ExecutionQualityCard from '../../components/sessionDetails/ExecutionQualityCard';
 import ExecutionConsistencyCard from '../../components/sessionDetails/ExecutionConsistencyCard';
 import FatigueCarousel from '../../components/sessionDetails/FatigueCarousel';
 import MovementPhasesSection from '../../components/sessionDetails/MovementPhasesSection';
-import WorkoutProgressCard from '../../components/sessionDetails/WorkoutProgressCard';
 import SessionDetailsSkeleton from '../../components/sessionDetails/SessionDetailsSkeleton';
 import BottomNav from '../../components/BottomNav';
 import { equipmentConfig } from '../../components/equipment';
@@ -130,11 +129,18 @@ export default function SessionDetailsPage() {
 
         {/* Content cards */}
         <div className="px-4 pt-2.5 sm:pt-3.5 space-y-3 max-w-2xl mx-auto">
-          {/* Movement Graph */}
-          <MovementGraphCard
-            gcsData={vm.gcsData}
-            chartData={vm.chartData}
+          {/* Movement Graph + Workout Breakdown + ROM — swipable carousel */}
+          <GraphBreakdownCarousel
             setsData={vm.mergedSetsData}
+            chartData={vm.chartData}
+            gcsData={vm.gcsData}
+            totalReps={vm.totalReps}
+            plannedReps={(vm.plannedSets || vm.totalSets || 0) * (vm.plannedRepsPerSet || vm.reps || 0)}
+            completedSets={vm.totalSets}
+            plannedSets={vm.plannedSets || vm.totalSets || 0}
+            weight={vm.weight}
+            weightUnit={vm.weightUnit}
+            equipment={vm.equipmentName}
             onSeeMore={handleSeeMore}
           />
           {gcsLoading && (
@@ -142,18 +148,6 @@ export default function SessionDetailsPage() {
               <p className="text-white/20 text-xs">Loading sensor data…</p>
             </div>
           )}
-
-          {/* Workout Progress - Total Reps */}
-          <WorkoutProgressCard
-            setsData={vm.mergedSetsData}
-            plannedSets={vm.plannedSets}
-            plannedRepsPerSet={vm.plannedRepsPerSet}
-            totalReps={vm.totalReps}
-            totalSets={vm.totalSets}
-            weight={vm.weight}
-            weightUnit={vm.weightUnit}
-            equipment={vm.equipmentName}
-          />
 
           {/* Execution Quality + Consistency — 2-column row */}
           <div className="grid grid-cols-2 gap-3">

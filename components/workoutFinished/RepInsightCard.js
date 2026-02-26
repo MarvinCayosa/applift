@@ -431,15 +431,29 @@ export default function RepInsightCard({ repData, repNumber, targetROM, romUnit:
                 </div>
               )}
             </div>
-            {/* Baseline vs Achieved - shown below the circle */}
+            {/* Benchmark vs Actual - shown below the circle */}
             {repRom != null && (
-              <div className="relative z-10 flex flex-col items-center gap-0.5 mt-1">
-                <span className="text-[10px] sm:text-xs text-gray-400">
-                  {repRom.toFixed(1)}{displayRomUnit}
-                  {hasCalibration && <span className="text-gray-600"> / {targetROM.toFixed(1)}{displayRomUnit}</span>}
-                </span>
-                {hasCalibration && (
-                  <span className="text-[9px] text-gray-500">Achieved / Baseline</span>
+              <div className="relative z-10 mt-1.5">
+                {hasCalibration ? (
+                  <div className="flex items-center justify-center gap-3">
+                    <div className="text-center">
+                      <p className="text-[9px] sm:text-[10px] text-gray-500 font-medium">Actual</p>
+                      <p className="text-sm sm:text-base font-bold text-white leading-tight">
+                        {repRom.toFixed(1)}<span className="text-[10px] text-gray-400">{displayRomUnit}</span>
+                      </p>
+                    </div>
+                    <div className="w-px h-7 bg-white/10" />
+                    <div className="text-center">
+                      <p className="text-[9px] sm:text-[10px] text-gray-500 font-medium">Benchmark</p>
+                      <p className="text-sm sm:text-base font-bold text-white/60 leading-tight">
+                        {targetROM.toFixed(1)}<span className="text-[10px] text-gray-400">{displayRomUnit}</span>
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-[10px] sm:text-xs text-gray-400 text-center">
+                    {repRom.toFixed(1)}{displayRomUnit}
+                  </p>
                 )}
               </div>
             )}

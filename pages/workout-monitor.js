@@ -21,6 +21,8 @@ import { enqueueJob, clearSessionJobs, flushQueue, getAllPendingJobs, clearAllPe
 import { classifyReps } from '../services/mlClassificationService';
 import { clearCurrentRepBuffer } from '../services/imuStreamingService';
 import LoadingScreen from '../components/LoadingScreen';
+import { db } from '../config/firestore';
+import { doc, setDoc } from 'firebase/firestore';
 
 export default function WorkoutMonitor() {
   const router = useRouter();
@@ -356,6 +358,9 @@ export default function WorkoutMonitor() {
       
       // Store workout results in sessionStorage for workout-finished page
       storeWorkoutResults(finalStats, mergedSetData, avgConcentricVal, avgEccentricVal, result);
+
+      // Persist rich setData (ROM calibration, per-rep metrics) to Firestore
+      await saveRichSetDataToFirestore(mergedSetData, result);
       
       // Wait for the analyzing animation
       await new Promise(resolve => setTimeout(resolve, 2000));
@@ -483,6 +488,9 @@ export default function WorkoutMonitor() {
       const { avgConcentricVal, avgEccentricVal } = computePhaseAverages(mergedSetData);
       storeWorkoutResults(finalStats, mergedSetData, avgConcentricVal, avgEccentricVal, result);
 
+      // Persist rich setData (ROM calibration, per-rep metrics) to Firestore
+      await saveRichSetDataToFirestore(mergedSetData, result);
+
       await new Promise(resolve => setTimeout(resolve, 2000));
       navigateToFinished(finalStats, mergedSetData, avgConcentricVal, avgEccentricVal, result, chartData);
     } catch (navErr) {
@@ -581,6 +589,66 @@ export default function WorkoutMonitor() {
         status: result?.status || 'completed',
         workoutId: result?.workoutId || workoutId,
       }));
+    }
+  }
+
+  /**
+   * Persist the rich setData (including ROM calibration fields) to Firestore.
+   * The streaming metadata only has a simple tracking object for sets,
+   * so ROM-related fields (targetROM, romCalibrated, romUnit, romFulfillment)
+   * would otherwise be lost. This update merges them into the existing doc.
+   */
+  async function saveRichSetDataToFirestore(mergedSetData, result) {
+    if (!user?.uid || !mergedSetData?.length || !result?.workoutId) return;
+
+    try {
+      // Strip heavy fields (chartData, timeData, samples) to keep Firestore lean
+      const cleanSetData = mergedSetData.map(set => ({
+        setNumber: set.setNumber,
+        reps: set.reps,
+        duration: set.duration,
+        targetROM: set.targetROM ?? null,
+        romCalibrated: set.romCalibrated ?? false,
+        romUnit: set.romUnit || '°',
+        repsData: (set.repsData || []).map(rep => ({
+          repNumber: rep.repNumber,
+          time: rep.time,
+          duration: rep.duration,
+          durationMs: rep.durationMs,
+          rom: rep.rom,
+          romFulfillment: rep.romFulfillment ?? null,
+          romUnit: rep.romUnit,
+          peakVelocity: rep.peakVelocity,
+          velocityLossPercent: rep.velocityLossPercent,
+          isEffective: rep.isEffective,
+          smoothnessScore: rep.smoothnessScore,
+          isClean: rep.isClean,
+          quality: rep.quality,
+          liftingTime: rep.liftingTime ?? 0,
+          loweringTime: rep.loweringTime ?? 0,
+          classification: rep.classification || null,
+        })),
+      }));
+
+      // Build Firestore doc path: userWorkouts/{uid}/{equipment}/{exercise}/logs/{workoutId}
+      const sanitize = (str) =>
+        (str || 'unknown').trim()
+          .replace(/([a-z])([A-Z])/g, '$1-$2')
+          .replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
+          .toLowerCase()
+          .replace(/\s+/g, '-')
+          .replace(/[^a-z0-9-]/g, '')
+          .replace(/-+/g, '-')
+          .replace(/^-|-$/g, '');
+
+      const eq = sanitize(result.metadata?.equipment || equipment);
+      const ex = sanitize(result.metadata?.exercise || workout);
+
+      const docRef = doc(db, 'userWorkouts', user.uid, eq, ex, 'logs', result.workoutId);
+      await setDoc(docRef, { results: { setData: cleanSetData } }, { merge: true });
+      console.log('[WorkoutMonitor] ✅ Rich setData (with ROM) saved to Firestore');
+    } catch (err) {
+      console.warn('[WorkoutMonitor] Failed to save rich setData:', err.message);
     }
   }
 

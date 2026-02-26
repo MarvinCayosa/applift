@@ -190,7 +190,24 @@ export default function useSessionDetailsData({ logId, equipment, exercise }) {
       log.exercise?.equipment || equipment?.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) || '';
 
     // SetData from log or analysis
-    const setData = log.results?.setData || log.results?.sets || analysisUI?.setsData || [];
+    // results.setData is the rich array saved by workout-monitor (has ROM calibration)
+    // results.sets might be a simple tracking OBJECT { "1": { reps: 3 } } from imu-stream metadata
+    // We need to handle both formats
+    const rawSetData = log.results?.setData || log.results?.sets || analysisUI?.setsData || [];
+    const setData = (() => {
+      if (Array.isArray(rawSetData)) return rawSetData;
+      // Convert object format { "1": { reps: 3, ... }, "2": { ... } } to array
+      if (rawSetData && typeof rawSetData === 'object') {
+        return Object.entries(rawSetData)
+          .map(([key, val]) => ({
+            setNumber: parseInt(key) || 0,
+            reps: val?.reps || 0,
+            ...val,
+          }))
+          .sort((a, b) => a.setNumber - b.setNumber);
+      }
+      return [];
+    })();
 
     // SetsData enriched with analysis (same merge logic as workout-finished)
     const mergedSetsData = (() => {

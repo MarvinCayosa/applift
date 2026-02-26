@@ -10,7 +10,7 @@
  */
 
 import { useMemo, useState, useRef, useEffect } from 'react';
-import { buildChartSegmentsFromAnalysis } from '../../utils/sessionDetails/chartMappers';
+import { buildChartSegments, buildChartSegmentsFromAnalysis } from '../../utils/sessionDetails/chartMappers';
 
 /* ── Chart dimensions ── */
 const SVG_W = 400;
@@ -33,6 +33,7 @@ export default function GraphBreakdownCarousel({
   setsData = [],
   chartData = [],
   analysisChartData,
+  gcsData,
   totalReps = 0,
   plannedReps = 0,
   completedSets = 0,
@@ -54,9 +55,10 @@ export default function GraphBreakdownCarousel({
     const romUnit = firstCalibratedSet.romUnit || '°';
     const allReps = setsData.flatMap(s => s.repsData || []);
     const repsWithROM = allReps.filter(r => r.romFulfillment != null);
-    const avgFulfillment = repsWithROM.length > 0
+    const rawFulfillment = repsWithROM.length > 0
       ? Math.round(repsWithROM.reduce((sum, r) => sum + r.romFulfillment, 0) / repsWithROM.length)
       : null;
+    const avgFulfillment = rawFulfillment != null ? Math.min(100, rawFulfillment) : null;
     const avgROM = repsWithROM.length > 0
       ? repsWithROM.reduce((sum, r) => sum + (parseFloat(r.rom) || 0), 0) / repsWithROM.length
       : null;
@@ -78,15 +80,18 @@ export default function GraphBreakdownCarousel({
     return () => el.removeEventListener('scroll', onScroll);
   }, [SLIDES]);
 
-  // ── Build chart segments ──
+  // ── Build chart segments (prefer GCS sensor data when available) ──
   const effectiveChartData = analysisChartData?.length > 0
     ? analysisChartData.map(d => Math.abs(d))
     : chartData.map(d => Math.abs(typeof d === 'object' ? (d.filtered || d.value || 0) : d));
 
   const { segments, allData } = useMemo(() => {
+    if (gcsData?.sets?.length > 0) {
+      return buildChartSegments(gcsData);
+    }
     if (effectiveChartData.length === 0) return { segments: [], allData: [] };
     return buildChartSegmentsFromAnalysis(effectiveChartData, setsData);
-  }, [effectiveChartData, setsData]);
+  }, [gcsData, effectiveChartData, setsData]);
 
   const maxVal = useMemo(() => {
     if (allData.length === 0) return 1;
@@ -253,7 +258,7 @@ export default function GraphBreakdownCarousel({
             {/* Stats row — Baseline + Avg Achieved only */}
             <div className="flex items-center justify-center gap-6">
               <div className="text-center">
-                <p className="text-[10px] text-gray-500 font-medium mb-0.5">Baseline</p>
+                <p className="text-[10px] text-gray-500 font-medium mb-0.5">Benchmark</p>
                 <p className="text-2xl font-bold text-white">
                   {romData.baselineROM.toFixed(1)}
                   <span className="text-xs text-gray-400">{romData.romUnit}</span>
@@ -261,7 +266,7 @@ export default function GraphBreakdownCarousel({
               </div>
               <div className="w-px h-10 bg-white/10" />
               <div className="text-center">
-                <p className="text-[10px] text-gray-500 font-medium mb-0.5">Avg Achieved</p>
+                <p className="text-[10px] text-gray-500 font-medium mb-0.5">Actual</p>
                 <p className="text-2xl font-bold text-white">
                   {romData.avgROM != null ? romData.avgROM.toFixed(1) : '—'}
                   <span className="text-xs text-gray-400">{romData.romUnit}</span>
@@ -344,7 +349,7 @@ function FulfillmentRing({ value }) {
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span className={`text-3xl font-bold leading-none ${textColor}`}>
-          {value != null ? `${value}%` : '—'}
+          {value != null ? `${Math.min(100, value)}%` : '—'}
         </span>
         <span className="text-[11px] text-gray-500 mt-1">ROM Match</span>
       </div>

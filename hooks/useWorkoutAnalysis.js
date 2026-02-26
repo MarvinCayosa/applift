@@ -156,6 +156,9 @@ export function transformAnalysisForUI(analysis) {
       return {
         repNumber: rep.repNumber,
         time: (rep.durationMs / 1000).toFixed(1),
+        duration: rep.durationMs ? rep.durationMs / 1000 : (rep.liftingTime || 0) + (rep.loweringTime || 0),
+        concentric: rep.liftingTime || 0,
+        eccentric: rep.loweringTime || 0,
         rom: Math.round(rep.romDegrees || rep.rom),
         peakVelocity: velocity?.toFixed ? velocity.toFixed(2) : String(velocity || '0'),
         velocityLossPercent: Math.round(velocityLossPercent * 10) / 10,

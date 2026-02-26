@@ -11,12 +11,16 @@ import { useWorkoutLogging } from '../context/WorkoutLoggingContext';
 import { useWorkoutStreak } from '../utils/useWorkoutStreak';
 import { useWorkoutAnalysis, transformAnalysisForUI } from '../hooks/useWorkoutAnalysis';
 import LoadingScreen from '../components/LoadingScreen';
+import { useAuth } from '../context/AuthContext';
+import { db } from '../config/firestore';
+import { doc, setDoc } from 'firebase/firestore';
 
 export default function WorkoutFinished() {
   const router = useRouter();
   const { completeLog, cancelLog, uploadProgress, logError, hasActiveLog, getWorkoutData } = useWorkoutLogging();
   const { recordWorkout } = useWorkoutStreak();
   const { analyzeWorkout, getAnalysis, analysis, isAnalyzing, error: analysisError } = useWorkoutAnalysis();
+  const { user } = useAuth();
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
   const [isAutoSaving, setIsAutoSaving] = useState(true); // Auto-saving state
@@ -24,6 +28,7 @@ export default function WorkoutFinished() {
   const hasCompletedLog = useRef(false);
   const hasTriggeredAnalysis = useRef(false);
   const isReturningFromDetails = useRef(false);
+  const hasSavedSetData = useRef(false);
   const { 
     workoutName, 
     equipment, 
@@ -171,6 +176,60 @@ export default function WorkoutFinished() {
       return mergedSet;
     });
   }, [parsedSetsData, analysisData]);
+
+  // ── Backup: persist rich setData (with ROM calibration) to Firestore ──
+  // workout-monitor should have already saved it, but this is a safety net
+  useEffect(() => {
+    if (hasSavedSetData.current || !user?.uid || !workoutId || !mergedSetsData?.length) return;
+    // Only save if there's ROM calibration data worth persisting
+    const hasROM = mergedSetsData.some(s => s.romCalibrated && s.targetROM);
+    if (!hasROM) return;
+
+    hasSavedSetData.current = true;
+
+    const sanitize = (str) =>
+      (str || 'unknown').trim()
+        .replace(/([a-z])([A-Z])/g, '$1-$2')
+        .replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
+        .toLowerCase()
+        .replace(/\s+/g, '-')
+        .replace(/[^a-z0-9-]/g, '')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
+
+    const eq = sanitize(equipment);
+    const ex = sanitize(workoutName);
+
+    const cleanSetData = mergedSetsData.map(set => ({
+      setNumber: set.setNumber,
+      reps: set.reps,
+      duration: set.duration,
+      targetROM: set.targetROM ?? null,
+      romCalibrated: set.romCalibrated ?? false,
+      romUnit: set.romUnit || '°',
+      repsData: (set.repsData || []).map(rep => ({
+        repNumber: rep.repNumber,
+        time: rep.time,
+        duration: rep.duration,
+        durationMs: rep.durationMs,
+        rom: rep.rom,
+        romFulfillment: rep.romFulfillment ?? null,
+        romUnit: rep.romUnit,
+        peakVelocity: rep.peakVelocity,
+        smoothnessScore: rep.smoothnessScore,
+        isClean: rep.isClean,
+        quality: rep.quality,
+        liftingTime: rep.liftingTime ?? 0,
+        loweringTime: rep.loweringTime ?? 0,
+        classification: rep.classification || null,
+      })),
+    }));
+
+    const docRef = doc(db, 'userWorkouts', user.uid, eq, ex, 'logs', workoutId);
+    setDoc(docRef, { results: { setData: cleanSetData } }, { merge: true })
+      .then(() => console.log('[WorkoutFinished] ✅ Backup setData saved to Firestore'))
+      .catch(err => console.warn('[WorkoutFinished] Backup setData save failed:', err.message));
+  }, [user?.uid, workoutId, mergedSetsData, equipment, workoutName]);
   
   // Trigger analysis after workout data is saved
   const triggerAnalysis = async (wkId, path) => {

@@ -76,7 +76,7 @@ export default function ExecutionConsistencyCard({
             setNumber: setNum,
             repNumber: ri + 1,
             data: rep.chartData.map((v) => Math.abs(v)),
-            duration: rep.duration || (rep.concentric || 0) + (rep.eccentric || 0) || 0,
+            duration: rep.duration || (rep.liftingTime || 0) + (rep.loweringTime || 0) || (rep.concentric || 0) + (rep.eccentric || 0) || 0,
             amplitude: rep.amplitude || Math.max(...rep.chartData.map(Math.abs)) - Math.min(...rep.chartData.map(Math.abs)) || 0,
           });
         }
