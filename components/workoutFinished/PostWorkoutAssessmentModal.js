@@ -13,19 +13,19 @@ import { useState, useEffect } from 'react';
  */
 
 const feelingOptions = [
-  { value: 1, emoji: '😫', label: 'Very Poor' },
-  { value: 2, emoji: '😕', label: 'Poor' },
-  { value: 3, emoji: '😐', label: 'Okay' },
-  { value: 4, emoji: '🙂', label: 'Good' },
-  { value: 5, emoji: '💪', label: 'Great' },
+  { value: 1, label: 'Very Poor' },
+  { value: 2, label: 'Poor' },
+  { value: 3, label: 'Okay' },
+  { value: 4, label: 'Good' },
+  { value: 5, label: 'Great' },
 ];
 
 const difficultyOptions = [
-  { value: 1, emoji: '🌱', label: 'Too Easy' },
-  { value: 2, emoji: '👍', label: 'Easy' },
-  { value: 3, emoji: '✅', label: 'Just Right' },
-  { value: 4, emoji: '😤', label: 'Hard' },
-  { value: 5, emoji: '🔥', label: 'Too Hard' },
+  { value: 1, label: 'Too Easy' },
+  { value: 2, label: 'Easy' },
+  { value: 3, label: 'Just Right' },
+  { value: 4, label: 'Hard' },
+  { value: 5, label: 'Too Hard' },
 ];
 
 const recommendationOptions = [
@@ -158,23 +158,31 @@ export default function PostWorkoutAssessmentModal({
           {step === 1 && (
             <div className="space-y-4">
               <p className="text-center text-white/70 text-sm mb-4">How did you feel during the workout?</p>
-              <div className="flex justify-center gap-3">
+              <div className="flex justify-center gap-2">
                 {feelingOptions.map((opt) => (
                   <button
                     key={opt.value}
                     onClick={() => setFeelingRating(opt.value)}
-                    className={`flex flex-col items-center gap-1 p-3 rounded-xl transition-all ${
+                    className={`flex flex-col items-center gap-1.5 p-3 rounded-xl transition-all ${
                       feelingRating === opt.value 
                         ? 'bg-orange-500/20 ring-2 ring-orange-400 scale-105' 
                         : 'bg-white/5 hover:bg-white/10'
                     }`}
                   >
-                    <span className="text-2xl">{opt.emoji}</span>
-                    <span className={`text-[10px] font-medium ${feelingRating === opt.value ? 'text-orange-400' : 'text-white/50'}`}>
+                    <span className={`text-lg font-bold ${
+                      feelingRating === opt.value ? 'text-orange-400' : 'text-white/70'
+                    }`}>{opt.value}</span>
+                    <span className={`text-[10px] font-medium ${
+                      feelingRating === opt.value ? 'text-orange-400' : 'text-white/50'
+                    }`}>
                       {opt.label}
                     </span>
                   </button>
                 ))}
+              </div>
+              <div className="flex justify-between text-[10px] text-white/40 px-2">
+                <span>Very Poor</span>
+                <span>Great</span>
               </div>
             </div>
           )}
@@ -183,23 +191,31 @@ export default function PostWorkoutAssessmentModal({
           {step === 2 && (
             <div className="space-y-4">
               <p className="text-center text-white/70 text-sm mb-4">How difficult was the workout?</p>
-              <div className="flex justify-center gap-3">
+              <div className="flex justify-center gap-2">
                 {difficultyOptions.map((opt) => (
                   <button
                     key={opt.value}
                     onClick={() => setDifficultyRating(opt.value)}
-                    className={`flex flex-col items-center gap-1 p-3 rounded-xl transition-all ${
+                    className={`flex flex-col items-center gap-1.5 p-3 rounded-xl transition-all ${
                       difficultyRating === opt.value 
                         ? 'bg-orange-500/20 ring-2 ring-orange-400 scale-105' 
                         : 'bg-white/5 hover:bg-white/10'
                     }`}
                   >
-                    <span className="text-2xl">{opt.emoji}</span>
-                    <span className={`text-[10px] font-medium ${difficultyRating === opt.value ? 'text-orange-400' : 'text-white/50'}`}>
+                    <span className={`text-lg font-bold ${
+                      difficultyRating === opt.value ? 'text-orange-400' : 'text-white/70'
+                    }`}>{opt.value}</span>
+                    <span className={`text-[10px] font-medium ${
+                      difficultyRating === opt.value ? 'text-orange-400' : 'text-white/50'
+                    }`}>
                       {opt.label}
                     </span>
                   </button>
                 ))}
+              </div>
+              <div className="flex justify-between text-[10px] text-white/40 px-2">
+                <span>Too Easy</span>
+                <span>Too Hard</span>
               </div>
             </div>
           )}

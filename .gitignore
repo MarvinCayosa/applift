@@ -4,7 +4,7 @@
 /others
 .env.local
 .env*.local
-
+/references
 # Firebase Admin SDK Service Account Key (NEVER commit this!)
 lib/firebase-admin-key.json
 *-firebase-adminsdk-*.json

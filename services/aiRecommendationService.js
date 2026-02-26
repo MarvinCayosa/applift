@@ -6,7 +6,7 @@
 
 import { db } from '../config/firestore';
 import { 
-  doc, getDoc, setDoc, updateDoc, serverTimestamp, increment 
+  doc, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp, increment 
 } from 'firebase/firestore';
 
 // ============================================================
@@ -102,6 +102,23 @@ export async function getRegenCount(uid, equipment, exerciseName) {
   } catch (error) {
     console.error('Error getting regen count:', error);
     return 0;
+  }
+}
+
+/**
+ * Bust (delete) the cached recommendation for an exercise so the next
+ * visit always generates a fresh one based on the just-completed session.
+ * Call this from workout-finished after a workout is saved.
+ */
+export async function bustRecommendationCache(uid, equipment, exerciseName) {
+  try {
+    const docId = `${equipment}_${exerciseName}`.replace(/\s+/g, '_');
+    const docRef = doc(db, 'users', uid, 'aiRecommendations', docId);
+    await deleteDoc(docRef);
+    console.log('[AIRecommendation] Cache busted for:', exerciseName);
+  } catch (error) {
+    // Non-fatal — next visit will regenerate via session count comparison anyway
+    console.warn('[AIRecommendation] Cache bust failed (non-fatal):', error.message);
   }
 }
 

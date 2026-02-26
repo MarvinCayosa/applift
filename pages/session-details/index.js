@@ -15,6 +15,7 @@ import Head from 'next/head';
 import { useMemo } from 'react';
 
 import useSessionDetailsData from '../../hooks/useSessionDetailsData';
+import { AIInsightsAccordion } from '../../components/aiInsights';
 import HeaderSection from '../../components/sessionDetails/HeaderSection';
 import GraphBreakdownCarousel from '../../components/workoutFinished/GraphBreakdownCarousel';
 import ExecutionQualityCard from '../../components/sessionDetails/ExecutionQualityCard';
@@ -129,6 +130,11 @@ export default function SessionDetailsPage() {
 
         {/* Content cards */}
         <div className="px-4 pt-2.5 sm:pt-3.5 space-y-3 max-w-2xl mx-auto">
+          {/* AI Session Summary — collapsible accordion */}
+          {vm.aiInsights && (
+            <AIInsightsAccordion insights={vm.aiInsights} />
+          )}
+
           {/* Movement Graph + Workout Breakdown + ROM — swipable carousel */}
           <GraphBreakdownCarousel
             setsData={vm.mergedSetsData}

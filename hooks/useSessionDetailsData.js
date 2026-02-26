@@ -424,6 +424,9 @@ export default function useSessionDetailsData({ logId, equipment, exercise }) {
       // Insights
       insights: analysisUI?.insights || [],
 
+      // AI Session Summary (stored on the log doc when generated post-workout)
+      aiInsights: log.aiInsights || null,
+
       // Raw references (for navigation to performance details)
       workoutId: logId,
       gcsPath: log.gcsPath || '',

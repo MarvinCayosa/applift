@@ -173,6 +173,7 @@ export default function CalibrationModal({ isOpen, onClose, onCalibrate, equipme
   const repInProgressRef = useRef(false);
   const lastRepTimeRef = useRef(0);
   const sampleCountRef = useRef(0);
+  const pendingRepCompletionRef = useRef(null); // timestamp when rep completion was triggered (delay to capture post-motion rest)
   
   // Keep refs in sync with state
   useEffect(() => { stepRef.current = step; }, [step]);
@@ -305,8 +306,18 @@ export default function CalibrationModal({ isOpen, onClose, onCalibrate, equipme
             
             // ROM is dropping or stable after being significant
             if (rc.liveRepROM > minROM && (recentAvg < olderAvg * 0.8 || (recentAvg < olderAvg * 1.05 && rc.currentRepData.length > 30))) {
-              // Complete this calibration rep
-              const romValue = rc.finishCalibrationRep();
+              // For stroke exercises, delay completion by 500ms to capture post-motion rest samples
+              // This ensures retroCorrect has rest data at the END of the rep for better accuracy
+              const romType = rc.getROMType(rc.exerciseType);
+              const POST_MOTION_DELAY = romType === 'stroke' ? 500 : 0;
+              
+              if (!pendingRepCompletionRef.current) {
+                pendingRepCompletionRef.current = now;
+                console.log(`[CalibrationModal] Rep motion ended, waiting ${POST_MOTION_DELAY}ms for post-rest samples...`);
+              } else if (now - pendingRepCompletionRef.current >= POST_MOTION_DELAY) {
+                // Enough time has passed - complete the rep now
+                pendingRepCompletionRef.current = null;
+                const romValue = rc.finishCalibrationRep();
               
               if (romValue && romValue > minROM * 0.5) {
                 const newRepROMs = [...repROMsRef.current, romValue];
@@ -328,6 +339,12 @@ export default function CalibrationModal({ isOpen, onClose, onCalibrate, equipme
                 // ROM too small, reset for retry
                 repInProgressRef.current = false;
                 rc.startCalibrationRep();
+              }
+              } // end delayed completion
+            } else {
+              // Motion resumed - cancel pending completion
+              if (pendingRepCompletionRef.current) {
+                pendingRepCompletionRef.current = null;
               }
             }
           }

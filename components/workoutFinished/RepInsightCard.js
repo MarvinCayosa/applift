@@ -540,12 +540,6 @@ export default function RepInsightCard({ repData, repNumber, targetROM, romUnit:
                 <>
                   <span className="text-xl sm:text-3xl lg:text-4xl font-bold text-green-400">{repPeakVelocity.toFixed(2)}</span>
                   <span className="text-[10px] sm:text-xs lg:text-sm text-gray-400 ml-1">m/s</span>
-                  {velocityZone && (
-                    <div className="flex items-center gap-1.5 mt-1.5 sm:mt-2">
-                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: velocityZone.color }} />
-                      <span className="text-[9px] sm:text-[10px] lg:text-xs font-medium" style={{ color: velocityZone.color }}>{velocityZone.label}</span>
-                    </div>
-                  )}
                 </>
               ) : (
                 <span className="text-2xl font-bold text-gray-500">—</span>

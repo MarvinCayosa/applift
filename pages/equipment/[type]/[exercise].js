@@ -1,6 +1,6 @@
 import Head from 'next/head'
 import { useRouter } from 'next/router'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import BottomNav from '../../../components/BottomNav'
 import { equipmentConfig } from '../../../components/equipment'
 import useEquipmentData from '../../../components/equipment/useEquipmentData'
@@ -60,6 +60,26 @@ export default function ExerciseDetailPage() {
     const w = l.planned?.weight || l.exercise?.weight || 0
     return s + r * w
   }, 0)
+
+  // Pagination
+  const ITEMS_PER_PAGE = 10
+  const [currentPage, setCurrentPage] = useState(1)
+  const totalPages = Math.max(1, Math.ceil(sessions.length / ITEMS_PER_PAGE))
+  const paginatedSessions = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE
+    return sessions.slice(start, start + ITEMS_PER_PAGE)
+  }, [sessions, currentPage])
+
+  // Generate visible page numbers (max 5 around current page)
+  const getPageNumbers = () => {
+    if (totalPages <= 5) return Array.from({ length: totalPages }, (_, i) => i + 1)
+    const pages = []
+    let start = Math.max(1, currentPage - 2)
+    let end = Math.min(totalPages, start + 4)
+    if (end - start < 4) start = Math.max(1, end - 4)
+    for (let i = start; i <= end; i++) pages.push(i)
+    return pages
+  }
 
   // Navigate to session summary
   const handleSessionClick = (log) => {
@@ -142,7 +162,14 @@ export default function ExerciseDetailPage() {
 
           {/* Session list */}
           <section className="content-fade-up-2">
-            <h2 className="text-lg font-bold text-white mb-3">Workout History</h2>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-bold text-white">Workout History</h2>
+              {sessions.length > ITEMS_PER_PAGE && (
+                <span className="text-xs text-white/40 tabular-nums">
+                  {(currentPage - 1) * ITEMS_PER_PAGE + 1}–{Math.min(currentPage * ITEMS_PER_PAGE, sessions.length)} of {sessions.length}
+                </span>
+              )}
+            </div>
 
             {loading ? (
               <div className="space-y-3">
@@ -168,8 +195,9 @@ export default function ExerciseDetailPage() {
                 <p className="text-white/40 text-sm">No sessions recorded yet</p>
               </div>
             ) : (
-              <div className="space-y-3">
-                {sessions.map((log, idx) => {
+              <>
+                <div className="space-y-3">
+                  {paginatedSessions.map((log, idx) => {
                   const date = log.timestamps?.started?.toDate?.()
                     || log.timestamps?.created?.toDate?.()
                     || (log.startTime ? new Date(log.startTime) : new Date())
@@ -279,7 +307,58 @@ export default function ExerciseDetailPage() {
                     </div>
                   )
                 })}
-              </div>
+                </div>
+
+                {/* Pagination Controls */}
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-center gap-1.5 pt-4 pb-2">
+                    {/* Previous */}
+                    <button
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      className="w-9 h-9 rounded-xl flex items-center justify-center transition-all"
+                      style={{
+                        backgroundColor: currentPage === 1 ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.08)',
+                        opacity: currentPage === 1 ? 0.3 : 1,
+                      }}
+                    >
+                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
+                      </svg>
+                    </button>
+
+                    {/* Page numbers */}
+                    {getPageNumbers().map((page) => (
+                      <button
+                        key={page}
+                        onClick={() => setCurrentPage(page)}
+                        className="w-9 h-9 rounded-xl text-sm font-semibold transition-all"
+                        style={{
+                          backgroundColor: page === currentPage ? bgColor : 'rgba(255,255,255,0.06)',
+                          color: page === currentPage ? '#fff' : 'rgba(255,255,255,0.5)',
+                        }}
+                      >
+                        {page}
+                      </button>
+                    ))}
+
+                    {/* Next */}
+                    <button
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                      className="w-9 h-9 rounded-xl flex items-center justify-center transition-all"
+                      style={{
+                        backgroundColor: currentPage === totalPages ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.08)',
+                        opacity: currentPage === totalPages ? 0.3 : 1,
+                      }}
+                    >
+                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </section>
         </div>

@@ -15,6 +15,8 @@ import ExecutionQualityCard from '../../../../components/sessionDetails/Executio
 import ExecutionConsistencyCard from '../../../../components/sessionDetails/ExecutionConsistencyCard'
 import FatigueCarousel from '../../../../components/sessionDetails/FatigueCarousel'
 import MovementPhasesSection from '../../../../components/sessionDetails/MovementPhasesSection'
+import { AIInsightsAccordion } from '../../../../components/aiInsights'
+import { getCachedInsights } from '../../../../services/aiInsightsService'
 
 /**
  * Workout Session Summary page.
@@ -168,6 +170,23 @@ export default function SessionSummaryPage() {
     }
   }, [analysis, analysisData])
 
+  // ── AI Insights — fetch cached insights for recommended workouts ──
+  const [aiInsights, setAiInsights] = useState(null)
+
+  useEffect(() => {
+    if (!log || !user?.uid || !logId) return
+    // Only for recommended workouts
+    if (log.setType !== 'recommended') return
+
+    const eqKey = eq || ''
+    const exKey = ex || ''
+    if (!eqKey || !exKey) return
+
+    getCachedInsights(user.uid, eqKey, exKey, logId).then((cached) => {
+      if (cached) setAiInsights(cached)
+    })
+  }, [log, user?.uid, logId, eq, ex])
+
   // ---- Apply ROM calibration context to sets that have ROM data ----
   const enhanceWithROMContext = (setData) => {
     if (!romCalibration || !setData) return setData
@@ -275,7 +294,8 @@ export default function SessionSummaryPage() {
             liftingTime: analysisRep?.liftingTime ?? localRep.liftingTime ?? 0,
             loweringTime: analysisRep?.loweringTime ?? localRep.loweringTime ?? 0,
             peakVelocity: analysisRep?.peakVelocity ?? localRep.peakVelocity,
-            rom: analysisRep?.rom ?? localRep.rom,
+            // For stroke ROM (cm): prefer local ROMComputer retroCorrect value over analysis service
+            rom: (localRep.rom && localRep.romUnit?.trim() === 'cm') ? localRep.rom : (analysisRep?.rom ?? localRep.rom),
             romFulfillment: localRep.romFulfillment ?? analysisRep?.romFulfillment ?? null,
             romUnit: localRep.romUnit || analysisRep?.romUnit || '°',
             chartData: analysisRep?.chartData?.length > 0 ? analysisRep.chartData : localRep.chartData,
@@ -401,6 +421,11 @@ export default function SessionSummaryPage() {
               </div>
             </div>
           </div>
+
+          {/* AI Session Summary — only for recommended workouts with cached insights */}
+          {log?.setType === 'recommended' && aiInsights && (
+            <AIInsightsAccordion insights={aiInsights} />
+          )}
 
           {/* ── Performance cards (same as workout-finished) ── */}
           {/* Movement Graph + Workout Breakdown + ROM — swipable carousel */}

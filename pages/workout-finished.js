@@ -15,13 +15,16 @@ import LoadingScreen from '../components/LoadingScreen';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../config/firestore';
 import { doc, setDoc } from 'firebase/firestore';
+import { AIInsightsCard } from '../components/aiInsights';
+import { generateInsights, getCachedInsights } from '../services/aiInsightsService';
+import { bustRecommendationCache } from '../services/aiRecommendationService';
 
 export default function WorkoutFinished() {
   const router = useRouter();
   const { completeLog, cancelLog, uploadProgress, logError, hasActiveLog, getWorkoutData } = useWorkoutLogging();
   const { recordWorkout } = useWorkoutStreak();
   const { analyzeWorkout, getAnalysis, analysis, isAnalyzing, error: analysisError } = useWorkoutAnalysis();
-  const { user } = useAuth();
+  const { user, userProfile } = useAuth();
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
   const [isAutoSaving, setIsAutoSaving] = useState(true); // Auto-saving state
@@ -32,6 +35,12 @@ export default function WorkoutFinished() {
   const hasTriggeredAnalysis = useRef(false);
   const isReturningFromDetails = useRef(false);
   const hasSavedSetData = useRef(false);
+
+  // AI Insights state
+  const [aiInsights, setAiInsights] = useState(null);
+  const [aiInsightsLoading, setAiInsightsLoading] = useState(false);
+  const [aiInsightsError, setAiInsightsError] = useState(null);
+  const hasTriggeredInsights = useRef(false);
   const { 
     workoutName, 
     equipment, 
@@ -50,7 +59,8 @@ export default function WorkoutFinished() {
     weight,
     weightUnit,
     workoutId,
-    gcsPath
+    gcsPath,
+    setType
   } = router.query;
 
   // Parse JSON data from query params
@@ -162,7 +172,10 @@ export default function WorkoutFinished() {
             loweringTime: analysisRep?.loweringTime ?? localRep.loweringTime ?? 0,
             // Merge real velocity (m/s from accelerometer integration) and ROM from analysis
             peakVelocity: analysisRep?.peakVelocity ?? localRep.peakVelocity,
-            rom: analysisRep?.rom ?? localRep.rom,
+            // For ROM: prefer local ROMComputer value (retroCorrect) for stroke exercises.
+            // The analysis service computes ROM from accel magnitude (inaccurate for displacement).
+            // localRep.rom comes from ROMComputer.getROMForRep() which uses retroCorrect.
+            rom: (localRep.rom && localRep.romUnit?.trim() === 'cm') ? localRep.rom : (analysisRep?.rom ?? localRep.rom),
             chartData: analysisRep?.chartData?.length > 0 ? analysisRep.chartData : localRep.chartData,
           };
         });
@@ -233,7 +246,64 @@ export default function WorkoutFinished() {
       .then(() => console.log('[WorkoutFinished] ✅ Backup setData saved to Firestore'))
       .catch(err => console.warn('[WorkoutFinished] Backup setData save failed:', err.message));
   }, [user?.uid, workoutId, mergedSetsData, equipment, workoutName]);
-  
+
+  // ── AI Session Insights — generate once for all set types, unless AI is toggled off ──
+  useEffect(() => {
+    if (hasTriggeredInsights.current) return;
+    if (!user?.uid || !workoutId || !mergedSetsData?.length) return;
+    if (isAutoSaving || isAnalyzing) return; // wait for save + analysis to finish
+    if (userProfile?.aiRecommendationsEnabled === false) return;
+
+    hasTriggeredInsights.current = true;
+
+    const run = async () => {
+      setAiInsightsLoading(true);
+
+      // Check cache first
+      const cached = await getCachedInsights(user.uid, equipment, workoutName, workoutId);
+      if (cached) {
+        setAiInsights(cached);
+        setAiInsightsLoading(false);
+        return;
+      }
+
+      // Build metrics payload
+      const totalSec = parseInt(totalTime) || 0;
+      const metrics = {
+        exerciseName: workoutName,
+        equipment: equipment || '',
+        weight: parseFloat(weight) || 0,
+        weightUnit: weightUnit || 'kg',
+        totalSets: mergedSetsData.length,
+        totalReps: parseInt(totalReps) || 0,
+        plannedSets: parseInt(recommendedSets) || 0,
+        plannedReps: parseInt(recommendedReps) || 0,
+        durationSec: totalSec,
+        calories: analysisData?.calories || parseInt(calories) || 0,
+        setsData: mergedSetsData,
+        fatigueScore: analysisData?.fatigueScore ?? null,
+        consistencyScore: analysisData?.consistencyScore ?? null,
+      };
+
+      const result = await generateInsights({
+        user,
+        equipment: equipment || '',
+        exerciseName: workoutName || '',
+        workoutId,
+        metrics,
+      });
+
+      if (result) {
+        setAiInsights(result);
+      } else {
+        setAiInsightsError('Could not generate insights.');
+      }
+      setAiInsightsLoading(false);
+    };
+
+    run();
+  }, [user?.uid, workoutId, mergedSetsData, isAutoSaving, isAnalyzing, setType, userProfile, equipment, workoutName, weight, weightUnit, totalReps, totalTime, calories, recommendedSets, recommendedReps, analysisData]);
+
   // Trigger analysis after workout data is saved
   const triggerAnalysis = async (wkId, path) => {
     if (hasTriggeredAnalysis.current) return;
@@ -456,9 +526,16 @@ export default function WorkoutFinished() {
 
   // ── handleContinue – show assessment modal before navigating ──
   const handleContinue = async () => {
+    // Only show assessment modal for AI-recommended workouts (not custom)
+    const isRecommendedWorkout = setType === 'recommended';
+    
     if (!isAutoSaving && hasCompletedLog.current) {
-      // Show assessment modal instead of navigating directly
-      setShowAssessmentModal(true);
+      if (isRecommendedWorkout) {
+        setShowAssessmentModal(true);
+      } else {
+        // Custom workout — skip feedback, navigate directly
+        handleAssessmentClose();
+      }
       return;
     }
     if (isAutoSaving || isSaving) return;
@@ -486,9 +563,13 @@ export default function WorkoutFinished() {
           setTimeout(() => window.dispatchEvent(new Event('streak-updated')), 100);
         } catch (e) { console.error('Streak error:', e); }
       }
-      // After saving, show assessment modal
+      // After saving, show assessment modal only for recommended workouts
       setIsSaving(false);
-      setShowAssessmentModal(true);
+      if (isRecommendedWorkout) {
+        setShowAssessmentModal(true);
+      } else {
+        handleAssessmentClose();
+      }
     } catch (error) {
       console.error('Error saving workout:', error);
       setSaveError(error.message || 'Failed to save workout. Please try again.');
@@ -543,6 +624,11 @@ export default function WorkoutFinished() {
     
     setIsSubmittingFeedback(false);
     setShowAssessmentModal(false);
+    // Bust the recommendation cache so next visit generates fresh one based on this session
+    if (user?.uid && equipment && workoutName) {
+      bustRecommendationCache(user.uid, equipment, workoutName);
+    }
+
     router.push('/workouts');
   };
 
@@ -554,7 +640,12 @@ export default function WorkoutFinished() {
       sessionStorage.removeItem('workoutCSVFilename');
       sessionStorage.removeItem('workoutResults');
     }
-    
+
+    // Bust the recommendation cache so next visit generates fresh one based on this session
+    if (user?.uid && equipment && workoutName) {
+      bustRecommendationCache(user.uid, equipment, workoutName);
+    }
+
     setShowAssessmentModal(false);
     router.push('/workouts');
   };
@@ -583,6 +674,15 @@ export default function WorkoutFinished() {
 
         {/* ── Content cards ── */}
         <div className="px-4 pt-2.5 sm:pt-3.5 space-y-3 max-w-2xl mx-auto">
+          {/* AI Session Insights — only for recommended workouts with AI enabled */}
+          {userProfile?.aiRecommendationsEnabled !== false && (
+            <AIInsightsCard
+              insights={aiInsights}
+              isLoading={aiInsightsLoading}
+              error={aiInsightsError}
+            />
+          )}
+
           {/* Movement Graph + Workout Breakdown + ROM — swipable carousel */}
           <GraphBreakdownCarousel
             setsData={mergedSetsData}
