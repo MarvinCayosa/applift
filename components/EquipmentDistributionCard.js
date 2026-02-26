@@ -126,7 +126,7 @@ export default function EquipmentDistributionCard({
       {/* Header */}
       <div className="mb-1 flex-shrink-0">
         <h3 className="text-xs font-semibold text-white tracking-wide">
-          Equipment Distribution
+          Clean Reps for 3 Sessions
         </h3>
         <p className="text-[10px] text-white/60">{period}</p>
       </div>
