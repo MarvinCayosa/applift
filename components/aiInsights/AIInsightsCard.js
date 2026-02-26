@@ -136,17 +136,20 @@ export default function AIInsightsCard({ insights, isLoading, error }) {
             <div className="ai-fade-in space-y-3">
               <p className="text-[13px] leading-relaxed text-white/80">{insights.summary}</p>
               {insights.bullets?.length > 0 && (
-                <ul className="space-y-1.5">
-                  {insights.bullets.map((bullet, i) => (
-                    <li key={i} className="flex items-start gap-2">
-                      <span
-                        className="w-1.5 h-1.5 rounded-full mt-[6px] flex-shrink-0"
-                        style={{ background: 'linear-gradient(135deg, #8B5CF6, #6366F1)' }}
-                      />
-                      <span className="text-[12px] leading-relaxed text-white/65">{bullet}</span>
-                    </li>
-                  ))}
-                </ul>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-purple-400/70 mb-2">What to Improve</p>
+                  <ul className="space-y-1.5">
+                    {insights.bullets.map((bullet, i) => (
+                      <li key={i} className="flex items-start gap-2">
+                        <span
+                          className="w-1.5 h-1.5 rounded-full mt-[6px] flex-shrink-0"
+                          style={{ background: 'linear-gradient(135deg, #8B5CF6, #6366F1)' }}
+                        />
+                        <span className="text-[12px] leading-relaxed text-white/65">{bullet}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               )}
             </div>
           ) : null}
