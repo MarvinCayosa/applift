@@ -93,6 +93,11 @@ export class RepCounter {
         filteredX: inputSample.filteredX ?? inputSample.accelX ?? 0,
         filteredY: inputSample.filteredY ?? inputSample.accelY ?? 0,
         filteredZ: inputSample.filteredZ ?? inputSample.accelZ ?? 0,
+        // Quaternion data for ROM computation
+        qw: inputSample.qw,
+        qx: inputSample.qx,
+        qy: inputSample.qy,
+        qz: inputSample.qz,
         sampleIndex: this.allSamples.length,
         repNumber: 0
       };

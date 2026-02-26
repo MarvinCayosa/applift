@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import RepInsightCard from './RepInsightCard';
 
-export default function RepCarousel({ repsData }) {
+export default function RepCarousel({ repsData, targetROM, romUnit, romCalibrated }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [touchStart, setTouchStart] = useState(0);
   const [touchEnd, setTouchEnd] = useState(0);
@@ -68,7 +68,7 @@ export default function RepCarousel({ repsData }) {
         >
           {repsData.map((repData, index) => (
             <div key={index} className="w-full h-full flex-shrink-0">
-              <RepInsightCard repData={repData} repNumber={index + 1} />
+              <RepInsightCard repData={repData} repNumber={index + 1} targetROM={targetROM} romUnit={romUnit} romCalibrated={romCalibrated} />
             </div>
           ))}
         </div>

@@ -235,6 +235,8 @@ export default function WorkoutMonitor() {
     recommendedReps,
     recommendedSets,
     restTime: workoutRestTime,
+    equipment,
+    workout,
     // Stream IMU samples to GCS as they come in
     onIMUSample: (sample) => {
       if (isStreaming) {

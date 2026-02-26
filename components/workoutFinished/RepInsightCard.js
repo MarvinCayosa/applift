@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
-export default function RepInsightCard({ repData, repNumber }) {
-  const { time, rom, peakVelocity, chartData, liftingTime, loweringTime, classification, smoothnessScore } = repData;
+export default function RepInsightCard({ repData, repNumber, targetROM, romUnit: propRomUnit, romCalibrated }) {
+  const { time, rom, peakVelocity, chartData, liftingTime, loweringTime, classification, smoothnessScore, romFulfillment, romUnit } = repData;
   const [showConfidenceOverlay, setShowConfidenceOverlay] = useState(false);
 
   // Calculate lifting/lowering percentages from actual data
@@ -56,9 +56,24 @@ export default function RepInsightCard({ repData, repNumber }) {
   const repPeakVelocity = peakVelocity != null ? parseFloat(peakVelocity) : null;
   const hasChartData = chartData && chartData.length > 0;
 
-  // ROM target reference (120° full curl ROM)
-  const expectedRom = 120;
-  const romProgress = repRom != null ? Math.min(100, (repRom / expectedRom) * 100) : null;
+  // ROM target reference - use calibrated targetROM or fallback to 120°
+  const expectedRom = targetROM || 120;
+  const displayRomUnit = propRomUnit || romUnit || '°';
+  // Use real romFulfillment from ROMComputer if available, otherwise calculate from expected
+  const romProgress = romFulfillment != null ? Math.min(100, romFulfillment) : 
+                      repRom != null ? Math.min(100, (repRom / expectedRom) * 100) : null;
+  const hasCalibration = romCalibrated && targetROM;
+
+  // ROM fulfillment description
+  const getRomDescription = () => {
+    if (romProgress == null) return null;
+    if (romProgress >= 95) return { text: 'Full ROM', color: '#22c55e' };
+    if (romProgress >= 80) return { text: 'Near Full', color: '#84cc16' };
+    if (romProgress >= 60) return { text: 'Partial', color: '#eab308' };
+    if (romProgress >= 40) return { text: 'Limited', color: '#f97316' };
+    return { text: 'Minimal', color: '#ef4444' };
+  };
+  const romDesc = getRomDescription();
 
   // Peak velocity normalized to m/s scale (typical range: 0.1 - 1.5 m/s for strength exercises)
   // Industry standard ranges:
@@ -382,6 +397,11 @@ export default function RepInsightCard({ repData, repNumber }) {
           <div className="relative bg-black/30 rounded-xl sm:rounded-2xl overflow-hidden p-3 sm:p-5 lg:p-6 flex flex-col justify-between" style={{ minHeight: 'clamp(140px, 40vw, 280px)' }}>
             <div className="relative z-10">
               <span className="text-[10px] sm:text-xs lg:text-sm font-medium text-gray-300">Range of Motion</span>
+              {romDesc && (
+                <span className="ml-1.5 text-[9px] sm:text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ color: romDesc.color, backgroundColor: `${romDesc.color}15` }}>
+                  {romDesc.text}
+                </span>
+              )}
             </div>
             <div className="relative z-10 flex items-center justify-center flex-1 min-h-0 py-2 sm:py-3">
               {romProgress != null ? (
@@ -390,13 +410,13 @@ export default function RepInsightCard({ repData, repNumber }) {
                     <circle cx="50" cy="50" r="42" fill="none" stroke="rgba(255, 255, 255, 0.1)" strokeWidth="8" />
                     <circle
                       cx="50" cy="50" r="42" fill="none"
-                      stroke="#f97316" strokeWidth="8" strokeLinecap="round"
+                      stroke={romDesc?.color || '#f97316'} strokeWidth="8" strokeLinecap="round"
                       strokeDasharray={`${2 * Math.PI * 42}`}
                       strokeDashoffset={`${2 * Math.PI * 42 * (1 - romProgress / 100)}`}
                       style={{ transition: 'stroke-dashoffset 1s ease-out' }}
                     />
                   </svg>
-                  <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
                     <span className="text-lg sm:text-2xl lg:text-3xl font-bold text-white">
                       {Math.round(romProgress)}%
                     </span>
@@ -409,6 +429,18 @@ export default function RepInsightCard({ repData, repNumber }) {
                 </div>
               )}
             </div>
+            {/* Baseline vs Achieved - shown below the circle */}
+            {repRom != null && (
+              <div className="relative z-10 flex flex-col items-center gap-0.5 mt-1">
+                <span className="text-[10px] sm:text-xs text-gray-400">
+                  {repRom.toFixed(1)}{displayRomUnit}
+                  {hasCalibration && <span className="text-gray-600"> / {targetROM.toFixed(1)}{displayRomUnit}</span>}
+                </span>
+                {hasCalibration && (
+                  <span className="text-[9px] text-gray-500">Achieved / Baseline</span>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Right Card - Peak Velocity with chart background */}
@@ -506,8 +538,8 @@ export default function RepInsightCard({ repData, repNumber }) {
           </div>
         </div>
 
-        {/* Insights below cards - based on ML classification */}
-        <div className="pt-2 sm:pt-3 lg:pt-4 pb-8 sm:pb-10 lg:pb-12">
+        {/* Insights below cards - based on ML classification + ROM context */}
+        <div className="pt-2 sm:pt-3 lg:pt-4 pb-8 sm:pb-10 lg:pb-12 space-y-2">
           <p className="text-xs sm:text-sm lg:text-base text-purple-300 leading-relaxed text-center">
             {!mlPrediction
               ? 'Analyzing rep performance...'
@@ -517,6 +549,17 @@ export default function RepInsightCard({ repData, repNumber }) {
               ? '⚠ Uncontrolled movement detected. Focus on maintaining steady tempo and control.'
               : '⚠ Too fast! Slow down the movement to maintain proper form and muscle tension.'}
           </p>
+          {/* ROM Baseline comparison insight */}
+          {hasCalibration && repRom != null && (
+            <p className="text-[10px] sm:text-xs text-center" style={{ color: romDesc?.color || '#9ca3af' }}>
+              {romProgress >= 95 
+                ? `✓ Full baseline ROM achieved (${repRom.toFixed(1)}${displayRomUnit} of ${targetROM.toFixed(1)}${displayRomUnit} target)`
+                : romProgress >= 80
+                ? `Near target — ${repRom.toFixed(1)}${displayRomUnit} of ${targetROM.toFixed(1)}${displayRomUnit} baseline (${Math.round(romProgress)}%)`
+                : `${repRom.toFixed(1)}${displayRomUnit} of ${targetROM.toFixed(1)}${displayRomUnit} baseline — try to reach full range`
+              }
+            </p>
+          )}
         </div>
       </div>
     </div>

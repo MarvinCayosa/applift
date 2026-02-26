@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { RepCounter } from './RepCounter';
 import { useIMUData } from './useIMUData';
+import { getROMComputer, resetROMComputer } from './ROMComputer';
+import { loadCalibration } from '../components/CalibrationModal';
 
 const MAX_CHART_POINTS = 100; // Last 5 seconds at 20Hz
 
@@ -220,6 +222,8 @@ export function useWorkoutSession({
   recommendedReps = 5, 
   recommendedSets = 2,
   restTime = 30,     // Custom rest time in seconds
+  equipment,         // Equipment name for ROM calibration
+  workout,           // Exercise name for ROM calibration
   onIMUSample,       // NEW: Called for each IMU sample (for streaming)
   onRepDetected,     // NEW: Called when a rep is detected
   onSetComplete,
@@ -278,6 +282,28 @@ export function useWorkoutSession({
   // Rep counter
   const repCounterRef = useRef(new RepCounter());
   const [repStats, setRepStats] = useState(repCounterRef.current.getStats());
+  
+  // ROM Computer - integrated from index.html
+  const romComputerRef = useRef(null);
+  
+  // Initialize ROMComputer with calibration data when equipment/workout are known
+  useEffect(() => {
+    if (equipment && workout) {
+      const rc = resetROMComputer();
+      rc.setExerciseFromNames(equipment, workout);
+      
+      // Load saved calibration target ROM
+      const calibration = loadCalibration(equipment, workout);
+      if (calibration && calibration.targetROM) {
+        rc.targetROM = calibration.targetROM;
+        rc.romCalibrated = true;
+        rc.calibrationROMs = calibration.repROMs || [];
+        console.log(`[WorkoutSession] Loaded ROM calibration: target=${calibration.targetROM.toFixed(1)}${rc.getUnit()}`);
+      }
+      
+      romComputerRef.current = rc;
+    }
+  }, [equipment, workout]);
   
   // Workout tracking
   const [currentSet, setCurrentSet] = useState(1);
@@ -382,6 +408,11 @@ export function useWorkoutSession({
         relativeTime // Include relative time for timestamp
       });
       
+      // Feed quaternion data to ROMComputer for real ROM tracking
+      if (romComputerRef.current && data.qw !== undefined) {
+        romComputerRef.current.addSample(data);
+      }
+      
       const newStats = repCounterRef.current.getStats();
       setRepStats(newStats);
       
@@ -392,6 +423,15 @@ export function useWorkoutSession({
 
         // Clear the post-rollback flag now that a new rep has been detected
         postRollbackRef.current = false;
+        
+        // Complete the rep in ROMComputer to get real ROM value
+        let repROMResult = null;
+        if (romComputerRef.current) {
+          repROMResult = romComputerRef.current.completeRep();
+          if (repROMResult) {
+            console.log(`[WorkoutSession] Rep ${newStats.repCount} ROM: ${repROMResult.romValue.toFixed(1)}${repROMResult.unit === 'deg' ? '°' : ' cm'}${repROMResult.fulfillment ? ` (${repROMResult.fulfillment.toFixed(0)}% of target)` : ''}`);
+          }
+        }
         
         // Get the precise boundary info from RepCounter
         const repData = repCounterRef.current.exportData();
@@ -515,7 +555,9 @@ export function useWorkoutSession({
             time: rep.duration,
             duration: rep.duration, // Also store as 'duration' for compatibility
             durationMs: rep.duration * 1000, // Store in ms too
-            rom: rep.peakAcceleration * 10,
+            rom: (romComputerRef.current ? romComputerRef.current.getROMForRep(rep.repNumber) : 0) || rep.peakAcceleration * 10,
+            romFulfillment: romComputerRef.current?.repROMs?.find(r => r.repIndex === rep.repNumber)?.fulfillment || null,
+            romUnit: romComputerRef.current?.getUnit() || '°',
             peakVelocity: localPeakVelocity || rep.peakVelocity || rep.peakAcceleration / 2,
             smoothnessScore: localSmoothnessScore, // NEW: Local computation
             isClean: rep.duration >= 2.0 && rep.duration <= 4.0,
@@ -534,7 +576,11 @@ export function useWorkoutSession({
           duration: elapsedTime,
           repsData: setRepsData,
           chartData: [...fullFilteredAccelData.current],
-          timeData: [...fullTimeData.current]
+          timeData: [...fullTimeData.current],
+          // ROM calibration context for performance display
+          targetROM: romComputerRef.current?.targetROM || null,
+          romUnit: romComputerRef.current?.getUnit() || '°',
+          romCalibrated: romComputerRef.current?.romCalibrated || false,
         };
         
         // Build updated workout stats with current set included
@@ -729,6 +775,14 @@ export function useWorkoutSession({
     setIsRecording(true);
     isRecordingRef.current = true;
     
+    // *** Reset ROM baseline at the start of each set ***
+    // This eliminates varying starting positions between sets
+    // The next IMU sample will become the new reference position
+    if (romComputerRef.current) {
+      romComputerRef.current.calibrateBaseline();
+      console.log('[WorkoutSession] ROM baseline reset for new set');
+    }
+    
     // Scroll to top to show chart
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -869,7 +923,9 @@ export function useWorkoutSession({
         time: rep.duration,
         duration: rep.duration, // Also store as 'duration' for compatibility
         durationMs: rep.duration * 1000, // Store in ms too
-        rom: rep.peakAcceleration * 10,
+        rom: (romComputerRef.current ? romComputerRef.current.getROMForRep(rep.repNumber) : 0) || rep.peakAcceleration * 10,
+        romFulfillment: romComputerRef.current?.repROMs?.find(r => r.repIndex === rep.repNumber)?.fulfillment || null,
+        romUnit: romComputerRef.current?.getUnit() || '°',
         peakVelocity: localPeakVelocity || rep.peakVelocity || rep.peakAcceleration / 2,
         smoothnessScore: localSmoothnessScore, // NEW: Local computation
         isClean: rep.duration >= 2.0 && rep.duration <= 4.0,
@@ -890,7 +946,11 @@ export function useWorkoutSession({
       timeData: [...fullTimeData.current],
       incomplete: true,
       completedReps: repStats.repCount,
-      plannedReps: recommendedReps
+      plannedReps: recommendedReps,
+      // ROM calibration context for performance display
+      targetROM: romComputerRef.current?.targetROM || null,
+      romUnit: romComputerRef.current?.getUnit() || '°',
+      romCalibrated: romComputerRef.current?.romCalibrated || false,
     };
 
     const updatedSetData = [...workoutStats.setData, currentSetData];
@@ -1087,6 +1147,7 @@ export function useWorkoutSession({
     
     // Refs for advanced use
     repCounterRef,
-    rawDataLog
+    rawDataLog,
+    romComputerRef
   };
 }

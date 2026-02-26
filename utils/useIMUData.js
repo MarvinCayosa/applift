@@ -25,7 +25,11 @@ export function useIMUData(onIMUData, onNFCData) {
       const value = event.target.value;
       const dataView = new DataView(value.buffer);
       
-      // Parse IMU data (40 bytes)
+      // Parse IMU data - support both 40-byte (legacy) and 56-byte (with quaternions) packets
+      // 56-byte format matches index.html: accel(12) + gyro(12) + euler(12) + quat(16) + timestamp(4)
+      const byteLength = value.byteLength;
+      const hasQuaternions = byteLength >= 56;
+      
       const imuData = {
         accelX: dataView.getFloat32(0, true),
         accelY: dataView.getFloat32(4, true),
@@ -36,7 +40,12 @@ export function useIMUData(onIMUData, onNFCData) {
         roll: dataView.getFloat32(24, true),
         pitch: dataView.getFloat32(28, true),
         yaw: dataView.getFloat32(32, true),
-        timestamp: dataView.getUint32(36, true)
+        // Quaternion data (new - from index.html 56-byte format)
+        qw: hasQuaternions ? dataView.getFloat32(36, true) : undefined,
+        qx: hasQuaternions ? dataView.getFloat32(40, true) : undefined,
+        qy: hasQuaternions ? dataView.getFloat32(44, true) : undefined,
+        qz: hasQuaternions ? dataView.getFloat32(48, true) : undefined,
+        timestamp: hasQuaternions ? dataView.getUint32(52, true) : dataView.getUint32(36, true)
       };
       
       // Calculate raw magnitude
@@ -59,7 +68,7 @@ export function useIMUData(onIMUData, onNFCData) {
         filteredZ * filteredZ
       );
       
-      // Pass to callback with both raw and filtered data
+      // Pass to callback with both raw and filtered data (including quaternions)
       if (onIMUData) {
         onIMUData({
           ...imuData,

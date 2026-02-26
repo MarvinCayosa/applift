@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import { useRef, useState, useEffect, useMemo, useCallback } from 'react';
 import AIReasoningPanel from '../components/AIReasoningPanel';
 import CalibrationHistoryPanel from '../components/CalibrationHistoryPanel';
-import CalibrationModal from '../components/CalibrationModal';
+import CalibrationModal, { hasCalibration, loadCalibration } from '../components/CalibrationModal';
 import ConnectPill from '../components/ConnectPill';
 import CustomSetModal from '../components/CustomSetModal';
 import ExerciseInfoPanel from '../components/ExerciseInfoPanel';
@@ -213,7 +213,7 @@ function ExerciseInfoCarousel({ equipment, workout, tips, getTargetMuscles }) {
 }
 
 // Info & History Carousel Component
-function InfoHistoryCarousel({ equipment, workout, tips, tutorialVideo, equipmentColor, onCalibrateClick, onWatchTutorial, videoThumbnail }) {
+function InfoHistoryCarousel({ equipment, workout, tips, tutorialVideo, equipmentColor, onCalibrateClick, onWatchTutorial, videoThumbnail, isCalibrated, calibrationData }) {
   // Get target muscles based on exercise
   const getTargetMuscles = () => {
     if (equipment === 'Barbell' && workout === 'Flat Bench Barbell Press') return 'Chest, Shoulders, Triceps';
@@ -233,10 +233,19 @@ function InfoHistoryCarousel({ equipment, workout, tips, tutorialVideo, equipmen
         {/* Calibrate Now Button - Full Width */}
         <button
           onClick={onCalibrateClick}
-          className="w-full bg-white/8 backdrop-blur-sm rounded-3xl px-4 py-2.5 sm:px-5 sm:py-3 hover:bg-white/12 transition-colors flex items-center justify-center gap-2 flex-shrink-0 border border-white/10"
+          className={`w-full backdrop-blur-sm rounded-3xl px-4 py-2.5 sm:px-5 sm:py-3 hover:bg-white/12 transition-colors flex items-center justify-center gap-2 flex-shrink-0 border ${
+            isCalibrated ? 'bg-purple-500/15 border-purple-500/30' : 'bg-white/8 border-white/10'
+          }`}
         >
-          <span className="text-sm sm:text-base text-white font-semibold">Calibrate Now</span>
-          <svg className="w-4 h-4 sm:w-5 sm:h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          {isCalibrated && (
+            <svg className="w-4 h-4 sm:w-5 sm:h-5 text-green-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+            </svg>
+          )}
+          <span className="text-sm sm:text-base text-white font-semibold">
+            ROM Calibration{isCalibrated && calibrationData?.targetROM ? ` · ${calibrationData.targetROM.toFixed(1)}${calibrationData.unit || '°'}` : ''}
+          </span>
+          <svg className={`w-4 h-4 sm:w-5 sm:h-5 ${isCalibrated ? 'text-green-400' : 'text-purple-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
           </svg>
         </button>
@@ -458,6 +467,8 @@ export default function SelectedWorkout() {
   
   // Calibration modal state
   const [isCalibrationModalOpen, setIsCalibrationModalOpen] = useState(false);
+  const [isROMCalibrated, setIsROMCalibrated] = useState(false);
+  const [savedCalibrationData, setSavedCalibrationData] = useState(null);
   
   // Video player modal state
   const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
@@ -727,6 +738,28 @@ export default function SelectedWorkout() {
     disconnect,
   } = useBluetooth();
 
+  // Check ROM calibration status on mount and when equipment/workout changes
+  useEffect(() => {
+    if (equipment && workout) {
+      const calibrated = hasCalibration(equipment, workout);
+      setIsROMCalibrated(calibrated);
+      if (calibrated) {
+        setSavedCalibrationData(loadCalibration(equipment, workout));
+      }
+    }
+  }, [equipment, workout]);
+
+  // Auto-open calibration modal if not calibrated and device is connected
+  useEffect(() => {
+    if (connected && equipment && workout && !isROMCalibrated && !isCalibrationModalOpen) {
+      // Small delay to let the page render first
+      const timer = setTimeout(() => {
+        setIsCalibrationModalOpen(true);
+      }, 800);
+      return () => clearTimeout(timer);
+    }
+  }, [connected, equipment, workout, isROMCalibrated]);
+
   const details = useMemo(() => workoutDetails[equipment]?.[workout], [equipment, workout]);
   const equipmentColor = useMemo(() => equipmentColors[equipment] || '#7c3aed', [equipment]);
   const workoutImage = useMemo(() => workoutImages[equipment]?.[workout] || '/images/workout-cards/barbell-flat-bench-press.jpg', [equipment, workout]);
@@ -870,6 +903,8 @@ export default function SelectedWorkout() {
           onCalibrateClick={() => setIsCalibrationModalOpen(true)}
           videoThumbnail={videoThumbnail}
           onWatchTutorial={() => setIsVideoModalOpen(true)}
+          isCalibrated={isROMCalibrated}
+          calibrationData={savedCalibrationData}
         />
         </div>
       </main>
@@ -902,9 +937,15 @@ export default function SelectedWorkout() {
                 return;
               }
               
+              // Check ROM calibration
+              if (!isROMCalibrated) {
+                setCustomSetError('Please calibrate ROM before starting the workout');
+                return;
+              }
+              
               // Validate custom set values if on custom card
               const isCustomSet = carouselActiveIndex === 1;
-              if (isCustomSet && (customWeight === null || customSets === null || customReps === null)) {
+              if (isCustomSet && (!customWeight || !customSets || !customReps)) {
                 setCustomSetError('Please set Weight, Sets, and Reps for your custom workout');
                 return;
               }
@@ -1035,12 +1076,16 @@ export default function SelectedWorkout() {
         equipment={equipment}
       />
       
-      {/* Calibration Modal */}
+      {/* ROM Calibration Modal */}
       <CalibrationModal
         isOpen={isCalibrationModalOpen}
         onClose={() => setIsCalibrationModalOpen(false)}
-        onCalibrate={() => {
-          console.log('Device calibrated successfully');
+        equipment={equipment}
+        exercise={workout}
+        onCalibrate={(calibrationData) => {
+          console.log('ROM Calibration saved:', calibrationData);
+          setIsROMCalibrated(true);
+          setSavedCalibrationData(calibrationData);
         }}
       />
       

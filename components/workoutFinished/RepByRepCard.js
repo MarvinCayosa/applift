@@ -89,7 +89,7 @@ export default function RepByRepCard({ setsData, parsedSetsData, recommendedSets
               className="h-full animate-fade-in-up"
               style={{ animationDuration: '0.35s' }}
             >
-              <RepCarousel repsData={set.repsData} />
+              <RepCarousel repsData={set.repsData} targetROM={set.targetROM} romUnit={set.romUnit} romCalibrated={set.romCalibrated} />
             </div>
           ) : null
         )}
