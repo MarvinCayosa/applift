@@ -59,10 +59,12 @@ export default function RepInsightCard({ repData, repNumber, targetROM, romUnit:
   // ROM target reference - use calibrated targetROM or fallback to 120°
   const expectedRom = targetROM || 120;
   const displayRomUnit = propRomUnit || romUnit || '°';
-  // Use real romFulfillment from ROMComputer if available, otherwise calculate from expected
-  const romProgress = romFulfillment != null ? Math.min(100, romFulfillment) : 
-                      repRom != null ? Math.min(100, (repRom / expectedRom) * 100) : null;
   const hasCalibration = romCalibrated && targetROM;
+  // When calibration exists, always compute from achieved/baseline for accuracy
+  const romProgress = hasCalibration && repRom != null
+    ? Math.min(100, (repRom / targetROM) * 100)
+    : romFulfillment != null ? Math.min(100, romFulfillment)
+    : repRom != null ? Math.min(100, (repRom / expectedRom) * 100) : null;
 
   // ROM fulfillment description
   const getRomDescription = () => {
@@ -538,28 +540,37 @@ export default function RepInsightCard({ repData, repNumber, targetROM, romUnit:
           </div>
         </div>
 
-        {/* Insights below cards - based on ML classification + ROM context */}
-        <div className="pt-2 sm:pt-3 lg:pt-4 pb-8 sm:pb-10 lg:pb-12 space-y-2">
-          <p className="text-xs sm:text-sm lg:text-base text-purple-300 leading-relaxed text-center">
-            {!mlPrediction
-              ? 'Analyzing rep performance...'
-              : mlPrediction.formQuality === 'clean'
-              ? '✓ Clean rep! Controlled tempo with smooth movement throughout the range.'
-              : mlPrediction.formQuality === 'uncontrolled'
-              ? '⚠ Uncontrolled movement detected. Focus on maintaining steady tempo and control.'
-              : '⚠ Too fast! Slow down the movement to maintain proper form and muscle tension.'}
-          </p>
-          {/* ROM Baseline comparison insight */}
-          {hasCalibration && repRom != null && (
-            <p className="text-[10px] sm:text-xs text-center" style={{ color: romDesc?.color || '#9ca3af' }}>
-              {romProgress >= 95 
-                ? `✓ Full baseline ROM achieved (${repRom.toFixed(1)}${displayRomUnit} of ${targetROM.toFixed(1)}${displayRomUnit} target)`
-                : romProgress >= 80
-                ? `Near target — ${repRom.toFixed(1)}${displayRomUnit} of ${targetROM.toFixed(1)}${displayRomUnit} baseline (${Math.round(romProgress)}%)`
-                : `${repRom.toFixed(1)}${displayRomUnit} of ${targetROM.toFixed(1)}${displayRomUnit} baseline — try to reach full range`
+        {/* Consolidated Remarks */}
+        <div className="pt-2 sm:pt-3 lg:pt-4 pb-8 sm:pb-10 lg:pb-12">
+          <p className="text-xs sm:text-sm lg:text-base text-gray-300 leading-relaxed text-center">
+            {(() => {
+              const parts = [];
+
+              // Form classification remark
+              if (mlPrediction) {
+                if (mlPrediction.formQuality === 'clean') {
+                  parts.push('✓ Clean rep with controlled tempo.');
+                } else if (mlPrediction.formQuality === 'uncontrolled') {
+                  parts.push('⚠ Uncontrolled movement detected. Focus on maintaining steady tempo and control.');
+                } else {
+                  parts.push('⚠ Too fast! Slow down the movement to maintain proper form and muscle tension.');
+                }
               }
-            </p>
-          )}
+
+              // ROM remark
+              if (hasCalibration && repRom != null && romProgress != null) {
+                if (romProgress >= 95) {
+                  parts.push(`You achieved ${Math.round(romProgress)}% Range of Motion.`);
+                } else if (romProgress >= 80) {
+                  parts.push(`${repRom.toFixed(1)}${displayRomUnit} of ${targetROM.toFixed(1)}${displayRomUnit} baseline — near full range.`);
+                } else {
+                  parts.push(`${repRom.toFixed(1)}${displayRomUnit} of ${targetROM.toFixed(1)}${displayRomUnit} baseline — try to reach full range.`);
+                }
+              }
+
+              return parts.length > 0 ? parts.join(' ') : 'Analyzing rep performance...';
+            })()}
+          </p>
         </div>
       </div>
     </div>

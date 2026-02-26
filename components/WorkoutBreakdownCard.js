@@ -52,13 +52,13 @@ export default function WorkoutBreakdownCard({
       </div>
 
       {/* Weight breakdown */}
-      <div className="rounded-xl bg-white/[0.06] p-4">
-        <p className="text-xs font-semibold text-white/70 mb-2">Weight</p>
+      <div className="rounded-xl bg-white/[0.06] px-3 py-2.5">
+        <p className="text-xs font-semibold text-white/70 mb-1.5">Weight</p>
         <div className="flex items-center justify-center gap-4">
           {/* Base equipment weight */}
           <div className="text-center flex-1">
             <div className="flex items-baseline justify-center gap-1">
-              <span className="text-3xl font-bold text-white">{baseWeight}</span>
+              <span className="text-2xl font-bold text-white">{baseWeight}</span>
               <span className="text-sm text-white/50">{weightUnit}</span>
             </div>
             <p className="text-[11px] text-white/40 mt-0.5">{eqInfo.label}</p>
@@ -70,7 +70,7 @@ export default function WorkoutBreakdownCard({
           {/* Added weights */}
           <div className="text-center flex-1">
             <div className="flex items-baseline justify-center gap-1">
-              <span className="text-3xl font-bold text-white">{addedWeight}</span>
+              <span className="text-2xl font-bold text-white">{addedWeight}</span>
               <span className="text-sm text-white/50">{weightUnit}</span>
             </div>
             <p className="text-[11px] text-white/40 mt-0.5">Weights</p>

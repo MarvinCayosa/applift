@@ -5,7 +5,6 @@ import EquipmentCards from '../components/EquipmentCards';
 import CalendarView from '../components/CalendarView';
 import { useWorkoutLogs } from '../utils/useWorkoutLogs';
 import { useAuth } from '../context/AuthContext';
-import { useUserProfile } from '../utils/userProfileStore';
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -119,7 +118,6 @@ export default function Statistics() {
     includeStats: true 
   });
   const { user } = useAuth();
-  const { profile: userProfile } = useUserProfile();
   const [activeTab, setActiveTab] = useState('statistics');
   const [liftViewType, setLiftViewType] = useState('week');
 
@@ -499,126 +497,6 @@ export default function Statistics() {
                         />
                       </ComposedChart>
                     </ResponsiveContainer>
-                  </div>
-                </div>
-              </section>
-
-              {/* Personal Information */}
-              <section className="mb-6 opacity-0 animate-fade-up" style={{ animationDelay: '0.25s', animationFillMode: 'forwards' }}>
-                <div className="bg-zinc-900 rounded-3xl p-5 sm:p-6 shadow-2xl">
-                  <h3 className="text-lg font-semibold text-white mb-4">Personal Information</h3>
-                  <div className="space-y-5">
-                    {/* Birthdate */}
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
-                        <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-white">Birthdate</p>
-                        <p className="text-xs text-white/50">
-                          {userProfile?.birthMonth && userProfile?.birthYear 
-                            ? `${userProfile.birthMonth} ${userProfile.birthYear}`
-                            : 'Not set'
-                          }
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Weight */}
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
-                        <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M20 9V7a2 2 0 00-2-2H6a2 2 0 00-2 2v2" />
-                          <path d="M4 11v4a2 2 0 002 2h12a2 2 0 002-2v-4" />
-                          <circle cx="12" cy="11" r="3" />
-                        </svg>
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-white">Weight</p>
-                        <p className="text-xs text-white/50">
-                          {userProfile?.weight ? `${userProfile.weight} kg` : 'Not set'}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Height */}
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
-                        <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M12 22V2M12 22L8 18M12 22L16 18M12 2L8 6M12 2L16 6" />
-                        </svg>
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-white">Height</p>
-                        <p className="text-xs text-white/50">
-                          {userProfile?.height ? `${userProfile.height} cm` : 'Not set'}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* BMI */}
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
-                        <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <circle cx="12" cy="12" r="3" />
-                          <path d="M12 1v6m0 6v6" />
-                          <path d="m21 12-6-3-6 3-6-3" />
-                        </svg>
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-white">BMI</p>
-                        <p className="text-xs text-white/50">
-                          {(() => {
-                            const weight = userProfile?.weight;
-                            const height = userProfile?.height;
-                            
-                            if (!weight || !height) {
-                              return 'Enter weight and height to calculate';
-                            }
-                            
-                            // Calculate BMI: weight(kg) / height(m)²
-                            const heightInMeters = height / 100;
-                            const bmi = weight / (heightInMeters * heightInMeters);
-                            const bmiValue = bmi.toFixed(1);
-                            
-                            // Determine BMI category
-                            let category = '';
-                            if (bmi < 18.5) {
-                              category = 'Underweight';
-                            } else if (bmi >= 18.5 && bmi < 25) {
-                              category = 'Normal';
-                            } else if (bmi >= 25 && bmi < 30) {
-                              category = 'Overweight';
-                            } else {
-                              category = 'Obese';
-                            }
-                            
-                            return `${bmiValue} | ${category}`;
-                          })()
-                          }
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Gender */}
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
-                        <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                        </svg>
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-white">Gender</p>
-                        <p className="text-xs text-white/50">
-                          {userProfile?.gender 
-                            ? userProfile.gender.charAt(0).toUpperCase() + userProfile.gender.slice(1)
-                            : 'Not set'
-                          }
-                        </p>
-                      </div>
-                    </div>
                   </div>
                 </div>
               </section>

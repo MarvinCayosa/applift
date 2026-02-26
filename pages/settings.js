@@ -1556,12 +1556,9 @@ export default function Settings() {
                           }
                           
                           return (
-                            <div className="flex items-center justify-between">
-                              <p className="text-xs text-white/50">{bmiValue}</p>
-                              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${categoryColor} bg-current bg-opacity-10`}>
-                                {category}
-                              </span>
-                            </div>
+                            <p className={`text-xs ${categoryColor}`}>
+                              {bmiValue} | {category}
+                            </p>
                           );
                         })()}
                       </div>

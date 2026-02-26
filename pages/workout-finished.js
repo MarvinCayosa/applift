@@ -1,11 +1,12 @@
 import { useRouter } from 'next/router';
+import Head from 'next/head';
 import { useEffect, useState, useRef, useMemo } from 'react';
-import WorkoutSummaryCard from '../components/workoutFinished/WorkoutSummaryCard';
-import FatigueVelocityCarousel from '../components/workoutFinished/FatigueVelocityCarousel';
-import LiftPhases from '../components/workoutFinished/LiftPhases';
-import ConsistencyScore from '../components/workoutFinished/ConsistencyScore';
-import ClassificationDistribution from '../components/workoutFinished/ClassificationDistribution';
-import WorkoutBreakdownCard from '../components/WorkoutBreakdownCard';
+import WFHeaderSection from '../components/workoutFinished/WFHeaderSection';
+import GraphBreakdownCarousel from '../components/workoutFinished/GraphBreakdownCarousel';
+import ExecutionQualityCard from '../components/sessionDetails/ExecutionQualityCard';
+import ExecutionConsistencyCard from '../components/sessionDetails/ExecutionConsistencyCard';
+import FatigueCarousel from '../components/sessionDetails/FatigueCarousel';
+import MovementPhasesSection from '../components/sessionDetails/MovementPhasesSection';
 import { useWorkoutLogging } from '../context/WorkoutLoggingContext';
 import { useWorkoutStreak } from '../utils/useWorkoutStreak';
 import { useWorkoutAnalysis, transformAnalysisForUI } from '../hooks/useWorkoutAnalysis';
@@ -20,7 +21,6 @@ export default function WorkoutFinished() {
   const [saveError, setSaveError] = useState(null);
   const [isAutoSaving, setIsAutoSaving] = useState(true); // Auto-saving state
   const [analysisData, setAnalysisData] = useState(null);
-  const [selectedSet, setSelectedSet] = useState('all'); // Global set filter
   const hasCompletedLog = useRef(false);
   const hasTriggeredAnalysis = useRef(false);
   const isReturningFromDetails = useRef(false);
@@ -362,9 +362,6 @@ export default function WorkoutFinished() {
     router.push('/dashboard');
   };
 
-  // Set count for filter tabs
-  const setsCount = mergedSetsData?.length || 0;
-
   // Loading message
   const loadingMessage = isAutoSaving ? 'Saving workout...' : 'Analyzing workout data...';
 
@@ -372,273 +369,183 @@ export default function WorkoutFinished() {
     return <LoadingScreen message={loadingMessage} />;
   }
 
-  return (
-    <div className="h-screen bg-black text-white overflow-hidden">
-      {/* Scrollable content - includes header */}
-      <div className="h-full overflow-y-auto px-4 space-y-3 max-w-2xl mx-auto pb-6">
-        
-        {/* Header with back button and title on same line */}
-        <div className="pt-2.5 sm:pt-3.5 pt-pwa-dynamic pb-1 flex items-center justify-between">
-          <button
-            onClick={handleGoBack}
-            className="flex items-center justify-center h-10 w-10 rounded-full hover:bg-white/10 transition-all"
-            aria-label="Go back"
-          >
-            <img
-              src="/images/icons/arrow-point-to-left.png"
-              alt="Back"
-              className="w-5 h-5 filter brightness-0 invert"
-            />
-          </button>
-          
-          {/* Workout completed message - centered */}
-          <h2 className="text-xl font-bold text-white flex-1 text-center">
-            Workout Completed!
-          </h2>
-          
-          {/* Spacer to balance the layout */}
-          <div className="w-10"></div>
-        </div>
+  // ── handleSeeMore – navigate to performance details ──
+  const handleSeeMore = () => {
+    if (typeof window !== 'undefined' && workoutId) {
+      sessionStorage.setItem(`returning_${workoutId}`, 'true');
+    }
+    router.push({
+      pathname: '/performance-details',
+      query: {
+        workoutName,
+        equipment,
+        setsData: JSON.stringify(mergedSetsData),
+        recommendedSets,
+        recommendedReps,
+        workoutId,
+        analysisData: analysisData ? JSON.stringify({
+          fatigue: analysisData.rawAnalysis?.fatigue,
+          consistency: analysisData.rawAnalysis?.consistency,
+          insights: analysisData.insights,
+        }) : null,
+      },
+    });
+  };
 
-        {/* Workout Summary Card - Top of page */}
-        <WorkoutSummaryCard
+  // ── handleContinue – navigate away after save ──
+  const handleContinue = async () => {
+    if (!isAutoSaving && hasCompletedLog.current) {
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('workoutCSV');
+        sessionStorage.removeItem('workoutCSVFilename');
+        sessionStorage.removeItem('workoutResults');
+      }
+      router.push('/workouts');
+      return;
+    }
+    if (isAutoSaving || isSaving) return;
+
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      const resultsStr = typeof window !== 'undefined'
+        ? sessionStorage.getItem('workoutResults') : null;
+      const results = resultsStr ? JSON.parse(resultsStr) : {
+        totalSets: parseInt(recommendedSets) || parsedSetsData?.length || 0,
+        totalReps: parseInt(totalReps) || 0,
+        totalTime: parseInt(totalTime) || 0,
+        calories: parseInt(calories) || 0,
+        avgConcentric: parseFloat(avgConcentric) || 0,
+        avgEccentric: parseFloat(avgEccentric) || 0,
+        setData: parsedSetsData || [],
+      };
+      if (hasActiveLog && !hasCompletedLog.current) {
+        const success = await completeLog(results);
+        hasCompletedLog.current = true;
+        if (!success) throw new Error('Failed to save workout');
+        try {
+          const streakResult = await recordWorkout(new Date());
+          setTimeout(() => window.dispatchEvent(new Event('streak-updated')), 100);
+        } catch (e) { console.error('Streak error:', e); }
+      }
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('workoutCSV');
+        sessionStorage.removeItem('workoutCSVFilename');
+        sessionStorage.removeItem('workoutResults');
+      }
+      router.push('/workouts');
+    } catch (error) {
+      console.error('Error saving workout:', error);
+      setSaveError(error.message || 'Failed to save workout. Please try again.');
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <>
+      <Head>
+        <title>Workout Completed — AppLift</title>
+      </Head>
+
+      <div className="min-h-screen bg-black text-white pb-6">
+        {/* ── Hero Header (matches session-details design) ── */}
+        <WFHeaderSection
           workoutName={workoutName}
           equipment={equipment}
-          chartData={analysisData?.chartData?.length > 0 
-            ? analysisData.chartData.map(d => Math.abs(d)) 
-            : parsedChartData.map(d => Math.abs(d.filtered || d))}
-          timeData={analysisData?.timeData?.length > 0 ? analysisData.timeData : parsedTimeData}
-          totalCalories={analysisData?.calories || parseInt(calories) || 0}
-          totalWorkoutTime={parseInt(totalTime) || analysisData?.activeTime || 0}
-          setsData={mergedSetsData}
-          totalReps={parseInt(totalReps) || 0}
           weight={parseFloat(weight) || 0}
           weightUnit={weightUnit || 'kg'}
           recommendedSets={parseInt(recommendedSets) || 0}
           recommendedReps={parseInt(recommendedReps) || 0}
-          onSeeMore={() => {
-            // Mark that we're navigating to details page
-            if (typeof window !== 'undefined' && workoutId) {
-              sessionStorage.setItem(`returning_${workoutId}`, 'true');
-            }
-            
-            // Navigate to performance details page
-            router.push({
-              pathname: '/performance-details',
-              query: {
-                workoutName,
-                equipment,
-                setsData: JSON.stringify(mergedSetsData),
-                recommendedSets,
-                recommendedReps,
-                workoutId,
-                analysisData: analysisData ? JSON.stringify({
-                  fatigue: analysisData.rawAnalysis?.fatigue,
-                  consistency: analysisData.rawAnalysis?.consistency,
-                  insights: analysisData.insights
-                }) : null
-              }
-            });
-          }}
-        />
-
-        {/* Workout Breakdown Card */}
-        <WorkoutBreakdownCard
+          totalTime={parseInt(totalTime) || 0}
+          calories={analysisData?.calories || parseInt(calories) || 0}
+          totalSets={mergedSetsData?.length || 0}
           totalReps={parseInt(totalReps) || 0}
-          plannedReps={(parseInt(recommendedSets) || 0) * (parseInt(recommendedReps) || 0)}
-          completedSets={mergedSetsData?.length || 0}
-          plannedSets={parseInt(recommendedSets) || 0}
-          weight={parseFloat(weight) || 0}
-          weightUnit={weightUnit || 'kg'}
-          equipment={equipment || ''}
+          onBack={handleGoBack}
         />
 
-        {/* Global Set Filter */}
-        {setsCount > 1 && (
-          <div className="flex gap-1.5 justify-end">
-            <button
-              onClick={() => setSelectedSet('all')}
-              className={`px-3 py-1 text-xs font-medium rounded-full transition-all ${
-                selectedSet === 'all'
-                  ? 'bg-purple-500 text-white'
-                  : 'bg-white/10 text-gray-400 hover:bg-white/20'
-              }`}
-            >
-              All
-            </button>
-            {Array.from({ length: setsCount }, (_, i) => i + 1).map(setNum => {
-              const setData = mergedSetsData?.[setNum - 1];
-              const isIncomplete = setData?.incomplete === true;
-              return (
-                <button
-                  key={setNum}
-                  onClick={() => setSelectedSet(String(setNum))}
-                  className={`px-3 py-1 text-xs font-medium rounded-full transition-all flex items-center gap-1 ${
-                    selectedSet === String(setNum)
-                      ? 'bg-purple-500 text-white'
-                      : isIncomplete
-                        ? 'bg-yellow-500/15 text-yellow-400 border border-yellow-500/30 hover:bg-yellow-500/25'
-                        : 'bg-white/10 text-gray-400 hover:bg-white/20'
-                  }`}
-                >
-                  Set {setNum}
-                  {isIncomplete && (
-                    <span className="text-[9px] opacity-80">
-                      ({setData.completedReps || setData.reps}/{setData.plannedReps || parseInt(recommendedReps) || '?'})
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+        {/* ── Content cards ── */}
+        <div className="px-4 pt-2.5 sm:pt-3.5 space-y-3 max-w-2xl mx-auto">
+          {/* Movement Graph + Workout Breakdown + ROM — swipable carousel */}
+          <GraphBreakdownCarousel
+            setsData={mergedSetsData}
+            chartData={parsedChartData}
+            analysisChartData={analysisData?.chartData}
+            totalReps={parseInt(totalReps) || 0}
+            plannedReps={(parseInt(recommendedSets) || 0) * (parseInt(recommendedReps) || 0)}
+            completedSets={mergedSetsData?.length || 0}
+            plannedSets={parseInt(recommendedSets) || 0}
+            weight={parseFloat(weight) || 0}
+            weightUnit={weightUnit || 'kg'}
+            equipment={equipment || ''}
+            onSeeMore={handleSeeMore}
+          />
+
+          {/* Execution Quality + Consistency — 2-column row */}
+          <div className="grid grid-cols-2 gap-3">
+            <ExecutionQualityCard
+              setsData={mergedSetsData}
+              selectedSet="all"
+            />
+            <ExecutionConsistencyCard
+              setsData={mergedSetsData}
+              analysisScore={analysisData?.consistencyScore}
+              inconsistentRepIndex={analysisData?.inconsistentRepIndex}
+            />
           </div>
-        )}
 
-        {/* Execution Quality - ML Classification */}
-        <ClassificationDistribution
-          setsData={mergedSetsData}
-          analysisData={analysisData}
-          selectedSet={selectedSet}
-        />
+          {/* Fatigue + Velocity Loss — swipeable carousel */}
+          <FatigueCarousel
+            setsData={mergedSetsData}
+            fatigueScore={analysisData?.fatigueScore}
+            fatigueLevel={analysisData?.fatigueLevel}
+            selectedSet="all"
+          />
 
-        {/* Consistency Score - Rep pattern overlay */}
-        <ConsistencyScore 
-          setsData={mergedSetsData}
-          analysisScore={analysisData?.consistencyScore}
-          inconsistentRepIndex={analysisData?.inconsistentRepIndex}
-          selectedSet={selectedSet}
-        />
+          {/* Movement Phases */}
+          <MovementPhasesSection
+            avgConcentric={analysisData?.avgConcentric}
+            avgEccentric={analysisData?.avgEccentric}
+            concentricPercent={analysisData?.concentricPercent}
+            eccentricPercent={analysisData?.eccentricPercent}
+            setsData={mergedSetsData}
+          />
 
-        {/* Fatigue + Velocity — swipeable carousel */}
-        <FatigueVelocityCarousel
-          setsData={mergedSetsData}
-          chartData={analysisData?.chartData?.length > 0 ? analysisData.chartData : parsedChartData}
-          fatigueScore={analysisData?.fatigueScore}
-          fatigueLevel={analysisData?.fatigueLevel}
-          analysisData={analysisData}
-          selectedSet={selectedSet}
-          thresholdPercent={10}
-        />
-
-        {/* Movement Phases - Eccentric vs Concentric (averages across all reps) */}
-        <LiftPhases 
-          avgConcentric={analysisData?.avgConcentric}
-          avgEccentric={analysisData?.avgEccentric}
-          concentricPercent={analysisData?.concentricPercent}
-          eccentricPercent={analysisData?.eccentricPercent}
-          setsData={mergedSetsData}
-        />
-
-        {analysisError && (
-          <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-xl p-3 text-center">
-            <p className="text-sm text-yellow-400">Analysis unavailable: Using local data</p>
-          </div>
-        )}
-
-        {/* Error message */}
-        {(saveError || logError) && (
-          <div className="bg-red-500/20 border border-red-500/50 rounded-xl p-3 text-center">
-            <p className="text-sm text-red-400">{saveError || logError}</p>
-          </div>
-        )}
-
-        {/* Continue/Save Workout button - changes based on auto-save state */}
-        <button
-          onClick={async () => {
-            // If auto-saving already completed, just navigate
-            if (!isAutoSaving && hasCompletedLog.current) {
-              // Clean up sessionStorage
-              if (typeof window !== 'undefined') {
-                sessionStorage.removeItem('workoutCSV');
-                sessionStorage.removeItem('workoutCSVFilename');
-                sessionStorage.removeItem('workoutResults');
-              }
-              router.push('/workouts');
-              return;
-            }
-            
-            // If auto-save in progress, wait
-            if (isAutoSaving || isSaving) return;
-            
-            // Manual save fallback if auto-save didn't run
-            setIsSaving(true);
-            setSaveError(null);
-            
-            try {
-              // Get workout results from sessionStorage
-              const resultsStr = typeof window !== 'undefined' 
-                ? sessionStorage.getItem('workoutResults') 
-                : null;
-              const results = resultsStr ? JSON.parse(resultsStr) : {
-                totalSets: parseInt(recommendedSets) || parsedSetsData?.length || 0,
-                totalReps: parseInt(totalReps) || 0,
-                totalTime: parseInt(totalTime) || 0,
-                calories: parseInt(calories) || 0,
-                avgConcentric: parseFloat(avgConcentric) || 0,
-                avgEccentric: parseFloat(avgEccentric) || 0,
-                setData: parsedSetsData || [],
-              };
-
-              // Complete the workout log (uploads IMU data and saves to Firestore)
-              if (hasActiveLog && !hasCompletedLog.current) {
-                const success = await completeLog(results);
-                hasCompletedLog.current = true;
-                
-                if (!success) {
-                  throw new Error('Failed to save workout');
-                }
-                
-                // Update workout streak
-                try {
-                  console.log('[WorkoutFinished] About to record workout for streak (manual save)...');
-                  const streakResult = await recordWorkout(new Date());
-                  console.log('[WorkoutFinished] Streak updated successfully (manual save):', streakResult);
-                  
-                  // Force a small delay and refresh to ensure UI updates
-                  setTimeout(() => {
-                    window.dispatchEvent(new Event('streak-updated'));
-                  }, 100);
-                } catch (streakError) {
-                  console.error('[WorkoutFinished] Failed to update streak (manual save):', streakError);
-                }
-              }
-              
-              // Clean up sessionStorage
-              if (typeof window !== 'undefined') {
-                sessionStorage.removeItem('workoutCSV');
-                sessionStorage.removeItem('workoutCSVFilename');
-                sessionStorage.removeItem('workoutResults');
-              }
-              
-              // Navigate to workouts page
-              router.push('/workouts');
-            } catch (error) {
-              console.error('Error saving workout:', error);
-              setSaveError(error.message || 'Failed to save workout. Please try again.');
-              setIsSaving(false);
-            }
-          }}
-          disabled={isAutoSaving || isSaving}
-          className={`w-full py-3.5 rounded-full font-semibold text-white text-base transition-all ${
-            (isAutoSaving || isSaving) 
-              ? 'bg-gray-600 cursor-not-allowed' 
-              : 'bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 shadow-lg shadow-purple-500/30'
-          }`}
-        >
-          {isAutoSaving ? (
-            <span className="flex items-center justify-center gap-2">
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              Saving...
-            </span>
-          ) : isSaving ? (
-            <span className="flex items-center justify-center gap-2">
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              Saving...
-            </span>
-          ) : (
-            'Continue'
+          {/* Analysis error */}
+          {analysisError && (
+            <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-xl p-3 text-center">
+              <p className="text-sm text-yellow-400">Analysis unavailable: Using local data</p>
+            </div>
           )}
-        </button>
+
+          {/* Save error */}
+          {(saveError || logError) && (
+            <div className="bg-red-500/20 border border-red-500/50 rounded-xl p-3 text-center">
+              <p className="text-sm text-red-400">{saveError || logError}</p>
+            </div>
+          )}
+
+          {/* Continue button */}
+          <button
+            onClick={handleContinue}
+            disabled={isAutoSaving || isSaving}
+            className={`w-full py-3.5 rounded-full font-semibold text-white text-base transition-all ${
+              (isAutoSaving || isSaving)
+                ? 'bg-gray-600 cursor-not-allowed'
+                : 'bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 shadow-lg shadow-purple-500/30'
+            }`}
+          >
+            {(isAutoSaving || isSaving) ? (
+              <span className="flex items-center justify-center gap-2">
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Saving...
+              </span>
+            ) : (
+              'Continue'
+            )}
+          </button>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
+
