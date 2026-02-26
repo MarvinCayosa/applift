@@ -142,7 +142,7 @@ function getVertexAIClient() {
 // ============================================================
 // BUILD USER CONTEXT PROMPT (COMPACT)
 // ============================================================
-function buildUserPrompt({ userProfile, equipment, exerciseName, pastSessions }) {
+function buildUserPrompt({ userProfile, equipment, exerciseName, pastSessions, sessionContext }) {
   let prompt = `EXERCISE: ${exerciseName} (${equipment})\n`;
 
   // User basics (compact)
@@ -163,6 +163,61 @@ function buildUserPrompt({ userProfile, equipment, exerciseName, pastSessions })
   if (userProfile.injuries?.length) {
     const valid = userProfile.injuries.filter(i => i?.trim());
     if (valid.length) prompt += `INJURIES: ${valid.join(', ')}\n`;
+  }
+
+  // ── SESSION CONTEXT (time since last session, total sessions, feedback) ──
+  if (sessionContext) {
+    prompt += `\nSESSION CONTEXT:\n`;
+    prompt += `- Total sessions with this exercise: ${sessionContext.totalSessions || 0}\n`;
+    
+    if (sessionContext.timeSinceLastSession) {
+      prompt += `- Time since last session: ${sessionContext.timeSinceLastSession}\n`;
+      
+      // Add specific guidance based on recovery time
+      const hours = sessionContext.hoursSinceLastSession || 0;
+      if (hours < 24) {
+        prompt += `⚠️ SAME-DAY TRAINING: User trained this exercise less than 24h ago. Consider reducing load by 10-20% or recommend rest.\n`;
+      } else if (hours < 48) {
+        prompt += `⚠️ SHORT RECOVERY: Only ${Math.round(hours)}h since last session. Muscles may not be fully recovered. Consider maintaining or slightly reducing load.\n`;
+      } else if (hours > 168) { // More than 1 week
+        prompt += `⚠️ LONG GAP: More than a week since last session. Consider a slight deload (5-10%) to re-acclimate.\n`;
+      }
+    }
+    
+    // Previous session feedback (user's self-assessment)
+    if (sessionContext.lastFeedback) {
+      const fb = sessionContext.lastFeedback;
+      prompt += `\nUSER FEEDBACK FROM LAST SESSION:\n`;
+      if (fb.feelingRating != null) {
+        const feelingText = ['Very Poor', 'Poor', 'Okay', 'Good', 'Great'][fb.feelingRating - 1] || 'Unknown';
+        prompt += `- How they felt: ${feelingText} (${fb.feelingRating}/5)\n`;
+      }
+      if (fb.difficultyRating != null) {
+        const diffText = ['Too Easy', 'Easy', 'Just Right', 'Hard', 'Too Hard'][fb.difficultyRating - 1] || 'Unknown';
+        prompt += `- Workout difficulty: ${diffText} (${fb.difficultyRating}/5)\n`;
+      }
+      if (fb.recommendationRating != null) {
+        prompt += `- AI recommendation rating: ${fb.recommendationRating}/5\n`;
+      }
+      if (fb.notes) {
+        prompt += `- User notes: "${fb.notes}"\n`;
+      }
+      
+      // Adjust based on feedback
+      if (fb.difficultyRating === 1) {
+        prompt += `⬆️ INCREASE LOAD: User found last session too easy. Consider 5-15% increase.\n`;
+      } else if (fb.difficultyRating === 2) {
+        prompt += `⬆️ SLIGHT INCREASE: User found last session easy. Consider 5-10% increase.\n`;
+      } else if (fb.difficultyRating === 5) {
+        prompt += `⬇️ DECREASE LOAD: User found last session too hard. Reduce by 10-15%.\n`;
+      } else if (fb.difficultyRating === 4) {
+        prompt += `→ MAINTAIN OR SLIGHT DECREASE: User found last session hard. Consider maintaining.\n`;
+      }
+      
+      if (fb.feelingRating && fb.feelingRating <= 2) {
+        prompt += `⚠️ USER FELT POOR: Consider recovery day or lighter session.\n`;
+      }
+    }
   }
 
   // Past sessions (compact)
@@ -285,14 +340,14 @@ export default async function handler(req, res) {
     }
 
     // Validate request body
-    const { userProfile, equipment, exerciseName, pastSessions, triggeredBy } = req.body;
+    const { userProfile, equipment, exerciseName, pastSessions, triggeredBy, sessionContext } = req.body;
 
     if (!equipment || !exerciseName) {
       return res.status(400).json({ error: 'Missing required fields: equipment, exerciseName' });
     }
 
     // Build the user prompt
-    const userPrompt = buildUserPrompt({ userProfile: userProfile || {}, equipment, exerciseName, pastSessions });
+    const userPrompt = buildUserPrompt({ userProfile: userProfile || {}, equipment, exerciseName, pastSessions, sessionContext });
     console.log('📝 [AI API] Generated prompt length:', userPrompt.length);
 
     // Call Vertex AI Gemini 2.5 Flash

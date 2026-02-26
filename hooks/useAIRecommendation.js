@@ -136,6 +136,53 @@ export function useAIRecommendation({ equipment, exerciseName, pastSessions = []
       const idToken = await user.getIdToken();
       console.log('🔑 [AI Hook] Got ID token, length:', idToken?.length);
       
+      // Build session context from pastSessions
+      let sessionContext = null;
+      if (pastSessions && pastSessions.length > 0) {
+        const totalSessions = pastSessions.length;
+        
+        // Sort by date descending to get the most recent session first
+        const sortedSessions = [...pastSessions].sort((a, b) => {
+          const dateA = a.completedAt?.toDate?.() || new Date(a.completedAt) || new Date(0);
+          const dateB = b.completedAt?.toDate?.() || new Date(b.completedAt) || new Date(0);
+          return dateB - dateA;
+        });
+        
+        const lastSession = sortedSessions[0];
+        const lastSessionDate = lastSession?.completedAt?.toDate?.() 
+          || (lastSession?.completedAt ? new Date(lastSession.completedAt) : null);
+        
+        let timeSinceLastSession = null;
+        let hoursSinceLastSession = null;
+        
+        if (lastSessionDate) {
+          const now = new Date();
+          const diffMs = now - lastSessionDate;
+          hoursSinceLastSession = Math.round(diffMs / (1000 * 60 * 60));
+          
+          if (hoursSinceLastSession < 24) {
+            timeSinceLastSession = hoursSinceLastSession < 1 
+              ? 'Less than an hour ago' 
+              : `${hoursSinceLastSession} hours ago`;
+          } else {
+            const days = Math.floor(hoursSinceLastSession / 24);
+            timeSinceLastSession = days === 1 ? '1 day ago' : `${days} days ago`;
+          }
+        }
+        
+        // Get feedback from the last session if available
+        const lastFeedback = lastSession?.feedback || null;
+        
+        sessionContext = {
+          totalSessions,
+          timeSinceLastSession,
+          hoursSinceLastSession,
+          lastFeedback,
+        };
+        
+        console.log('📊 [AI Hook] Session context built:', sessionContext);
+      }
+      
       const result = await generateRecommendation({
         uid: user.uid,
         idToken,
@@ -144,6 +191,7 @@ export function useAIRecommendation({ equipment, exerciseName, pastSessions = []
         exerciseName,
         pastSessions,
         triggeredBy: trigger,
+        sessionContext,
       });
 
       console.log('✅ [AI Hook] API result:', {

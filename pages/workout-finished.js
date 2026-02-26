@@ -7,6 +7,7 @@ import ExecutionQualityCard from '../components/sessionDetails/ExecutionQualityC
 import ExecutionConsistencyCard from '../components/sessionDetails/ExecutionConsistencyCard';
 import FatigueCarousel from '../components/sessionDetails/FatigueCarousel';
 import MovementPhasesSection from '../components/sessionDetails/MovementPhasesSection';
+import PostWorkoutAssessmentModal from '../components/workoutFinished/PostWorkoutAssessmentModal';
 import { useWorkoutLogging } from '../context/WorkoutLoggingContext';
 import { useWorkoutStreak } from '../utils/useWorkoutStreak';
 import { useWorkoutAnalysis, transformAnalysisForUI } from '../hooks/useWorkoutAnalysis';
@@ -25,6 +26,8 @@ export default function WorkoutFinished() {
   const [saveError, setSaveError] = useState(null);
   const [isAutoSaving, setIsAutoSaving] = useState(true); // Auto-saving state
   const [analysisData, setAnalysisData] = useState(null);
+  const [showAssessmentModal, setShowAssessmentModal] = useState(false);
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
   const hasCompletedLog = useRef(false);
   const hasTriggeredAnalysis = useRef(false);
   const isReturningFromDetails = useRef(false);
@@ -451,15 +454,11 @@ export default function WorkoutFinished() {
     });
   };
 
-  // ── handleContinue – navigate away after save ──
+  // ── handleContinue – show assessment modal before navigating ──
   const handleContinue = async () => {
     if (!isAutoSaving && hasCompletedLog.current) {
-      if (typeof window !== 'undefined') {
-        sessionStorage.removeItem('workoutCSV');
-        sessionStorage.removeItem('workoutCSVFilename');
-        sessionStorage.removeItem('workoutResults');
-      }
-      router.push('/workouts');
+      // Show assessment modal instead of navigating directly
+      setShowAssessmentModal(true);
       return;
     }
     if (isAutoSaving || isSaving) return;
@@ -487,17 +486,77 @@ export default function WorkoutFinished() {
           setTimeout(() => window.dispatchEvent(new Event('streak-updated')), 100);
         } catch (e) { console.error('Streak error:', e); }
       }
-      if (typeof window !== 'undefined') {
-        sessionStorage.removeItem('workoutCSV');
-        sessionStorage.removeItem('workoutCSVFilename');
-        sessionStorage.removeItem('workoutResults');
-      }
-      router.push('/workouts');
+      // After saving, show assessment modal
+      setIsSaving(false);
+      setShowAssessmentModal(true);
     } catch (error) {
       console.error('Error saving workout:', error);
       setSaveError(error.message || 'Failed to save workout. Please try again.');
       setIsSaving(false);
     }
+  };
+
+  // ── handleAssessmentSubmit – save feedback to Firestore and navigate ──
+  const handleAssessmentSubmit = async (feedback) => {
+    setIsSubmittingFeedback(true);
+    
+    // Save feedback to Firestore
+    if (user?.uid && workoutId) {
+      try {
+        const sanitize = (str) =>
+          (str || 'unknown').trim()
+            .replace(/([a-z])([A-Z])/g, '$1-$2')
+            .replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
+            .toLowerCase()
+            .replace(/\s+/g, '-')
+            .replace(/[^a-z0-9-]/g, '')
+            .replace(/-+/g, '-')
+            .replace(/^-|-$/g, '');
+
+        const eq = sanitize(equipment);
+        const ex = sanitize(workoutName);
+
+        // Save feedback to the workout log document
+        const docRef = doc(db, 'userWorkouts', user.uid, eq, ex, 'logs', workoutId);
+        await setDoc(docRef, { 
+          feedback: {
+            ...feedback,
+            workoutId,
+            equipment: eq,
+            exercise: ex,
+          }
+        }, { merge: true });
+        
+        console.log('[WorkoutFinished] ✅ Feedback saved to Firestore');
+      } catch (err) {
+        console.error('[WorkoutFinished] Failed to save feedback:', err);
+        // Don't block navigation on feedback save error
+      }
+    }
+    
+    // Clean up sessionStorage
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('workoutCSV');
+      sessionStorage.removeItem('workoutCSVFilename');
+      sessionStorage.removeItem('workoutResults');
+    }
+    
+    setIsSubmittingFeedback(false);
+    setShowAssessmentModal(false);
+    router.push('/workouts');
+  };
+
+  // ── handleAssessmentClose – skip feedback and navigate ──
+  const handleAssessmentClose = () => {
+    // Clean up sessionStorage
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('workoutCSV');
+      sessionStorage.removeItem('workoutCSVFilename');
+      sessionStorage.removeItem('workoutResults');
+    }
+    
+    setShowAssessmentModal(false);
+    router.push('/workouts');
   };
 
   return (
@@ -604,6 +663,16 @@ export default function WorkoutFinished() {
           </button>
         </div>
       </div>
+
+      {/* Post-workout assessment modal */}
+      <PostWorkoutAssessmentModal
+        isOpen={showAssessmentModal}
+        onClose={handleAssessmentClose}
+        onSubmit={handleAssessmentSubmit}
+        exerciseName={workoutName}
+        aiRecommendationUsed={!!(recommendedSets || recommendedReps)}
+        isSubmitting={isSubmittingFeedback}
+      />
     </>
   );
 }

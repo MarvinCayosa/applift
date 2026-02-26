@@ -140,6 +140,24 @@ export default function CalibrationModal({ isOpen, onClose, onCalibrate, equipme
   
   const REQUIRED_REPS = 3;
   
+  // Equipment-specific text
+  const eqLower = (equipment || '').toLowerCase();
+  const isBarbell = eqLower.includes('barbell');
+  const isWeightStack = eqLower.includes('weight') || eqLower.includes('stack');
+  const isStrokeType = isBarbell || isWeightStack;
+  
+  const holdText = isBarbell
+    ? 'Hold the barbell in your starting position (sensor on bar)'
+    : isWeightStack
+      ? 'Let the weight stack rest at the starting position (sensor on stack)'
+      : 'Hold the weight in your starting/neutral position for 3 seconds';
+  
+  const repText = isStrokeType
+    ? 'Do 3 reps with your full range of motion. We\u2019ll measure the vertical displacement.'
+    : 'Do 3 reps with your full range of motion. We\u2019ll measure and average them.';
+  
+  const unitLabel = isStrokeType ? 'cm' : '\u00b0';
+  
   // Refs for BLE subscription during calibration
   const romComputerRef = useRef(null);
   const characteristicRef = useRef(null);
@@ -560,7 +578,7 @@ export default function CalibrationModal({ isOpen, onClose, onCalibrate, equipme
                     </div>
                     <div>
                       <p className="text-white font-medium mb-1">Hold Starting Position</p>
-                      <p className="text-sm text-white/60">Hold the weight in your starting/neutral position for 3 seconds</p>
+                      <p className="text-sm text-white/60">{holdText}</p>
                     </div>
                   </div>
                 </div>
@@ -572,7 +590,7 @@ export default function CalibrationModal({ isOpen, onClose, onCalibrate, equipme
                     </div>
                     <div>
                       <p className="text-white font-medium mb-1">Perform 3 Full Reps</p>
-                      <p className="text-sm text-white/60">Do 3 reps with your full range of motion. We&apos;ll measure and average them.</p>
+                      <p className="text-sm text-white/60">{repText}</p>
                     </div>
                   </div>
                 </div>

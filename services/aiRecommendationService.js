@@ -122,10 +122,11 @@ const MAX_REGEN_COUNT = 5;
  * @param {string} params.exerciseName - Exercise name
  * @param {Array} params.pastSessions - Summarized past session data (optional)
  * @param {string} params.triggeredBy - What triggered the generation ('initial' | 'new_session' | 'regenerate')
+ * @param {Object} params.sessionContext - Context about last session (time since, feedback, total sessions)
  * @returns {Object} { success, recommendation, reasoning, error }
  */
 export async function generateRecommendation({ 
-  uid, idToken, userProfile, equipment, exerciseName, pastSessions = [], triggeredBy = 'initial' 
+  uid, idToken, userProfile, equipment, exerciseName, pastSessions = [], triggeredBy = 'initial', sessionContext = null 
 }) {
   console.log('🚀 [AI Service] Generate recommendation:', {
     uid: uid?.slice(0, 8) + '...',
@@ -133,7 +134,8 @@ export async function generateRecommendation({
     equipment,
     exerciseName,
     triggeredBy,
-    pastSessionsCount: pastSessions.length
+    pastSessionsCount: pastSessions.length,
+    hasSessionContext: !!sessionContext
   });
   try {
     // Check regen limit for manual regeneration
@@ -173,6 +175,7 @@ export async function generateRecommendation({
         exerciseName,
         pastSessions,
         triggeredBy,
+        sessionContext,
       }),
     });
 

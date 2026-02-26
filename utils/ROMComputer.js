@@ -1,16 +1,25 @@
 /**
- * ROMComputer - Range of Motion calculator using quaternion-based orientation
+ * ROMComputer - Range of Motion calculator
  * 
- * Ported from index.html IMU Monitor ROM system.
+ * Supports two ROM types (same calibration flow, different computation):
  * 
- * Supports two ROM types:
- * - ANGLE ROM (dumbbell exercises): Uses quaternion angular displacement
- * - STROKE ROM (barbell/weight stack): Uses double-integrated displacement
+ * - ANGLE ROM (dumbbell exercises):
+ *   Uses quaternion angular displacement. Sensor rotates with the dumbbell,
+ *   so ROM = angular range (degrees) of the primary rotation axis.
  * 
- * Calibration flow:
- * 1. User performs 3 reps during calibration
- * 2. Average ROM of 3 reps becomes the baseline/target
- * 3. Each subsequent rep shows fulfillment % against target
+ * - STROKE ROM (barbell / weight stack exercises):
+ *   Sensor on the bar or flat on the weight stack — constrained to 1D vertical motion.
+ *   1. Detect gravity axis: at rest, whichever accel axis reads ~9.8 m/s² is vertical.
+ *   2. Subtract gravity from that axis → linear acceleration.
+ *   3. Double-integrate per rep: accel → velocity → displacement (cm).
+ *   4. ZUPT (Zero-Velocity Update) at top/bottom of each rep kills drift.
+ *   ROM = peak-to-trough vertical displacement within a rep.
+ * 
+ * Calibration flow (identical for both types):
+ * 1. User holds starting position for 3 seconds (baseline capture)
+ * 2. User performs 3 full-ROM reps
+ * 3. Average ROM of 3 reps becomes the target
+ * 4. Each subsequent rep shows fulfillment % against target
  */
 
 // Exercise code → ROM type mapping
@@ -42,19 +51,24 @@ export class ROMComputer {
     this.primaryAxis = null;        // auto-detected: 'roll','pitch','yaw'
     this.baselineAngle = null;      // Euler baseline
     
-    // Stroke ROM state (improved)
+    // Stroke ROM state — gravity-axis vertical displacement
     this.velocity = 0;
     this.displacement = 0;
     this.lastTimestamp = 0;
     this.peakDisplacement = 0;
     this.minDisplacement = 0;
     this.baselineGravity = null;    // calibrated gravity vector {x,y,z} from baseline hold
+    this.gravityAxis = null;        // 'x', 'y', or 'z' — auto-detected axis with ~9.8 m/s²
+    this.gravitySign = 1;           // +1 or -1 — sign of gravity on detected axis
+    this.gravityMagnitude = 9.81;   // measured gravity magnitude from baseline
     this.accelHP = 0;               // high-pass filtered acceleration
     this.accelLP = 0;               // low-pass state for HP filter
     this.stillCounter = 0;          // consecutive near-zero samples
-    this.STILL_THRESHOLD = 0.25;    // m/s² - below this = probably still
-    this.STILL_SAMPLES = 4;         // samples below threshold to trigger zero-velocity
-    this.MAX_DISPLACEMENT = 3.0;    // meters (300 cm) - hard clamp
+    this.STILL_THRESHOLD = 0.3;     // m/s² — below this = probably still
+    this.STILL_SAMPLES = 3;         // samples below threshold to trigger zero-velocity update
+    this.MAX_DISPLACEMENT = 2.0;    // meters (200 cm) — hard clamp for safety
+    this.DEBUG_MODE = false;        // set to true for extra logging
+    this.BYPASS_HIGH_PASS = false;  // set to true to test without high-pass filter
     
     // Target ROM & Calibration
     this.targetROM = null;          // target ROM from calibration reps (degrees or cm)
@@ -217,52 +231,85 @@ export class ROMComputer {
     if (this.sampleHistory.length > this.maxHistorySize) this.sampleHistory.shift();
   }
   
-  // ---- STROKE ROM (displacement via quaternion gravity removal) - from index.html ----
+  // ---- STROKE ROM (vertical displacement via gravity-axis detection) ----
+  // Physics: sensor on barbell bar or weight stack → constrained 1D vertical motion.
+  // 1. At baseline hold, detect which accel axis carries ~9.8 m/s² → that's the vertical axis.
+  // 2. Each sample: subtract gravity from that axis → linear acceleration.
+  // 3. Double-integrate (accel → velocity → displacement) within each rep only.
+  // 4. ZUPT (Zero-Velocity Update) when equipment is momentarily still.
   addStrokeSample(q, accelX, accelY, accelZ, timestamp) {
-    if (this.baselineGravity === null) {
+    // --- First sample: detect gravity axis automatically ---
+    if (this.gravityAxis === null) {
+      const axes = { x: accelX, y: accelY, z: accelZ };
+      // The axis closest to ±9.81 m/s² is the vertical (gravity) axis
+      let bestAxis = 'z', bestVal = 0;
+      for (const [axis, val] of Object.entries(axes)) {
+        if (Math.abs(val) > Math.abs(bestVal)) {
+          bestAxis = axis;
+          bestVal = val;
+        }
+      }
+      this.gravityAxis = bestAxis;
+      this.gravitySign = Math.sign(bestVal);        // +1 if gravity reads positive, -1 if negative
+      this.gravityMagnitude = Math.abs(bestVal);     // actual magnitude (≈9.81)
       this.baselineGravity = { x: accelX, y: accelY, z: accelZ };
-      this.baselineQuat = { ...q };
       this.lastTimestamp = timestamp;
+      console.log(`🔍 [ROM DEBUG] Gravity axis: ${bestAxis} = ${bestVal.toFixed(3)} m/s² | X:${accelX.toFixed(2)} Y:${accelY.toFixed(2)} Z:${accelZ.toFixed(2)}`);
       return;
     }
     
-    // Remove gravity using quaternion rotation
-    const gBaseSensor = this.baselineGravity;
-    const gWorld = this.rotateVector(gBaseSensor, this.baselineQuat);
-    const gCurrent = this.rotateVector(gWorld, this.quatConjugate(q));
-    
-    const linX = accelX - gCurrent.x;
-    const linY = accelY - gCurrent.y;
-    const linZ = accelZ - gCurrent.z;
-    
-    // Rotate linear acceleration to world frame
-    const worldAccel = this.rotateVector({ x: linX, y: linY, z: linZ }, q);
-    const rawAccelZ = worldAccel.z;
+    // --- Extract acceleration on the gravity axis and subtract gravity ---
+    const axisMap = { x: accelX, y: accelY, z: accelZ };
+    const rawAccel = axisMap[this.gravityAxis];
+    // Linear acceleration = raw - gravity (removes the constant ~9.81 component)
+    const linearAccel = rawAccel - (this.gravitySign * this.gravityMagnitude);
     
     if (this.lastTimestamp > 0) {
       const dt = (timestamp - this.lastTimestamp) / 1000;
-      if (dt > 0 && dt < 0.5) {
-        const lpAlpha = 0.15;
-        this.accelLP = lpAlpha * rawAccelZ + (1 - lpAlpha) * this.accelLP;
-        this.accelHP = rawAccelZ - this.accelLP;
+      if (dt > 0 && dt < 0.5) { // Guard against timestamp jumps
+        // High-pass filter to remove any residual DC offset / slow drift
+        let finalAccel;
+        if (this.BYPASS_HIGH_PASS) {
+          finalAccel = linearAccel;
+        } else {
+          const lpAlpha = 0.12;
+          this.accelLP = lpAlpha * linearAccel + (1 - lpAlpha) * this.accelLP;
+          this.accelHP = linearAccel - this.accelLP;
+          finalAccel = this.accelHP;
+        }
         
-        let accelInput = Math.abs(this.accelHP) < this.STILL_THRESHOLD ? 0 : this.accelHP;
+        // Dead-zone: if acceleration is tiny, treat as zero (noise floor)
+        const accelInput = Math.abs(finalAccel) < this.STILL_THRESHOLD ? 0 : finalAccel;
         
-        if (Math.abs(this.accelHP) < this.STILL_THRESHOLD) {
+        // --- ZUPT: Zero-Velocity Update ---
+        // When equipment is still (top/bottom of rep), force velocity → 0
+        if (Math.abs(finalAccel) < this.STILL_THRESHOLD) {
           this.stillCounter++;
         } else {
           this.stillCounter = 0;
         }
         
         if (this.stillCounter >= this.STILL_SAMPLES) {
-          this.velocity *= 0.5;
-          if (Math.abs(this.velocity) < 0.005) this.velocity = 0;
+          // Exponential decay → zero velocity at rest points
+          const oldVel = this.velocity;
+          this.velocity *= 0.4;
+          if (Math.abs(this.velocity) < 0.003) this.velocity = 0;
+          if (this.DEBUG_MODE && oldVel !== 0 && this.velocity === 0) {
+            console.log(`🛑 [ROM DEBUG] ZUPT triggered - velocity zeroed (was ${oldVel.toFixed(4)})`);
+          }
         }
         
+        // --- Double integration: accel → velocity → displacement ---
         this.velocity += accelInput * dt;
-        this.velocity *= 0.98;
+        this.velocity *= 0.97; // Gentle drag to limit drift accumulation
+        const oldDisp = this.displacement;
         this.displacement += this.velocity * dt;
         this.displacement = Math.max(-this.MAX_DISPLACEMENT, Math.min(this.MAX_DISPLACEMENT, this.displacement));
+        
+        // Debug logging every 10th sample to avoid spam
+        if (this.DEBUG_MODE && this.currentRepData.length % 10 === 0) {
+          console.log(`📏 [ROM] Raw:${rawAccel.toFixed(3)} Linear:${linearAccel.toFixed(3)} Final:${finalAccel.toFixed(3)} Vel:${this.velocity.toFixed(4)} Disp:${(this.displacement*100).toFixed(1)}cm Still:${this.stillCounter}`);
+        }
         
         this.peakDisplacement = Math.max(this.peakDisplacement, this.displacement);
         this.minDisplacement = Math.min(this.minDisplacement, this.displacement);
@@ -270,13 +317,16 @@ export class ROMComputer {
     }
     this.lastTimestamp = timestamp;
     
+    // Convert to cm for display
     this.liveDisplacementCm = this.displacement * 100;
     this.liveVelocity = this.velocity;
     
+    // Track within-rep min/max displacement (cm) for ROM = peak-to-trough
     this.repMinAngle = Math.min(this.repMinAngle, this.liveDisplacementCm);
     this.repMaxAngle = Math.max(this.repMaxAngle, this.liveDisplacementCm);
     this.liveRepROM = this.repMaxAngle - this.repMinAngle;
     
+    // Update fulfillment %
     if (this.targetROM && this.targetROM > 0) {
       this.liveFulfillment = Math.min(150, (this.liveRepROM / this.targetROM) * 100);
     }
@@ -284,6 +334,7 @@ export class ROMComputer {
     this.currentRepData.push({
       displacement: this.liveDisplacementCm,
       velocity: this.velocity,
+      linearAccel: linearAccel,
       timestamp
     });
     
@@ -487,12 +538,45 @@ export class ROMComputer {
   getROMLabel() {
     const romType = this.getROMType(this.exerciseType);
     if (romType === 'angle') return 'Equipment ROM';
-    if (this.exerciseType <= 3) return 'Bar Path ROM';
-    return 'Stroke Depth';
+    if (this.exerciseType <= 3) return 'Vertical Displacement';
+    return 'Stack Displacement';
   }
   
   getUnit() {
     return this.getROMType(this.exerciseType) === 'angle' ? '°' : ' cm';
+  }
+  
+  /**
+   * Enable debug logging and testing modes
+   */
+  enableDebugMode() {
+    this.DEBUG_MODE = true;
+    console.log('🔧 [ROM DEBUG] Debug mode enabled');
+  }
+  
+  disableDebugMode() {
+    this.DEBUG_MODE = false;
+    console.log('🔧 [ROM DEBUG] Debug mode disabled');
+  }
+  
+  bypassHighPassFilter(bypass = true) {
+    this.BYPASS_HIGH_PASS = bypass;
+    console.log(`🔧 [ROM DEBUG] High-pass filter ${bypass ? 'BYPASSED' : 'ENABLED'}`);
+  }
+  
+  /**
+   * Force reset displacement to zero (when user returns to starting position)
+   * Call this when you know the sensor is back at the baseline position
+   */
+  resetDisplacementToZero() {
+    this.displacement = 0;
+    this.velocity = 0;
+    this.peakDisplacement = 0;
+    this.minDisplacement = 0;
+    this.accelHP = 0;
+    this.accelLP = 0;
+    this.stillCounter = 0;
+    console.log('🔄 [ROM DEBUG] Displacement manually reset to zero');
   }
   
   /**
@@ -532,6 +616,22 @@ export class ROMComputer {
     this.baselineAngle = { roll: sumRoll/n, pitch: sumPitch/n, yaw: sumYaw/n };
     this.baselineGravity = { x: sumAx/n, y: sumAy/n, z: sumAz/n };
     
+    // Auto-detect gravity axis from baseline samples
+    const grav = this.baselineGravity;
+    const axes = { x: grav.x, y: grav.y, z: grav.z };
+    let bestAxis = 'z', bestVal = 0;
+    for (const [axis, val] of Object.entries(axes)) {
+      if (Math.abs(val) > Math.abs(bestVal)) {
+        bestAxis = axis;
+        bestVal = val;
+      }
+    }
+    this.gravityAxis = bestAxis;
+    this.gravitySign = Math.sign(bestVal);
+    this.gravityMagnitude = Math.abs(bestVal);
+    console.log(`🔍 [ROM DEBUG] Baseline gravity: X:${grav.x.toFixed(3)} Y:${grav.y.toFixed(3)} Z:${grav.z.toFixed(3)}`);
+    console.log(`🎯 [ROM DEBUG] Selected axis: ${bestAxis} (${bestVal.toFixed(3)} m/s²) | Total magnitude: ${Math.sqrt(grav.x**2 + grav.y**2 + grav.z**2).toFixed(3)}`);
+    
     // Reset tracking state
     this.currentRepData = [];
     this.sampleHistory = [];
@@ -559,6 +659,9 @@ export class ROMComputer {
     this.baselineQuat = null;
     this.baselineAngle = null;
     this.baselineGravity = null;
+    this.gravityAxis = null;
+    this.gravitySign = 1;
+    this.gravityMagnitude = 9.81;
     this.currentRepData = [];
     this.sampleHistory = [];
     this.velocity = 0;
@@ -581,6 +684,9 @@ export class ROMComputer {
     this.baselineQuat = null;
     this.baselineAngle = null;
     this.baselineGravity = null;
+    this.gravityAxis = null;
+    this.gravitySign = 1;
+    this.gravityMagnitude = 9.81;
     this.primaryAxis = null;
     this.repROMs = [];
     this.currentRepData = [];
@@ -604,6 +710,8 @@ export class ROMComputer {
     this.repMaxAngle = -Infinity;
     this.liveRepROM = 0;
     this.liveFulfillment = 0;
+    this.DEBUG_MODE = false;
+    this.BYPASS_HIGH_PASS = false;
   }
 }
 
@@ -623,4 +731,15 @@ export function resetROMComputer() {
   }
   _instance = new ROMComputer();
   return _instance;
+}
+
+// Global access for debugging in browser console
+if (typeof window !== 'undefined') {
+  window.getROMComputer = getROMComputer;
+  window.debugROM = () => {
+    const rom = getROMComputer();
+    rom.enableDebugMode();
+    console.log('🔧 Use rom.bypassHighPassFilter(true), rom.resetDisplacementToZero(), etc.');
+    return rom;
+  };
 }
