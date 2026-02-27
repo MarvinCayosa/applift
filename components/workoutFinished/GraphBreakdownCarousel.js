@@ -65,13 +65,18 @@ export default function GraphBreakdownCarousel({
     const baselineROM = firstCalibratedSet.targetROM;
     const romUnit = firstCalibratedSet.romUnit || '°';
     const allReps = setsData.flatMap(s => s.repsData || []);
-    const repsWithROM = allReps.filter(r => r.romFulfillment != null);
-    const rawFulfillment = repsWithROM.length > 0
-      ? Math.round(repsWithROM.reduce((sum, r) => sum + r.romFulfillment, 0) / repsWithROM.length)
-      : null;
-    const avgFulfillment = rawFulfillment != null ? Math.min(100, rawFulfillment) : null;
+    // Collect reps that have a ROM value (rom field) OR romFulfillment
+    const repsWithROM = allReps.filter(r => r.rom != null || r.romFulfillment != null);
+    // Compute average ROM from the actual rom values
     const avgROM = repsWithROM.length > 0
       ? repsWithROM.reduce((sum, r) => sum + (parseFloat(r.rom) || 0), 0) / repsWithROM.length
+      : null;
+    // ALWAYS compute fulfillment from avgROM / baselineROM to stay consistent
+    // with the "Benchmark" and "Actual" values shown on screen.
+    // Previously this used stored per-rep romFulfillment which could mismatch
+    // when the calibration targetROM differs from what was used during recording.
+    const avgFulfillment = (avgROM != null && baselineROM > 0)
+      ? Math.min(100, Math.round((avgROM / baselineROM) * 100))
       : null;
 
     console.log('[GraphBreakdownCarousel] romData computed:', { baselineROM, avgFulfillment, avgROM });

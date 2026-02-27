@@ -18,6 +18,7 @@ import { doc, setDoc } from 'firebase/firestore';
 import { AIInsightsCard } from '../components/aiInsights';
 import { generateInsights, getCachedInsights } from '../services/aiInsightsService';
 import { bustRecommendationCache } from '../services/aiRecommendationService';
+import ShareModal from '../components/ShareModal';
 
 export default function WorkoutFinished() {
   const router = useRouter();
@@ -41,6 +42,11 @@ export default function WorkoutFinished() {
   const [aiInsightsLoading, setAiInsightsLoading] = useState(false);
   const [aiInsightsError, setAiInsightsError] = useState(null);
   const hasTriggeredInsights = useRef(false);
+
+  // Share state
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareUrl, setShareUrl] = useState('');
+  const [isSharing, setIsSharing] = useState(false);
   const { 
     workoutName, 
     equipment, 
@@ -283,6 +289,7 @@ export default function WorkoutFinished() {
         setsData: mergedSetsData,
         fatigueScore: analysisData?.fatigueScore ?? null,
         consistencyScore: analysisData?.consistencyScore ?? null,
+        mlClassification: analysisData?.mlClassification ?? null,
       };
 
       const result = await generateInsights({
@@ -650,6 +657,56 @@ export default function WorkoutFinished() {
     router.push('/workouts');
   };
 
+  // ── Share handler ──
+  const handleShare = async () => {
+    if (!user || isSharing) return;
+    setIsSharing(true);
+    try {
+      const token = await user.getIdToken();
+      const sessionData = {
+        workoutId: workoutId || null,
+        exerciseName: workoutName,
+        equipmentName: equipment,
+        weight: parseFloat(weight) || 0,
+        weightUnit: weightUnit || 'kg',
+        totalSets: mergedSetsData?.length || 0,
+        totalReps: parseInt(totalReps) || 0,
+        plannedSets: parseInt(recommendedSets) || 0,
+        plannedReps: parseInt(recommendedReps) || 0,
+        totalTime: parseInt(totalTime) || 0,
+        calories: analysisData?.calories || parseInt(calories) || 0,
+        date: new Date().toISOString(),
+        setsData: mergedSetsData,
+        fatigueScore: analysisData?.fatigueScore ?? null,
+        fatigueLevel: analysisData?.fatigueLevel || null,
+        consistencyScore: analysisData?.consistencyScore ?? null,
+        mlClassification: analysisData?.mlClassification || null,
+        avgConcentric: analysisData?.avgConcentric || 0,
+        avgEccentric: analysisData?.avgEccentric || 0,
+        aiInsights: aiInsights || null,
+        isRecommendation: !!(recommendedSets || recommendedReps),
+        isCustomSet: setType === 'custom',
+      };
+      const res = await fetch('/api/share-workout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ sessionData }),
+      });
+      if (!res.ok) throw new Error('Failed to create share link');
+      const { shareUrl: url } = await res.json();
+      setShareUrl(url);
+      setShowShareModal(true);
+    } catch (err) {
+      console.error('[Share] Error:', err);
+      alert('Failed to create share link. Please try again.');
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
   return (
     <>
       <Head>
@@ -670,6 +727,7 @@ export default function WorkoutFinished() {
           totalSets={mergedSetsData?.length || 0}
           totalReps={parseInt(totalReps) || 0}
           onBack={handleGoBack}
+          onShare={handleShare}
         />
 
         {/* ── Content cards ── */}
@@ -772,6 +830,14 @@ export default function WorkoutFinished() {
         exerciseName={workoutName}
         aiRecommendationUsed={!!(recommendedSets || recommendedReps)}
         isSubmitting={isSubmittingFeedback}
+      />
+
+      {/* Share Modal */}
+      <ShareModal
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        shareUrl={shareUrl}
+        exerciseName={workoutName}
       />
     </>
   );

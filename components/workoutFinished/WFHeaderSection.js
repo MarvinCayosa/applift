@@ -31,6 +31,7 @@ export default function WFHeaderSection({
   totalSets = 0,
   totalReps = 0,
   onBack,
+  onShare,
 }) {
   const router = useRouter();
 
@@ -87,7 +88,7 @@ export default function WFHeaderSection({
             </svg>
           </button>
 
-          <div className="flex-1 text-center pr-7">
+          <div className="flex-1 text-center">
             <h1 className="text-[22px] font-bold text-white leading-tight tracking-tight">
               Workout Completed!
             </h1>
@@ -95,6 +96,19 @@ export default function WFHeaderSection({
               {displayName}
             </p>
           </div>
+
+          {/* Share button */}
+          {onShare && (
+            <button
+              onClick={onShare}
+              className="p-1.5 shrink-0"
+              aria-label="Share workout"
+            >
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+              </svg>
+            </button>
+          )}
         </div>
 
         {/* ── Weight badge + Stats card row ── */}

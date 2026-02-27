@@ -103,6 +103,7 @@ function buildMetricsPrompt(data) {
     totalSets, totalReps, plannedSets, plannedReps,
     durationSec, calories,
     setsData, fatigueScore, consistencyScore,
+    mlClassification,
   } = data;
 
   let prompt = `EXERCISE: ${exerciseName} (${equipment}), ${weight}${weightUnit || 'kg'}\n`;
@@ -165,6 +166,28 @@ function buildMetricsPrompt(data) {
         .map(([lbl, cnt]) => `${lbl}: ${Math.round((cnt / allReps.length) * 100)}% (${cnt})`)
         .join(', ');
       prompt += `EXECUTION DISTRIBUTION (${allReps.length} total reps): ${overallStr}\n`;
+    }
+  }
+
+  // ML Classification (exercise-specific quality labels)
+  if (mlClassification) {
+    const { cleanPercentage, distributionPercent, qualityLabels } = mlClassification;
+    if (cleanPercentage != null) {
+      prompt += `\nEXECUTION QUALITY (ML Classification):\n`;
+      prompt += `  Clean Rep Percentage: ${cleanPercentage}%\n`;
+      if (qualityLabels?.length) {
+        prompt += `  Quality Labels (exercise-specific): ${qualityLabels.join(', ')}\n`;
+      }
+      if (distributionPercent && typeof distributionPercent === 'object') {
+        const entries = Object.entries(distributionPercent)
+          .sort(([,a], [,b]) => b - a);
+        prompt += `  Distribution: ${entries.map(([label, pct]) => `${label}: ${pct}%`).join(', ')}\n`;
+        // Highlight the top mistakes
+        const mistakes = entries.filter(([label]) => label !== 'Clean');
+        if (mistakes.length > 0) {
+          prompt += `  Top Mistakes: ${mistakes.map(([label, pct]) => `${label} (${pct}%)`).join(', ')}\n`;
+        }
+      }
     }
   }
 

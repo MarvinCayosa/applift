@@ -12,9 +12,10 @@
 
 import { useRouter } from 'next/router';
 import Head from 'next/head';
-import { useMemo } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 
 import useSessionDetailsData from '../../hooks/useSessionDetailsData';
+import { useAuth } from '../../context/AuthContext';
 import { AIInsightsAccordion } from '../../components/aiInsights';
 import HeaderSection from '../../components/sessionDetails/HeaderSection';
 import GraphBreakdownCarousel from '../../components/workoutFinished/GraphBreakdownCarousel';
@@ -23,12 +24,19 @@ import ExecutionConsistencyCard from '../../components/sessionDetails/ExecutionC
 import FatigueCarousel from '../../components/sessionDetails/FatigueCarousel';
 import MovementPhasesSection from '../../components/sessionDetails/MovementPhasesSection';
 import SessionDetailsSkeleton from '../../components/sessionDetails/SessionDetailsSkeleton';
+import ShareModal from '../../components/ShareModal';
 import BottomNav from '../../components/BottomNav';
 import { equipmentConfig } from '../../components/equipment';
 
 export default function SessionDetailsPage() {
   const router = useRouter();
   const { logId, eq, ex, type } = router.query;
+  const { user } = useAuth();
+
+  // Share state
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareUrl, setShareUrl] = useState('');
+  const [isSharing, setIsSharing] = useState(false);
 
   // Resolve exercise image and equipment primary color from equipmentConfig
   const { exerciseImage, primaryColor } = useMemo(() => {
@@ -88,6 +96,56 @@ export default function SessionDetailsPage() {
 
   const vm = viewModel;
 
+  // Share handler
+  const handleShare = useCallback(async () => {
+    if (!user || !vm) return;
+    setIsSharing(true);
+    try {
+      const token = await user.getIdToken();
+      const sessionData = {
+        workoutId: vm.workoutId,
+        exerciseName: vm.exerciseName,
+        equipmentName: vm.equipmentName,
+        weight: vm.weight,
+        weightUnit: vm.weightUnit,
+        totalSets: vm.totalSets,
+        totalReps: vm.totalReps,
+        plannedSets: vm.plannedSets || vm.totalSets,
+        plannedReps: vm.plannedRepsPerSet || vm.reps,
+        totalTime: vm.totalTime,
+        calories: vm.calories,
+        date: vm.date instanceof Date ? vm.date.toISOString() : vm.date,
+        setsData: vm.mergedSetsData,
+        fatigueScore: vm.fatigueScore,
+        fatigueLevel: vm.fatigueLevel,
+        consistencyScore: vm.consistencyScore,
+        mlClassification: vm.mlClassification,
+        avgConcentric: vm.avgConcentric,
+        avgEccentric: vm.avgEccentric,
+        aiInsights: vm.aiInsights,
+        isRecommendation: vm.isRecommendation,
+        isCustomSet: vm.isCustomSet,
+      };
+      const res = await fetch('/api/share-workout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ sessionData }),
+      });
+      if (!res.ok) throw new Error('Failed to create share link');
+      const { shareUrl: url } = await res.json();
+      setShareUrl(url);
+      setShowShareModal(true);
+    } catch (err) {
+      console.error('[Share] Error:', err);
+      alert('Failed to create share link. Please try again.');
+    } finally {
+      setIsSharing(false);
+    }
+  }, [user, vm]);
+
   const handleSeeMore = () => {
     router.push({
       pathname: '/performance-details',
@@ -126,6 +184,7 @@ export default function SessionDetailsPage() {
           primaryColor={primaryColor}
           totalSets={vm.totalSets}
           totalReps={vm.totalReps}
+          onShare={handleShare}
         />
 
         {/* Content cards */}
@@ -187,6 +246,14 @@ export default function SessionDetailsPage() {
         </div>
 
         <BottomNav />
+
+        {/* Share Modal */}
+        <ShareModal
+          isOpen={showShareModal}
+          onClose={() => setShowShareModal(false)}
+          shareUrl={shareUrl}
+          exerciseName={vm.exerciseName}
+        />
       </div>
     </>
   );
