@@ -58,50 +58,13 @@ export default function SessionDetailsPage() {
     exercise: ex || '',
   });
 
-  // Wait for Next.js router hydration (query params empty on refresh until isReady)
-  if (!router.isReady) {
-    return (
-      <>
-        <Head><title>Session Details — AppLift</title></Head>
-        <SessionDetailsSkeleton />
-      </>
-    );
-  }
-
-  // Error state
-  if (!isLoading && (error || !viewModel) && logId) {
-    return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        <div className="text-center space-y-3">
-          <p className="text-white/50">{error || 'Session not found'}</p>
-          <button onClick={() => router.back()} className="text-blue-400 text-sm">
-            Go back
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Loading state
-  if (isLoading || !viewModel) {
-    return (
-      <>
-        <Head>
-          <title>Session Details — AppLift</title>
-        </Head>
-        <SessionDetailsSkeleton />
-      </>
-    );
-  }
-
-  const vm = viewModel;
-
-  // Share handler
+  // Share handler — must be declared before any conditional returns (rules of hooks)
   const handleShare = useCallback(async () => {
-    if (!user || !vm) return;
+    if (!user || !viewModel) return;
     setIsSharing(true);
     try {
       const token = await user.getIdToken();
+      const vm = viewModel;
       const sessionData = {
         workoutId: vm.workoutId,
         exerciseName: vm.exerciseName,
@@ -144,7 +107,45 @@ export default function SessionDetailsPage() {
     } finally {
       setIsSharing(false);
     }
-  }, [user, vm]);
+  }, [user, viewModel]);
+
+  // Wait for Next.js router hydration (query params empty on refresh until isReady)
+  if (!router.isReady) {
+    return (
+      <>
+        <Head><title>Session Details — AppLift</title></Head>
+        <SessionDetailsSkeleton />
+      </>
+    );
+  }
+
+  // Error state
+  if (!isLoading && (error || !viewModel) && logId) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        <div className="text-center space-y-3">
+          <p className="text-white/50">{error || 'Session not found'}</p>
+          <button onClick={() => router.back()} className="text-blue-400 text-sm">
+            Go back
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Loading state
+  if (isLoading || !viewModel) {
+    return (
+      <>
+        <Head>
+          <title>Session Details — AppLift</title>
+        </Head>
+        <SessionDetailsSkeleton />
+      </>
+    );
+  }
+
+  const vm = viewModel;
 
   const handleSeeMore = () => {
     router.push({
