@@ -60,18 +60,56 @@ export default async function handler(req, res) {
         const host = req.headers.host || 'localhost:3000';
         const protocol = host.includes('localhost') ? 'http' : 'https';
 
-        // If existing share is expired, refresh the expiry
-        const existingExpiry = existingData.expiresAt?.toDate?.() || (existingData.expiresAt ? new Date(existingData.expiresAt) : null);
-        if (!existingExpiry || existingExpiry.getTime() < now) {
-          await db.collection('sharedWorkouts').doc(existingDoc.id).update({
-            expiresAt: new Date(now + EXPIRY_MS),
-          });
-        }
+        // Always refresh the data + expiry so new fields (per-rep chartData etc.) are stored
+        const refreshedSets = (sessionData.setsData || []).map(set => ({
+          setNumber: set.setNumber,
+          reps: set.reps,
+          duration: set.duration,
+          targetROM: set.targetROM || null,
+          romCalibrated: set.romCalibrated || false,
+          romUnit: set.romUnit || '°',
+          incomplete: set.incomplete || false,
+          completedReps: set.completedReps || set.reps || 0,
+          plannedReps: set.plannedReps || 0,
+          repsData: (set.repsData || []).map(rep => ({
+            repNumber: rep.repNumber,
+            time: rep.time,
+            duration: rep.duration,
+            rom: rep.rom ?? null,
+            romFulfillment: rep.romFulfillment ?? null,
+            romUnit: rep.romUnit || '°',
+            peakVelocity: rep.peakVelocity ?? null,
+            smoothnessScore: rep.smoothnessScore ?? null,
+            classification: rep.classification || null,
+            quality: rep.quality || null,
+            liftingTime: rep.liftingTime ?? 0,
+            loweringTime: rep.loweringTime ?? 0,
+            chartData: rep.chartData || [],
+            amplitude: rep.amplitude ?? null,
+            concentric: rep.concentric ?? null,
+            eccentric: rep.eccentric ?? null,
+          })),
+        }));
+
+        await db.collection('sharedWorkouts').doc(existingDoc.id).update({
+          setsData: refreshedSets,
+          chartData: sessionData.chartData || existingData.chartData || [],
+          fatigueScore: sessionData.fatigueScore ?? existingData.fatigueScore ?? null,
+          fatigueLevel: sessionData.fatigueLevel || existingData.fatigueLevel || null,
+          consistencyScore: sessionData.consistencyScore ?? existingData.consistencyScore ?? null,
+          mlClassification: sessionData.mlClassification || existingData.mlClassification || null,
+          aiInsights: sessionData.aiInsights || existingData.aiInsights || null,
+          avgConcentric: sessionData.avgConcentric || existingData.avgConcentric || 0,
+          avgEccentric: sessionData.avgEccentric || existingData.avgEccentric || 0,
+          concentricPercent: sessionData.concentricPercent || existingData.concentricPercent || 0,
+          eccentricPercent: sessionData.eccentricPercent || existingData.eccentricPercent || 0,
+          expiresAt: new Date(now + EXPIRY_MS),
+        });
 
         return res.status(200).json({
           shareId: existingDoc.id,
           shareUrl: `${protocol}://${host}/shared/${existingDoc.id}`,
-          expiresAt: existingExpiry && existingExpiry.getTime() >= now ? existingExpiry.toISOString() : expiresAt,
+          expiresAt,
         });
       }
     }

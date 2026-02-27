@@ -216,7 +216,6 @@ export default function SharedWorkoutPage() {
           totalSets={s.totalSets}
           totalReps={s.totalReps}
           hideBack
-          sharedBranding
         />
 
         {/* Expiry countdown */}

@@ -84,21 +84,11 @@ export default function HeaderSection({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
               </svg>
             </button>
-          ) : (
-            <div className="w-9 shrink-0" /> 
-          )}
+          ) : onShare ? (
+            <div className="w-9 shrink-0" />
+          ) : null}
 
           <div className="flex-1 text-center">
-            {sharedBranding && (
-              <div className="flex items-center justify-center gap-1.5 mb-2">
-                <img
-                  src="/icons/applift-icon-192.png"
-                  alt="AppLift"
-                  className="w-5 h-5 rounded-md object-cover"
-                />
-                <span className="text-xs text-white/50 font-medium">Shared from AppLift</span>
-              </div>
-            )}
             <h1 className="text-[22px] font-bold text-white leading-tight tracking-tight">
               {exerciseName || 'Session Details'}
             </h1>
