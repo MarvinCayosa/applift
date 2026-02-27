@@ -40,6 +40,11 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Missing sessionData' });
     }
 
+    // 24-hour expiry
+    const EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
+    const now = Date.now();
+    const expiresAt = new Date(now + EXPIRY_MS).toISOString();
+
     // Check if already shared (avoid duplicates)
     const workoutId = sessionData.workoutId;
     if (workoutId) {
@@ -51,11 +56,22 @@ export default async function handler(req, res) {
       
       if (!existing.empty) {
         const existingDoc = existing.docs[0];
+        const existingData = existingDoc.data();
         const host = req.headers.host || 'localhost:3000';
         const protocol = host.includes('localhost') ? 'http' : 'https';
+
+        // If existing share is expired, refresh the expiry
+        const existingExpiry = existingData.expiresAt?.toDate?.() || (existingData.expiresAt ? new Date(existingData.expiresAt) : null);
+        if (!existingExpiry || existingExpiry.getTime() < now) {
+          await db.collection('sharedWorkouts').doc(existingDoc.id).update({
+            expiresAt: new Date(now + EXPIRY_MS),
+          });
+        }
+
         return res.status(200).json({
           shareId: existingDoc.id,
           shareUrl: `${protocol}://${host}/shared/${existingDoc.id}`,
+          expiresAt: existingExpiry && existingExpiry.getTime() >= now ? existingExpiry.toISOString() : expiresAt,
         });
       }
     }
@@ -113,8 +129,19 @@ export default async function handler(req, res) {
       // Set type info
       isRecommendation: sessionData.isRecommendation || false,
       isCustomSet: sessionData.isCustomSet || false,
+      // Additional header fields
+      sets: sessionData.sets || sessionData.plannedSets || 0,
+      reps: sessionData.reps || sessionData.plannedReps || 0,
+      restTimeSec: sessionData.restTimeSec ?? 40,
+      plannedRepsPerSet: sessionData.plannedRepsPerSet || sessionData.reps || 0,
+      // Phase percentages
+      concentricPercent: sessionData.concentricPercent || 0,
+      eccentricPercent: sessionData.eccentricPercent || 0,
+      // Chart data for movement graph
+      chartData: sessionData.chartData || [],
       // Meta
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      expiresAt: new Date(now + EXPIRY_MS),
       displayName: decoded.name || 'AppLift User',
     };
 
@@ -126,6 +153,7 @@ export default async function handler(req, res) {
     return res.status(200).json({
       shareId: docRef.id,
       shareUrl: `${protocol}://${host}/shared/${docRef.id}`,
+      expiresAt,
     });
   } catch (error) {
     console.error('[Share API] Error:', error.message);

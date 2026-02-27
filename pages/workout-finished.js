@@ -258,6 +258,8 @@ export default function WorkoutFinished() {
     if (hasTriggeredInsights.current) return;
     if (!user?.uid || !workoutId || !mergedSetsData?.length) return;
     if (isAutoSaving || isAnalyzing) return; // wait for save + analysis to finish
+    // If analysis completed with results but transform to analysisData hasn't happened yet, wait
+    if (analysis && !analysisData) return;
     if (userProfile?.aiRecommendationsEnabled === false) return;
 
     hasTriggeredInsights.current = true;
@@ -309,7 +311,7 @@ export default function WorkoutFinished() {
     };
 
     run();
-  }, [user?.uid, workoutId, mergedSetsData, isAutoSaving, isAnalyzing, setType, userProfile, equipment, workoutName, weight, weightUnit, totalReps, totalTime, calories, recommendedSets, recommendedReps, analysisData]);
+  }, [user?.uid, workoutId, mergedSetsData, isAutoSaving, isAnalyzing, analysis, setType, userProfile, equipment, workoutName, weight, weightUnit, totalReps, totalTime, calories, recommendedSets, recommendedReps, analysisData]);
 
   // Trigger analysis after workout data is saved
   const triggerAnalysis = async (wkId, path) => {
@@ -673,16 +675,23 @@ export default function WorkoutFinished() {
         totalReps: parseInt(totalReps) || 0,
         plannedSets: parseInt(recommendedSets) || 0,
         plannedReps: parseInt(recommendedReps) || 0,
+        sets: parseInt(recommendedSets) || mergedSetsData?.length || 0,
+        reps: parseInt(recommendedReps) || 0,
+        restTimeSec: 40,
+        plannedRepsPerSet: parseInt(recommendedReps) || 0,
         totalTime: parseInt(totalTime) || 0,
         calories: analysisData?.calories || parseInt(calories) || 0,
         date: new Date().toISOString(),
         setsData: mergedSetsData,
+        chartData: analysisData?.chartData || [],
         fatigueScore: analysisData?.fatigueScore ?? null,
         fatigueLevel: analysisData?.fatigueLevel || null,
         consistencyScore: analysisData?.consistencyScore ?? null,
         mlClassification: analysisData?.mlClassification || null,
         avgConcentric: analysisData?.avgConcentric || 0,
         avgEccentric: analysisData?.avgEccentric || 0,
+        concentricPercent: analysisData?.concentricPercent || 0,
+        eccentricPercent: analysisData?.eccentricPercent || 0,
         aiInsights: aiInsights || null,
         isRecommendation: !!(recommendedSets || recommendedReps),
         isCustomSet: setType === 'custom',

@@ -70,9 +70,20 @@ function getVertexClient() {
 // ============================================================
 const SYSTEM_PROMPT = `You are AppLift's AI performance analyst. Analyze the workout metrics and do two things: (1) interpret what the session data means for the user's training, and (2) give specific, actionable tips on what to improve next time.
 
+SYSTEM CONTEXT:
+AppLift uses a single IMU (Inertial Measurement Unit) sensor attached to the equipment (dumbbell, barbell, or machine) to track movement. There is NO camera. All movement quality data (classification labels, velocity, ROM, phase timing) comes from IMU sensor readings: accelerometer, gyroscope, magnetometer, and derived orientation data.
+
+APPLIFT EXERCISE CATALOG & ML QUALITY LABELS:
+- Concentration Curls (Dumbbell, biceps): Clean, Uncontrolled Movement, Abrupt Initiation
+- Overhead Extension (Dumbbell, triceps): Clean, Uncontrolled Movement, Abrupt Initiation
+- Bench Press (Barbell, chest/shoulders/triceps): Clean, Uncontrolled Movement, Inclination Asymmetry
+- Back Squat (Barbell, quads/glutes/hamstrings): Clean, Uncontrolled Movement, Inclination Asymmetry
+- Lateral Pulldown (Weight Stack, lats/biceps): Clean, Pulling Too Fast, Releasing Too Fast
+- Seated Leg Extension (Weight Stack, quads): Clean, Pulling Too Fast, Releasing Too Fast
+
 SUMMARY — Session Interpretation:
 - Start with execution quality: lead with the clean-to-mistake ratio (e.g. "67% clean reps with 3 flagged as Uncontrolled Movement").
-- Explain WHAT the numbers mean and WHY it matters (e.g. "Uncontrolled Movement typically means momentum is taking over — this reduces muscle activation and increases injury risk").
+- Explain WHAT the numbers mean and WHY it matters (e.g. "Uncontrolled Movement means the IMU detected excessive momentum — this reduces muscle activation and increases injury risk").
 - Mention fatigue and consistency scores as context (e.g. "fatigue at 38% suggests the load was appropriate for today").
 - 2-3 sentences maximum. Be direct, not generic.
 
@@ -81,11 +92,13 @@ BULLETS — What to Improve (Tips for Next Session):
 - Reference the specific metric that triggered the tip (e.g. "Your Set 2 velocity of 1.82 m/s was significantly higher than Set 1 — slow down the concentric phase to stay in control").
 - Prioritize fixing form mistakes first, then fatigue/consistency issues, then fine-tuning metrics.
 - 3-5 tips total. Each 1 short sentence. No generic advice — every tip must trace back to a real number in the data.
+- NEVER mention cameras, video, or visual analysis. All data comes from the IMU sensor.
 
 RULES:
 - Use professional, encouraging coaching tone.
 - If any metric is missing or zero, skip it entirely.
 - Do NOT repeat the same point in both summary and bullets.
+- NEVER suggest "ensure the camera has a stable view" or any camera-related advice. The system uses an IMU sensor, not a camera.
 - JSON only, no markdown.
 
 OUTPUT FORMAT (JSON only, no markdown):
@@ -129,8 +142,9 @@ function buildMetricsPrompt(data) {
       const distMap = {};
       reps.forEach(r => {
         const label = typeof r.classification === 'string' ? r.classification
-          : (r.isClean === true || r.quality === 'good') ? 'Clean'
-          : r.isClean === false ? 'Unclassified' : null;
+          : r.classification?.label ? r.classification.label
+          : (r.isClean === true || r.quality === 'good' || r.quality === 'clean') ? 'Clean'
+          : null;
         if (label) distMap[label] = (distMap[label] || 0) + 1;
       });
       const distStr = Object.entries(distMap)
@@ -158,8 +172,9 @@ function buildMetricsPrompt(data) {
       const overallDist = {};
       allReps.forEach(r => {
         const label = typeof r.classification === 'string' ? r.classification
-          : (r.isClean === true || r.quality === 'good') ? 'Clean'
-          : r.isClean === false ? 'Unclassified' : null;
+          : r.classification?.label ? r.classification.label
+          : (r.isClean === true || r.quality === 'good' || r.quality === 'clean') ? 'Clean'
+          : null;
         if (label) overallDist[label] = (overallDist[label] || 0) + 1;
       });
       const overallStr = Object.entries(overallDist)

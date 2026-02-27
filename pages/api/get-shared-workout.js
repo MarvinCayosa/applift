@@ -38,12 +38,23 @@ export default async function handler(req, res) {
 
     const data = snap.data();
 
+    // Check expiry
+    const expiresAt = data.expiresAt?.toDate?.() || (data.expiresAt ? new Date(data.expiresAt) : null);
+    if (expiresAt && expiresAt.getTime() < Date.now()) {
+      return res.status(410).json({ error: 'This share link has expired' });
+    }
+
     // Strip internal fields
     const { uid, ...publicData } = data;
 
-    // Convert Firestore timestamp
+    // Convert Firestore timestamps
     if (publicData.createdAt?.toDate) {
       publicData.createdAt = publicData.createdAt.toDate().toISOString();
+    }
+    if (publicData.expiresAt?.toDate) {
+      publicData.expiresAt = publicData.expiresAt.toDate().toISOString();
+    } else if (publicData.expiresAt instanceof Date) {
+      publicData.expiresAt = publicData.expiresAt.toISOString();
     }
 
     return res.status(200).json({ session: publicData });

@@ -30,6 +30,8 @@ export default function HeaderSection({
   totalSets,
   totalReps,
   onShare,
+  hideBack = false,
+  sharedBranding = false,
 }) {
   const router = useRouter();
   const dateStr = formatSessionDate(date);
@@ -72,17 +74,31 @@ export default function HeaderSection({
       <div className="relative z-10 px-5 pt-4 pt-pwa-dynamic pb-5">
         {/* ── Back chevron + Title + Date ── */}
         <div className="flex items-start mb-5">
-          <button
-            onClick={() => router.back()}
-            className="-ml-1.5 p-1.5 shrink-0"
-            aria-label="Go back"
-          >
-            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
+          {!hideBack ? (
+            <button
+              onClick={() => router.back()}
+              className="-ml-1.5 p-1.5 shrink-0"
+              aria-label="Go back"
+            >
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+          ) : (
+            <div className="w-9 shrink-0" /> 
+          )}
 
           <div className="flex-1 text-center">
+            {sharedBranding && (
+              <div className="flex items-center justify-center gap-1.5 mb-2">
+                <div className="w-5 h-5 rounded-md bg-purple-600 flex items-center justify-center">
+                  <svg className="w-3 h-3 text-white" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <span className="text-xs text-white/50 font-medium">Shared from AppLift</span>
+              </div>
+            )}
             <h1 className="text-[22px] font-bold text-white leading-tight tracking-tight">
               {exerciseName || 'Session Details'}
             </h1>
