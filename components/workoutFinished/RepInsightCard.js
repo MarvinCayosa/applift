@@ -51,7 +51,10 @@ export default function RepInsightCard({ repData, repNumber, targetROM, romUnit:
   const formColor = formDisplay.color;
 
   // Actual metrics - no random fallbacks
-  const repTime = time ? parseFloat(time) : null;
+  // Use phase timings sum as the real rep duration (full sample span)
+  // liftingTime + loweringTime covers the entire rep from first to last IMU sample
+  const phaseTotalTime = (liftingTime || 0) + (loweringTime || 0);
+  const repTime = phaseTotalTime > 0 ? phaseTotalTime : (time ? parseFloat(time) : null);
   const repRom = rom ? parseFloat(rom) : null;
   const repPeakVelocity = peakVelocity != null ? parseFloat(peakVelocity) : null;
   const hasChartData = chartData && chartData.length > 0;
@@ -93,60 +96,6 @@ export default function RepInsightCard({ repData, repNumber, targetROM, romUnit:
     return { label: 'Slow', color: '#ef4444' };
   };
   const velocityZone = getVelocityZone(repPeakVelocity);
-
-  // Calculate Rep Quality Score from ACTUAL data only
-  const calculateRepQuality = () => {
-    let qualityScore = 0;
-    let totalWeight = 0;
-
-    // Factor 1: ROM (30% weight)
-    if (romProgress != null) {
-      qualityScore += (romProgress / 100) * 30;
-      totalWeight += 30;
-    }
-
-    // Factor 2: Velocity (25% weight) - optimal is 30-70% of max
-    if (velocityProgress != null) {
-      const velocityOptimal = velocityProgress >= 30 && velocityProgress <= 70 ? 100 : 
-                              velocityProgress < 30 ? (velocityProgress / 30) * 100 :
-                              100 - ((velocityProgress - 70) / 30) * 40;
-      qualityScore += (velocityOptimal / 100) * 25;
-      totalWeight += 25;
-    }
-
-    // Factor 3: ML Classification confidence (35% weight)
-    if (mlPrediction) {
-      const classificationBonus = mlPrediction.formQuality === 'clean' ? mlPrediction.confidence : 
-                                  mlPrediction.formQuality === 'uncontrolled' ? mlPrediction.confidence * 0.6 :
-                                  mlPrediction.confidence * 0.4;
-      qualityScore += (classificationBonus / 100) * 35;
-      totalWeight += 35;
-    }
-
-    // Factor 4: Tempo balance (10% weight) - Lifting should be 35-45%
-    if (hasPhaseData) {
-      const liftingPct = parseFloat(loweringPercent); // Fixed: use loweringPercent since we swapped the labels
-      const tempoScore = Math.max(0, 100 - Math.abs(liftingPct - 40) * 3);
-      qualityScore += (tempoScore / 100) * 10;
-      totalWeight += 10;
-    }
-
-    if (totalWeight === 0) return null;
-    return Math.round((qualityScore / totalWeight) * 100);
-  };
-
-  const repQuality = calculateRepQuality();
-
-  // Determine effort/quality level and color based on quality score
-  const getRepEffortLevel = (quality) => {
-    if (quality == null) return { level: '—', color: '#6b7280', textColor: 'text-gray-400' };
-    if (quality >= 85) return { level: 'Excellent', color: '#22c55e', textColor: 'text-green-500' };
-    if (quality >= 70) return { level: 'Good', color: '#22c55e', textColor: 'text-green-500' };
-    if (quality >= 55) return { level: 'Moderate', color: '#eab308', textColor: 'text-yellow-500' };
-    return { level: 'Needs Work', color: '#ef4444', textColor: 'text-red-500' };
-  };
-
-  const repEffort = getRepEffortLevel(repQuality);
 
   // Classification labels and colors for overlay
   const classLabels = [
@@ -316,21 +265,8 @@ export default function RepInsightCard({ repData, repNumber, targetROM, romUnit:
         </div>
       </div>
 
-      {/* Stats Bar - Rep Quality and Rep Duration */}
+      {/* Stats Bar - Rep Duration */}
       <div className="px-5 pt-2 pb-5 flex items-center justify-center gap-8 sm:gap-12 lg:gap-16 flex-shrink-0">
-        {/* Rep Quality */}
-        <div className="flex items-center gap-2 sm:gap-3">
-          <div className="w-6 h-6 sm:w-8 sm:h-8 lg:w-9 lg:h-9 flex items-center justify-center flex-shrink-0">
-            <svg className="w-full h-full text-white" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-            </svg>
-          </div>
-          <div className="flex flex-col">
-            <span className="text-[10px] sm:text-xs lg:text-sm font-medium text-gray-300">Rep Quality</span>
-            <span className={`text-lg sm:text-2xl lg:text-3xl font-bold ${repEffort.textColor}`}>{repQuality != null ? `${repQuality}%` : '—'}</span>
-          </div>
-        </div>
-
         {/* Rep Duration */}
         <div className="flex items-center gap-2 sm:gap-3">
           <div className="w-6 h-6 sm:w-8 sm:h-8 lg:w-9 lg:h-9 flex items-center justify-center flex-shrink-0">
@@ -340,7 +276,7 @@ export default function RepInsightCard({ repData, repNumber, targetROM, romUnit:
           </div>
           <div className="flex flex-col">
             <span className="text-[10px] sm:text-xs lg:text-sm font-medium text-gray-300">Rep Duration</span>
-            <span className="text-lg sm:text-2xl lg:text-3xl font-bold text-white">{repTime != null ? `${repTime}s` : '—'}</span>
+            <span className="text-lg sm:text-2xl lg:text-3xl font-bold text-white">{repTime != null ? `${repTime.toFixed(2)}s` : '—'}</span>
           </div>
         </div>
       </div>
