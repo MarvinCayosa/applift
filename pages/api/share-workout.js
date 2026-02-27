@@ -84,6 +84,9 @@ export default async function handler(req, res) {
       targetROM: set.targetROM || null,
       romCalibrated: set.romCalibrated || false,
       romUnit: set.romUnit || '°',
+      incomplete: set.incomplete || false,
+      completedReps: set.completedReps || set.reps || 0,
+      plannedReps: set.plannedReps || 0,
       repsData: (set.repsData || []).map(rep => ({
         repNumber: rep.repNumber,
         time: rep.time,
@@ -97,6 +100,10 @@ export default async function handler(req, res) {
         quality: rep.quality || null,
         liftingTime: rep.liftingTime ?? 0,
         loweringTime: rep.loweringTime ?? 0,
+        chartData: rep.chartData || [],
+        amplitude: rep.amplitude ?? null,
+        concentric: rep.concentric ?? null,
+        eccentric: rep.eccentric ?? null,
       })),
     }));
 

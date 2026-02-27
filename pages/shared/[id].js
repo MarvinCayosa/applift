@@ -16,6 +16,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { AIInsightsAccordion } from '../../components/aiInsights';
 import HeaderSection from '../../components/sessionDetails/HeaderSection';
 import GraphBreakdownCarousel from '../../components/workoutFinished/GraphBreakdownCarousel';
+import RepByRepCard from '../../components/workoutFinished/RepByRepCard';
 import ExecutionQualityCard from '../../components/sessionDetails/ExecutionQualityCard';
 import ExecutionConsistencyCard from '../../components/sessionDetails/ExecutionConsistencyCard';
 import FatigueCarousel from '../../components/sessionDetails/FatigueCarousel';
@@ -239,6 +240,10 @@ export default function SharedWorkoutPage() {
             weight={s.weight}
             weightUnit={s.weightUnit}
             equipment={s.equipmentName}
+            onSeeMore={() => {
+              const el = document.getElementById('shared-rep-by-rep');
+              if (el) el.scrollIntoView({ behavior: 'smooth' });
+            }}
           />
 
           {/* Execution Quality + Consistency — 2-column row */}
@@ -269,6 +274,17 @@ export default function SharedWorkoutPage() {
             eccentricPercent={s.eccentricPercent}
             setsData={s.setsData || []}
           />
+
+          {/* Rep by Rep Analysis Section */}
+          <div id="shared-rep-by-rep" className="pt-2">
+            <div className="rounded-2xl bg-[#1a1a1a] p-4" style={{ minHeight: 400 }}>
+              <RepByRepCard
+                setsData={JSON.stringify(s.setsData || [])}
+                parsedSetsData={s.setsData || []}
+                recommendedSets={s.plannedSets || s.totalSets || 0}
+              />
+            </div>
+          </div>
 
           {/* Footer branding */}
           <div className="text-center pt-4 pb-2">
