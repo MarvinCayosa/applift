@@ -490,20 +490,35 @@ function findPeaks(signal, prominenceThreshold = 0.05) {
 function computeAngleFromAccelerometer(accelX, accelY, accelZ) {
   if (!accelX || !accelY || !accelZ || accelX.length === 0) return [];
   
-  const angles = [];
+  // Compute all three tilt angles (roll, pitch, yaw-proxy)
+  const rollAngles = [];
+  const pitchAngles = [];
+  
   for (let i = 0; i < accelX.length; i++) {
     const x = accelX[i];
     const y = accelY[i];
     const z = accelZ[i];
     const magnitude = Math.sqrt(x * x + y * y + z * z);
     if (magnitude === 0) {
-      angles.push(0);
+      rollAngles.push(0);
+      pitchAngles.push(0);
       continue;
     }
+    // Pitch: rotation around X-axis (Y vs Z)
     const pitch = Math.atan2(y, Math.sqrt(x * x + z * z));
-    angles.push((pitch * 180 / Math.PI) + 90);
+    pitchAngles.push((pitch * 180 / Math.PI) + 90);
+    
+    // Roll: rotation around Y-axis (X vs Z)
+    const roll = Math.atan2(x, Math.sqrt(y * y + z * z));
+    rollAngles.push((roll * 180 / Math.PI) + 90);
   }
-  return angles;
+  
+  // Auto-detect primary rotation axis: use whichever axis has the largest range
+  // This makes ROM computation orientation-independent for dumbbell exercises
+  const pitchRange = Math.max(...pitchAngles) - Math.min(...pitchAngles);
+  const rollRange = Math.max(...rollAngles) - Math.min(...rollAngles);
+  
+  return pitchRange >= rollRange ? pitchAngles : rollAngles;
 }
 
 function computeROMDegrees(accelX, accelY, accelZ) {
@@ -788,17 +803,17 @@ function computeFatigueIndicators(repMetricsList, mlClassification = null) {
   const smoothnessValues = repMetricsList.map(m => m.smoothnessScore || 50);
   const peaks = repMetricsList.map(m => m.peak || 0);
   
-  // D_omega
+  // D_omega — only penalize velocity DROPS (fatigue), not increases (warming up)
   let D_omega, gyroDirection;
   if (hasGyro) {
     const avgGyroFirst = mean(gyroPeaks.slice(0, third));
     const avgGyroLast = mean(gyroPeaks.slice(-third));
-    D_omega = avgGyroFirst > 0 ? Math.abs(avgGyroFirst - avgGyroLast) / avgGyroFirst : 0;
+    D_omega = avgGyroFirst > 0 ? Math.max(0, (avgGyroFirst - avgGyroLast) / avgGyroFirst) : 0;
     gyroDirection = avgGyroLast < avgGyroFirst ? 'drop' : 'surge';
   } else {
     const avgPeakFirst = mean(peaks.slice(0, third));
     const avgPeakLast = mean(peaks.slice(-third));
-    D_omega = avgPeakFirst > 0 ? Math.abs(avgPeakFirst - avgPeakLast) / avgPeakFirst : 0;
+    D_omega = avgPeakFirst > 0 ? Math.max(0, (avgPeakFirst - avgPeakLast) / avgPeakFirst) : 0;
     gyroDirection = avgPeakLast < avgPeakFirst ? 'drop' : 'surge';
   }
   
@@ -878,22 +893,39 @@ function computeFatigueIndicators(repMetricsList, mlClassification = null) {
   }
   
   const worstKinematicIndicator = Math.max(D_omega_clamped, I_T_clamped, I_J_clamped, I_S_clamped);
-  if (worstKinematicIndicator > 0.40) {
-    fatigueRaw = Math.min(1.0, fatigueRaw + (worstKinematicIndicator - 0.40) * 0.5);
+  if (worstKinematicIndicator > 0.50) {
+    fatigueRaw = Math.min(1.0, fatigueRaw + (worstKinematicIndicator - 0.50) * 0.25);
   }
   
   // Boost for very poor execution quality
   if (hasMLClassification && Q_exec_clamped > 0.60) {
-    fatigueRaw = Math.min(1.0, fatigueRaw + (Q_exec_clamped - 0.60) * 0.3);
+    fatigueRaw = Math.min(1.0, fatigueRaw + (Q_exec_clamped - 0.60) * 0.2);
+  }
+  
+  // Sanity cap: good execution quality limits fatigue score
+  // If 70%+ reps are clean, the body is clearly performing well — can't be severe fatigue
+  if (hasMLClassification && mlClassification && typeof mlClassification.cleanPercentage === 'number') {
+    const cleanPct = mlClassification.cleanPercentage;
+    if (cleanPct >= 70) {
+      // 70% clean → max ~50 (moderate), 80% → ~43, 90% → ~37
+      const maxForQuality = (50 - (cleanPct - 70) * 0.43) / 100;
+      fatigueRaw = Math.min(fatigueRaw, maxForQuality);
+    }
+  }
+  
+  // Coherence check: if all kinematic indicators are mild, cap at moderate
+  const allKinematicMild = D_omega_clamped < 0.15 && I_T_clamped < 0.15 && I_J_clamped < 0.15 && I_S_clamped < 0.15;
+  if (allKinematicMild && fatigueRaw > 0.45) {
+    fatigueRaw = 0.45;
   }
   
   const fatigueScore = Math.min(100, fatigueRaw * 100);
   
   let fatigueLevel;
-  if (fatigueScore < 10) fatigueLevel = 'minimal';
-  else if (fatigueScore < 20) fatigueLevel = 'low';
-  else if (fatigueScore < 35) fatigueLevel = 'moderate';
-  else if (fatigueScore < 55) fatigueLevel = 'high';
+  if (fatigueScore < 15) fatigueLevel = 'minimal';
+  else if (fatigueScore < 30) fatigueLevel = 'low';
+  else if (fatigueScore < 50) fatigueLevel = 'moderate';
+  else if (fatigueScore < 70) fatigueLevel = 'high';
   else fatigueLevel = 'severe';
   
   // Consistency
@@ -912,9 +944,9 @@ function computeFatigueIndicators(repMetricsList, mlClassification = null) {
   
   // Key findings
   const keyFindings = [];
-  if (fatigueScore < 10) {
+  if (fatigueScore < 15) {
     keyFindings.push('✅ Excellent fatigue resistance');
-  } else if (fatigueScore > 45) {
+  } else if (fatigueScore > 60) {
     keyFindings.push('⚠️ Significant fatigue detected');
   }
   
@@ -968,10 +1000,10 @@ function computeFatigueIndicators(repMetricsList, mlClassification = null) {
     gyroDirection,
     consistencyScore: Math.round(consistencyScore * 10) / 10,
     performanceReport: {
-      sessionQuality: fatigueScore < 10 ? 'Excellent' :
-                      fatigueScore < 20 ? 'Good' :
-                      fatigueScore < 35 ? 'Fair' :
-                      fatigueScore < 55 ? 'Poor' : 'Very Poor',
+      sessionQuality: fatigueScore < 15 ? 'Excellent' :
+                      fatigueScore < 30 ? 'Good' :
+                      fatigueScore < 50 ? 'Fair' :
+                      fatigueScore < 70 ? 'Poor' : 'Very Poor',
       consistencyRating: consistencyScore >= 70 ? 'Good' :
                         consistencyScore >= 50 ? 'Fair' : 'Poor',
       keyFindings
@@ -1066,7 +1098,54 @@ function analyzeWorkout(workoutData) {
     });
   }
   
-  const overallFatigue = computeFatigueIndicators(allRepMetrics);
+  // Overall fatigue: per-set aggregation to avoid cross-set calibration contamination
+  // Dumbbell/free-weight exercises have different IMU calibration between sets,
+  // so comparing Set 1 reps vs Set 2 reps creates artificial "degradation"
+  let overallFatigue;
+  const validSetFatigues = setsAnalysis.filter(s => s.fatigueAnalysis.fatigueLevel !== 'insufficient_data');
+  
+  if (validSetFatigues.length > 1) {
+    // Multiple valid sets: weighted average of per-set fatigue scores
+    const totalReps = validSetFatigues.reduce((sum, s) => sum + s.repsCount, 0);
+    const weightedScore = validSetFatigues.reduce((sum, s) => {
+      return sum + (s.fatigueAnalysis.fatigueScore * s.repsCount);
+    }, 0);
+    const avgScore = totalReps > 0 ? weightedScore / totalReps : 0;
+    
+    // Aggregate individual indicators (weighted average across sets)
+    const aggIndicator = (key) => {
+      return totalReps > 0
+        ? validSetFatigues.reduce((s, set) => s + ((set.fatigueAnalysis[key] || 0) * set.repsCount), 0) / totalReps
+        : 0;
+    };
+    
+    let fatigueLevel;
+    if (avgScore < 15) fatigueLevel = 'minimal';
+    else if (avgScore < 30) fatigueLevel = 'low';
+    else if (avgScore < 50) fatigueLevel = 'moderate';
+    else if (avgScore < 70) fatigueLevel = 'high';
+    else fatigueLevel = 'severe';
+    
+    // Use best-consistency set's report as base
+    const bestSet = validSetFatigues.reduce((best, s) => 
+      s.fatigueAnalysis.consistencyScore > best.fatigueAnalysis.consistencyScore ? s : best
+    , validSetFatigues[0]);
+    
+    overallFatigue = {
+      ...bestSet.fatigueAnalysis,
+      fatigueScore: Math.round(avgScore * 10) / 10,
+      fatigueLevel,
+      D_omega: Math.round(aggIndicator('D_omega') * 10000) / 10000,
+      I_T: Math.round(aggIndicator('I_T') * 10000) / 10000,
+      I_J: Math.round(aggIndicator('I_J') * 10000) / 10000,
+      I_S: Math.round(aggIndicator('I_S') * 10000) / 10000,
+      aggregationMethod: 'per_set_weighted_average',
+    };
+  } else {
+    // Single set or no valid sets: compute directly on all reps
+    overallFatigue = computeFatigueIndicators(allRepMetrics);
+  }
+  
   const allChartData = allRepMetrics.map(m => m.chartData || []).filter(c => c.length > 0);
   const overallConsistency = computeRepConsistency(allChartData);
   
@@ -1194,7 +1273,7 @@ export default async function handler(req, res) {
     } else if (req.method === 'POST') {
       // Analyze workout
       const { workoutId, gcsPath, forceReanalyze = false } = req.body;
-      const ANALYSIS_VERSION = 3; // Bump this when analysis pipeline changes significantly
+      const ANALYSIS_VERSION = 4; // v4: per-set fatigue aggregation, D_omega direction fix, ROM auto-axis
       
       if (!workoutId && !gcsPath) {
         return res.status(400).json({ error: 'workoutId or gcsPath is required' });
@@ -1320,21 +1399,69 @@ export default async function handler(req, res) {
         
         // *** RECALCULATE FATIGUE WITH ML CLASSIFICATION ***
         // The initial fatigue analysis didn't have ML classification data.
-        // Now that we have it, recalculate to incorporate execution quality.
-        if (analysis.repMetrics && analysis.repMetrics.length >= 3) {
-          console.log('[Analyze API] Recalculating fatigue with ML classification data...');
-          const enhancedFatigue = computeFatigueIndicators(analysis.repMetrics, analysis.mlClassification);
+        // Now that we have it, recalculate per-set to incorporate execution quality
+        // while avoiding cross-set calibration contamination.
+        if (analysis.setsAnalysis && analysis.setsAnalysis.length > 0) {
+          console.log('[Analyze API] Recalculating fatigue with ML classification data (per-set)...');
           
-          // Update the fatigue object with enhanced analysis
-          analysis.fatigue = {
-            ...analysis.fatigue,
-            ...enhancedFatigue
-          };
+          // Re-compute per-set fatigue with ML classification
+          for (const setAnalysis of analysis.setsAnalysis) {
+            if (setAnalysis.repMetrics && setAnalysis.repMetrics.length >= 3) {
+              // Use per-set classification if available, otherwise use overall
+              const setML = setAnalysis.classification 
+                ? { cleanPercentage: setAnalysis.classification.cleanPercentage, distribution: analysis.mlClassification?.distribution }
+                : analysis.mlClassification;
+              setAnalysis.fatigueAnalysis = computeFatigueIndicators(setAnalysis.repMetrics, setML);
+            }
+          }
+          
+          // Re-aggregate per-set fatigue scores
+          const validSets = analysis.setsAnalysis.filter(s => s.fatigueAnalysis.fatigueLevel !== 'insufficient_data');
+          
+          if (validSets.length > 1) {
+            const totalReps = validSets.reduce((sum, s) => sum + s.repsCount, 0);
+            const weightedScore = validSets.reduce((sum, s) => {
+              return sum + (s.fatigueAnalysis.fatigueScore * s.repsCount);
+            }, 0);
+            const avgScore = totalReps > 0 ? weightedScore / totalReps : 0;
+            
+            const aggIndicator = (key) => {
+              return totalReps > 0
+                ? validSets.reduce((s, set) => s + ((set.fatigueAnalysis[key] || 0) * set.repsCount), 0) / totalReps
+                : 0;
+            };
+            
+            let fatigueLevel;
+            if (avgScore < 15) fatigueLevel = 'minimal';
+            else if (avgScore < 30) fatigueLevel = 'low';
+            else if (avgScore < 50) fatigueLevel = 'moderate';
+            else if (avgScore < 70) fatigueLevel = 'high';
+            else fatigueLevel = 'severe';
+            
+            analysis.fatigue = {
+              ...analysis.fatigue,
+              fatigueScore: Math.round(avgScore * 10) / 10,
+              fatigueLevel,
+              D_omega: Math.round(aggIndicator('D_omega') * 10000) / 10000,
+              I_T: Math.round(aggIndicator('I_T') * 10000) / 10000,
+              I_J: Math.round(aggIndicator('I_J') * 10000) / 10000,
+              I_S: Math.round(aggIndicator('I_S') * 10000) / 10000,
+              Q_exec: Math.round(aggIndicator('Q_exec') * 10000) / 10000,
+              hasMLClassification: true,
+              aggregationMethod: 'per_set_weighted_average',
+            };
+          } else if (analysis.repMetrics && analysis.repMetrics.length >= 3) {
+            // Single set: compute directly
+            const enhancedFatigue = computeFatigueIndicators(analysis.repMetrics, analysis.mlClassification);
+            analysis.fatigue = { ...analysis.fatigue, ...enhancedFatigue };
+          }
           
           console.log('[Analyze API] Enhanced fatigue score:', {
-            originalScore: analysis.fatigue.fatigueScore,
-            Q_exec: enhancedFatigue.Q_exec,
-            hasMLClassification: enhancedFatigue.hasMLClassification
+            score: analysis.fatigue.fatigueScore,
+            level: analysis.fatigue.fatigueLevel,
+            Q_exec: analysis.fatigue.Q_exec,
+            hasMLClassification: analysis.fatigue.hasMLClassification,
+            aggregationMethod: analysis.fatigue.aggregationMethod
           });
         }
         

@@ -200,7 +200,7 @@ export function transformAnalysisForUI(analysis) {
     
     // Fatigue analysis
     fatigueScore: fatigue?.fatigueScore || 0,
-    fatigueLevel: fatigue?.fatigueLevel || 'moderate',
+    fatigueLevel: fatigue?.fatigueLevel || 'minimal',
     
     // Consistency
     consistencyScore: consistency?.score || 0,

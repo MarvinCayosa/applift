@@ -2,27 +2,20 @@
  * FatigueCarousel
  *
  * Two-slide carousel:
- *   Slide 1 - Fatigue Analysis  (donut ring + 3 metric cards + info tooltip)
+ *   Slide 1 - Fatigue Analysis  (donut ring + 3 diagnostic metric cards + info tooltip)
  *   Slide 2 - Velocity Loss     (stats row + bar chart)
  *
- * === Fatigue Metric Methodology ===
+ * === Fatigue Score ===
+ *   The primary fatigue score comes from the API's kinematic analysis
+ *   (first-third vs last-third degradation in velocity, tempo, jerk, shakiness,
+ *    plus ML classification quality). This is the fatigueScore/fatigueLevel prop.
  *
- *   1. Velocity CV%  (40% weight)
- *      Coefficient of Variation of peak velocities across all reps.
- *      Measures power-output consistency - a core VBT fatigue indicator.
+ *   Three diagnostic sub-metrics are computed locally for the indicator cards:
+ *     1. Velocity CV% — power-output consistency
+ *     2. Tempo CV%    — rep duration consistency
+ *     3. Smoothness Decay — movement quality degradation
  *
- *   2. Tempo CV%  (30% weight)
- *      Coefficient of Variation of rep durations.
- *      Rising or erratic rep times signal loss of motor control.
- *
- *   3. Smoothness Decay  (30% weight)
- *      % drop in LDLJ-based smoothness scores (first third -> last third).
- *      Captures degradation in movement quality as fatigue accumulates.
- *
- *   Composite  =  0.40 x velFatigue  +  0.30 x tempoFatigue  +  0.30 x smoothFatigue
- *   Each sub-metric is normalised to 0-100 before weighting.
- *
- * All values are computed LOCALLY from repsData - no server prop dependency.
+ *   If the API score is not available, falls back to a local composite.
  */
 
 import { useMemo, useState, useRef, useEffect } from 'react';
@@ -57,7 +50,7 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
   }, [showInfo]);
 
   // ======================================================================
-  // FATIGUE METRICS - computed entirely from local rep data
+  // FATIGUE METRICS — API score is primary; local sub-metrics for diagnostics
   // ======================================================================
   const fatigue = useMemo(() => {
     const sets = selectedSet === 'all'
@@ -95,21 +88,17 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
       return m > 0 ? (stdDev(arr) / m) * 100 : 0;
     };
 
-    // -- 1) Velocity CV% --
+    // -- Diagnostic sub-metric 1: Velocity CV% --
     const nonZeroVels = velocities.filter(v => v > 0);
     const hasVelData = nonZeroVels.length >= 2;
     const velCV = hasVelData ? cv(nonZeroVels) : 0;
-    // Normalise: 25% CV -> 100 fatigue
-    const velFatigue = hasVelData ? Math.min(100, (velCV / 25) * 100) : 0;
 
-    // -- 2) Tempo CV% (duration variability) --
+    // -- Diagnostic sub-metric 2: Tempo CV% --
     const nonZeroDurs = durations.filter(d => d > 0);
     const hasDurData = nonZeroDurs.length >= 2;
     const durCV = hasDurData ? cv(nonZeroDurs) : 0;
-    // Normalise: 30% CV -> 100 fatigue
-    const durFatigue = hasDurData ? Math.min(100, (durCV / 30) * 100) : 0;
 
-    // -- 3) Smoothness Decay (first third -> last third) --
+    // -- Diagnostic sub-metric 3: Smoothness Decay --
     const hasSmoothData = smoothnessScores.length >= 3;
     let smoothDecay = 0;
     if (hasSmoothData) {
@@ -118,31 +107,38 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
       const avgLast = mean(smoothnessScores.slice(-third));
       smoothDecay = avgFirst > 0 ? Math.max(0, ((avgFirst - avgLast) / avgFirst) * 100) : 0;
     }
-    // Normalise: 40% decay -> 100 fatigue
-    const smoothFatigue = hasSmoothData ? Math.min(100, (smoothDecay / 40) * 100) : 0;
 
-    // -- Composite Score --
-    // Weight only metrics that have data; redistribute weight if one is missing
-    let totalWeight = 0;
-    let weightedSum = 0;
-    if (hasVelData)    { weightedSum += 0.40 * velFatigue;   totalWeight += 0.40; }
-    if (hasDurData)    { weightedSum += 0.30 * durFatigue;   totalWeight += 0.30; }
-    if (hasSmoothData) { weightedSum += 0.30 * smoothFatigue; totalWeight += 0.30; }
+    // ---- PRIMARY SCORE: use API prop when available ----
+    let score;
+    const hasApiScore = typeof propScore === 'number' && propScore >= 0;
 
-    const score = totalWeight > 0 ? Math.min(100, weightedSum / totalWeight) : 0;
+    if (hasApiScore) {
+      score = propScore;
+    } else {
+      // Fallback: local composite (normalise each sub-metric then weight)
+      const velFatigue  = hasVelData    ? Math.min(100, (velCV / 25) * 100)        : 0;
+      const durFatigue  = hasDurData    ? Math.min(100, (durCV / 30) * 100)        : 0;
+      const smoothFatigue = hasSmoothData ? Math.min(100, (smoothDecay / 40) * 100) : 0;
 
-    // Level
+      let totalWeight = 0, weightedSum = 0;
+      if (hasVelData)    { weightedSum += 0.40 * velFatigue;    totalWeight += 0.40; }
+      if (hasDurData)    { weightedSum += 0.30 * durFatigue;    totalWeight += 0.30; }
+      if (hasSmoothData) { weightedSum += 0.30 * smoothFatigue; totalWeight += 0.30; }
+      score = totalWeight > 0 ? Math.min(100, weightedSum / totalWeight) : 0;
+    }
+
+    // Forgiving thresholds
     let level;
-    if (score < 10)      level = 'Minimal';
-    else if (score < 20) level = 'Low';
-    else if (score < 35) level = 'Moderate';
-    else if (score < 55) level = 'High';
+    if (score < 15)      level = 'Minimal';
+    else if (score < 30) level = 'Low';
+    else if (score < 50) level = 'Moderate';
+    else if (score < 70) level = 'High';
     else                 level = 'Severe';
 
-    // Status thresholds
-    const velStatus = !hasVelData ? 'neutral' : velCV < 8 ? 'good' : velCV < 15 ? 'warn' : 'bad';
-    const durStatus = !hasDurData ? 'neutral' : durCV < 10 ? 'good' : durCV < 20 ? 'warn' : 'bad';
-    const smStatus  = !hasSmoothData ? 'neutral' : smoothDecay < 10 ? 'good' : smoothDecay < 25 ? 'warn' : 'bad';
+    // Status thresholds for diagnostic cards (just visual indicators)
+    const velStatus = !hasVelData ? 'neutral' : velCV < 10 ? 'good' : velCV < 20 ? 'warn' : 'bad';
+    const durStatus = !hasDurData ? 'neutral' : durCV < 12 ? 'good' : durCV < 25 ? 'warn' : 'bad';
+    const smStatus  = !hasSmoothData ? 'neutral' : smoothDecay < 12 ? 'good' : smoothDecay < 30 ? 'warn' : 'bad';
 
     const indicators = [
       {
@@ -150,7 +146,6 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
         value: hasVelData ? velCV.toFixed(1) : '--',
         unit: '%',
         status: velStatus,
-        weight: '40%',
         tooltip: 'Coefficient of Variation of peak velocity across reps. Lower = more consistent power output.',
       },
       {
@@ -158,7 +153,6 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
         value: hasDurData ? durCV.toFixed(1) : '--',
         unit: '%',
         status: durStatus,
-        weight: '30%',
         tooltip: 'Coefficient of Variation of rep duration. Lower = steadier rep tempo.',
       },
       {
@@ -166,7 +160,6 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
         value: hasSmoothData ? `-${smoothDecay.toFixed(1)}` : '--',
         unit: '%',
         status: smStatus,
-        weight: '30%',
         tooltip: 'Smoothness decay from first to last third (LDLJ-based). Lower = better control retention.',
       },
     ];
@@ -177,7 +170,7 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
       indicators,
       hasInsufficientData: false,
     };
-  }, [setsData, selectedSet]);
+  }, [setsData, selectedSet, propScore]);
 
   // ======================================================================
   // VELOCITY METRICS
@@ -296,36 +289,44 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
                   <p className="text-[11px] font-semibold text-white mb-2.5">How fatigue is calculated</p>
                   <div className="space-y-2.5">
                     <div>
+                      <p className="text-[10px] text-white/60 leading-relaxed">
+                        The fatigue score measures how your performance degrades from early reps to late reps — velocity loss, tempo changes, jerk increase, shakiness, and movement quality.
+                      </p>
+                    </div>
+                    <div className="pt-1 border-t border-white/[0.06]">
+                      <p className="text-[10px] font-semibold text-white/70 mb-1.5">Diagnostic indicators:</p>
+                    </div>
+                    <div>
                       <div className="flex items-center gap-1.5 mb-0.5">
                         <div className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
-                        <span className="text-[10px] font-semibold text-white/80">Velocity CV (40%)</span>
+                        <span className="text-[10px] font-semibold text-white/80">Velocity CV</span>
                       </div>
                       <p className="text-[10px] text-white/40 leading-relaxed pl-3">
-                        Coefficient of Variation of peak velocity across reps. Higher variability signals inconsistent power output due to fatigue.
+                        How consistent your peak velocity is across reps. Lower = steadier power output.
                       </p>
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5 mb-0.5">
                         <div className="w-1.5 h-1.5 rounded-full bg-purple-400" />
-                        <span className="text-[10px] font-semibold text-white/80">Tempo CV (30%)</span>
+                        <span className="text-[10px] font-semibold text-white/80">Tempo CV</span>
                       </div>
                       <p className="text-[10px] text-white/40 leading-relaxed pl-3">
-                        Coefficient of Variation of rep duration. Erratic tempo indicates loss of motor control.
+                        How consistent your rep duration is. Erratic tempo may indicate motor control loss.
                       </p>
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5 mb-0.5">
                         <div className="w-1.5 h-1.5 rounded-full bg-orange-400" />
-                        <span className="text-[10px] font-semibold text-white/80">Smoothness Decay (30%)</span>
+                        <span className="text-[10px] font-semibold text-white/80">Smoothness Decay</span>
                       </div>
                       <p className="text-[10px] text-white/40 leading-relaxed pl-3">
-                        LDLJ-based movement quality drop from early to late reps. Captures jerk and irregularity increase.
+                        Movement quality drop from early to late reps (LDLJ-based).
                       </p>
                     </div>
                   </div>
                   <div className="mt-3 pt-2.5 border-t border-white/[0.06]">
                     <p className="text-[10px] text-white/30 leading-relaxed">
-                      Score = weighted sum of the three metrics normalised to 0-100. Only metrics with available data are included.
+                      Minimal &lt; 15 · Low &lt; 30 · Moderate &lt; 50 · High &lt; 70 · Severe ≥ 70
                     </p>
                   </div>
                 </div>,
@@ -371,10 +372,7 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
                   <div key={i} className={`flex-1 rounded-xl ${sc.bg} px-3.5 py-2.5 flex items-center justify-between min-h-[42px]`}>
                     <div className="flex items-center gap-2">
                       <div className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />
-                      <div className="flex flex-col">
-                        <span className="text-[11px] text-gray-300 font-medium leading-tight">{ind.label}</span>
-                        <span className="text-[9px] text-gray-500 leading-tight">{ind.weight}</span>
-                      </div>
+                      <span className="text-[11px] text-gray-300 font-medium leading-tight">{ind.label}</span>
                     </div>
                     <div className="flex items-baseline gap-0.5">
                       <span className={`text-[15px] font-bold tabular-nums ${sc.text}`}>{ind.value}</span>

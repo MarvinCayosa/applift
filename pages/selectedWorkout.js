@@ -490,6 +490,7 @@ export default function SelectedWorkout() {
 
   // Past sessions for AI context
   const [pastSessions, setPastSessions] = useState([]);
+  const [sessionsLoaded, setSessionsLoaded] = useState(false);
 
   // Sanitize string for Firestore path (matches workoutLogService convention)
   const sanitizeForPath = useCallback((str) => {
@@ -591,8 +592,10 @@ export default function SelectedWorkout() {
         );
         
         setPastSessions(sessionsWithAnalytics.filter(Boolean));
+        setSessionsLoaded(true);
       } catch (err) {
         console.log('[SelectedWorkout] Could not fetch past sessions:', err.message);
+        setSessionsLoaded(true); // Mark loaded even on error so AI can proceed
       }
     };
     
@@ -653,7 +656,7 @@ export default function SelectedWorkout() {
     equipment,
     exerciseName: workout,
     pastSessions,
-    enabled: aiEnabled && !!equipment && !!workout,
+    enabled: aiEnabled && !!equipment && !!workout && sessionsLoaded,
   });
 
   // Update rest time when AI provides a recommendation

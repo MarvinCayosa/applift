@@ -29,11 +29,11 @@ const QUALITY_NAMES_BY_EXERCISE = {
 };
 
 const FATIGUE_THRESHOLDS = {
-  minimal: 10,
-  low: 20,
-  moderate: 35,
-  high: 55,
-  // > 55 = severe
+  minimal: 15,
+  low: 30,
+  moderate: 50,
+  high: 70,
+  // >= 70 = severe
 };
 
 const CONSISTENCY_THRESHOLDS = {
@@ -142,7 +142,10 @@ export const computeAngleFromAccelerometer = (accelX, accelY, accelZ) => {
     return [];
   }
   
-  const angles = [];
+  // Compute both roll and pitch angles
+  const rollAngles = [];
+  const pitchAngles = [];
+  
   for (let i = 0; i < accelX.length; i++) {
     const x = accelX[i];
     const y = accelY[i];
@@ -151,18 +154,26 @@ export const computeAngleFromAccelerometer = (accelX, accelY, accelZ) => {
     // Calculate magnitude
     const magnitude = Math.sqrt(x * x + y * y + z * z);
     if (magnitude === 0) {
-      angles.push(0);
+      rollAngles.push(0);
+      pitchAngles.push(0);
       continue;
     }
     
-    // Calculate pitch angle (rotation around X-axis)
+    // Pitch: rotation around X-axis (Y vs Z)
     const pitch = Math.atan2(y, Math.sqrt(x * x + z * z));
-    // Convert to degrees and normalize to 0-180 range
-    const pitchDegrees = (pitch * 180 / Math.PI) + 90;
-    angles.push(pitchDegrees);
+    pitchAngles.push((pitch * 180 / Math.PI) + 90);
+    
+    // Roll: rotation around Y-axis (X vs Z)
+    const roll = Math.atan2(x, Math.sqrt(y * y + z * z));
+    rollAngles.push((roll * 180 / Math.PI) + 90);
   }
   
-  return angles;
+  // Auto-detect primary rotation axis: use whichever axis has the largest range
+  // This makes ROM computation orientation-independent for dumbbell exercises
+  const pitchRange = Math.max(...pitchAngles) - Math.min(...pitchAngles);
+  const rollRange = Math.max(...rollAngles) - Math.min(...rollAngles);
+  
+  return pitchRange >= rollRange ? pitchAngles : rollAngles;
 };
 
 /**
@@ -852,16 +863,17 @@ export const computeFatigueIndicators = (repMetricsList, mlClassification = null
   const peaks = repMetricsList.map(m => m.peak || 0);
   
   // === D_ω: Peak Angular Velocity Change (35%) ===
+  // Only penalize velocity DROPS (fatigue), not increases (warming up)
   let D_omega, gyroDirection;
   if (hasGyro) {
     const avgGyroFirst = mean(gyroPeaks.slice(0, third));
     const avgGyroLast = mean(gyroPeaks.slice(-third));
-    D_omega = avgGyroFirst > 0 ? Math.abs(avgGyroFirst - avgGyroLast) / avgGyroFirst : 0;
+    D_omega = avgGyroFirst > 0 ? Math.max(0, (avgGyroFirst - avgGyroLast) / avgGyroFirst) : 0;
     gyroDirection = avgGyroLast < avgGyroFirst ? 'drop' : 'surge';
   } else {
     const avgPeakFirst = mean(peaks.slice(0, third));
     const avgPeakLast = mean(peaks.slice(-third));
-    D_omega = avgPeakFirst > 0 ? Math.abs(avgPeakFirst - avgPeakLast) / avgPeakFirst : 0;
+    D_omega = avgPeakFirst > 0 ? Math.max(0, (avgPeakFirst - avgPeakLast) / avgPeakFirst) : 0;
     gyroDirection = avgPeakLast < avgPeakFirst ? 'drop' : 'surge';
   }
   
@@ -951,16 +963,33 @@ export const computeFatigueIndicators = (repMetricsList, mlClassification = null
                  (0.20 * I_S_clamped);
   }
   
-  // Boost for severe indicators
+  // Boost for severe indicators (conservative threshold)
   const worstKinematicIndicator = Math.max(D_omega_clamped, I_T_clamped, I_J_clamped, I_S_clamped);
-  if (worstKinematicIndicator > 0.40) {
-    fatigueRaw = Math.min(1.0, fatigueRaw + (worstKinematicIndicator - 0.40) * 0.5);
+  if (worstKinematicIndicator > 0.50) {
+    fatigueRaw = Math.min(1.0, fatigueRaw + (worstKinematicIndicator - 0.50) * 0.25);
   }
   
   // Additional boost if execution quality is very poor (even without kinematic decline)
   // This ensures "consistently bad form" gets flagged as fatigued/compensating
   if (hasMLClassification && Q_exec_clamped > 0.60) {
-    fatigueRaw = Math.min(1.0, fatigueRaw + (Q_exec_clamped - 0.60) * 0.3);
+    fatigueRaw = Math.min(1.0, fatigueRaw + (Q_exec_clamped - 0.60) * 0.2);
+  }
+  
+  // Sanity cap: good execution quality limits fatigue score
+  // If 70%+ reps are clean, the body is clearly performing well — can't be severe fatigue
+  if (hasMLClassification && mlClassification && typeof mlClassification.cleanPercentage === 'number') {
+    const cleanPct = mlClassification.cleanPercentage;
+    if (cleanPct >= 70) {
+      // 70% clean → max ~50 (moderate), 80% → ~43, 90% → ~37
+      const maxForQuality = (50 - (cleanPct - 70) * 0.43) / 100;
+      fatigueRaw = Math.min(fatigueRaw, maxForQuality);
+    }
+  }
+  
+  // Coherence check: if all kinematic indicators are mild, cap at moderate
+  const allKinematicMild = D_omega_clamped < 0.15 && I_T_clamped < 0.15 && I_J_clamped < 0.15 && I_S_clamped < 0.15;
+  if (allKinematicMild && fatigueRaw > 0.45) {
+    fatigueRaw = 0.45;
   }
   
   const fatigueScore = Math.min(100, fatigueRaw * 100);
@@ -1008,10 +1037,10 @@ export const computeFatigueIndicators = (repMetricsList, mlClassification = null
   
   // === Performance Report ===
   const getSessionQuality = (score) => {
-    if (score < 10) return 'Excellent';
-    if (score < 20) return 'Good';
-    if (score < 35) return 'Fair';
-    if (score < 55) return 'Poor';
+    if (score < 15) return 'Excellent';
+    if (score < 30) return 'Good';
+    if (score < 50) return 'Fair';
+    if (score < 70) return 'Poor';
     return 'Very Poor';
   };
   
@@ -1022,9 +1051,9 @@ export const computeFatigueIndicators = (repMetricsList, mlClassification = null
   };
   
   const keyFindings = [];
-  if (fatigueScore < 10) {
+  if (fatigueScore < 15) {
     keyFindings.push('✅ Excellent fatigue resistance — stable speed and control throughout');
-  } else if (fatigueScore > 45) {
+  } else if (fatigueScore > 60) {
     keyFindings.push('⚠️ Significant fatigue detected — movement quality degraded notably');
   }
   
@@ -1250,8 +1279,53 @@ export const analyzeWorkout = (workoutData) => {
     });
   }
   
-  // Overall fatigue analysis
-  const overallFatigue = computeFatigueIndicators(allRepMetrics);
+  // Overall fatigue: per-set aggregation to avoid cross-set calibration contamination
+  // Dumbbell/free-weight exercises have different IMU calibration between sets,
+  // so comparing Set 1 reps vs Set 2 reps creates artificial "degradation"
+  let overallFatigue;
+  const validSetFatigues = setsAnalysis.filter(s => s.fatigueAnalysis.fatigueLevel !== 'insufficient_data');
+  
+  if (validSetFatigues.length > 1) {
+    // Multiple valid sets: weighted average of per-set fatigue scores
+    const totalReps = validSetFatigues.reduce((sum, s) => sum + s.repsCount, 0);
+    const weightedScore = validSetFatigues.reduce((sum, s) => {
+      return sum + (s.fatigueAnalysis.fatigueScore * s.repsCount);
+    }, 0);
+    const avgScore = totalReps > 0 ? weightedScore / totalReps : 0;
+    
+    // Aggregate individual indicators (weighted average across sets)
+    const aggIndicator = (key) => {
+      return totalReps > 0
+        ? validSetFatigues.reduce((s, set) => s + ((set.fatigueAnalysis[key] || 0) * set.repsCount), 0) / totalReps
+        : 0;
+    };
+    
+    let fatigueLevel;
+    if (avgScore < FATIGUE_THRESHOLDS.minimal) fatigueLevel = 'minimal';
+    else if (avgScore < FATIGUE_THRESHOLDS.low) fatigueLevel = 'low';
+    else if (avgScore < FATIGUE_THRESHOLDS.moderate) fatigueLevel = 'moderate';
+    else if (avgScore < FATIGUE_THRESHOLDS.high) fatigueLevel = 'high';
+    else fatigueLevel = 'severe';
+    
+    // Use best-consistency set's report as base
+    const bestSet = validSetFatigues.reduce((best, s) => 
+      s.fatigueAnalysis.consistencyScore > best.fatigueAnalysis.consistencyScore ? s : best
+    , validSetFatigues[0]);
+    
+    overallFatigue = {
+      ...bestSet.fatigueAnalysis,
+      fatigueScore: Math.round(avgScore * 10) / 10,
+      fatigueLevel,
+      D_omega: Math.round(aggIndicator('D_omega') * 10000) / 10000,
+      I_T: Math.round(aggIndicator('I_T') * 10000) / 10000,
+      I_J: Math.round(aggIndicator('I_J') * 10000) / 10000,
+      I_S: Math.round(aggIndicator('I_S') * 10000) / 10000,
+      aggregationMethod: 'per_set_weighted_average',
+    };
+  } else {
+    // Single set or no valid sets: compute directly on all reps
+    overallFatigue = computeFatigueIndicators(allRepMetrics);
+  }
   
   // Overall consistency from all rep charts
   const allChartData = allRepMetrics.map(m => m.chartData || []).filter(c => c.length > 0);

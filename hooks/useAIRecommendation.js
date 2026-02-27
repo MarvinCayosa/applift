@@ -31,6 +31,7 @@ export function useAIRecommendation({ equipment, exerciseName, pastSessions = []
   // Prevent duplicate calls
   const fetchingRef = useRef(false);
   const mountedRef = useRef(true);
+  const pendingRetryRef = useRef(false);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -234,6 +235,18 @@ export function useAIRecommendation({ equipment, exerciseName, pastSessions = []
         setLoading(false);
       }
       fetchingRef.current = false;
+
+      // If pastSessions changed while we were fetching, retry with fresh data
+      if (pendingRetryRef.current && mountedRef.current) {
+        pendingRetryRef.current = false;
+        console.log('🔄 [AI Hook] Retrying with updated pastSessions...');
+        // Use setTimeout to break out of the current call stack
+        setTimeout(() => {
+          if (mountedRef.current) {
+            loadRecommendation(false, 'new_session');
+          }
+        }, 50);
+      }
     }
   }, [user, userProfile, equipment, exerciseName, pastSessions, enabled]);
 
@@ -256,28 +269,35 @@ export function useAIRecommendation({ equipment, exerciseName, pastSessions = []
   }, [loadRecommendation]);
 
   // Track previous pastSessions length to detect new sessions
-  const prevPastSessionsLengthRef = useRef(pastSessions.length);
+  const prevPastSessionsLengthRef = useRef(0);
 
-  // Auto-load on mount and when pastSessions changes
+  // Auto-load when enabled flips to true (sessionsLoaded) or pastSessions increases
   useEffect(() => {
     if (enabled && equipment && exerciseName && user?.uid) {
       const prevLength = prevPastSessionsLengthRef.current;
       const currentLength = pastSessions.length;
+      const isInitial = prevLength === 0 && !recommendation;
+      const sessionsGrew = currentLength > prevLength;
       
-      // Only reload if this is initial load OR pastSessions increased
-      // (not on every pastSessions reference change)
-      if (prevLength === 0 || currentLength > prevLength) {
+      if (isInitial || sessionsGrew) {
         console.log('🔄 [AI Hook] useEffect trigger:', {
           prevLength,
           currentLength,
-          reason: prevLength === 0 ? 'initial' : 'new_session_detected'
+          reason: isInitial ? 'initial' : 'sessions_changed'
         });
-        loadRecommendation(false, 'initial');
+
+        if (fetchingRef.current) {
+          // A call is in flight — mark pending so it retries after completion
+          pendingRetryRef.current = true;
+          console.log('⏳ [AI Hook] Call in flight, queued retry');
+        } else {
+          loadRecommendation(false, isInitial ? 'initial' : 'new_session');
+        }
       }
       
       prevPastSessionsLengthRef.current = currentLength;
     }
-  }, [enabled, equipment, exerciseName, user?.uid, pastSessions.length, loadRecommendation]);
+  }, [enabled, equipment, exerciseName, user?.uid, pastSessions.length, loadRecommendation, recommendation]);
 
   return {
     recommendation,
