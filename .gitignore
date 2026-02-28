@@ -1,25 +1,54 @@
-/node_modules
-/.env
-/.next
-/others
+# === Dependencies ===
+node_modules/
+
+# === Environment & Secrets (NEVER commit!) ===
+.env
+.env.*
 .env.local
 .env*.local
-/references
-# Firebase Admin SDK Service Account Key (NEVER commit this!)
+
+# === Firebase / GCP credentials ===
 lib/firebase-admin-key.json
 *-firebase-adminsdk-*.json
+*-service-account*.json
+*.pem
 
-# Python virtual environments (anywhere in project)
+# === Next.js build output ===
+.next/
+out/
+
+# === Development-only folders ===
+others/
+references/
+tests/
+
+# === Debug / test scripts (root-level) ===
+debug-*.js
+fix-*.js
+quick-*.js
+streak-*.js
+test-*.js
+
+# === Python ===
 venv/
 .venv/
 __pycache__/
 *.pyc
 *.pyo
+*.egg-info/
 
-# Cloud Run ML API - models are large binary files
+# === ML model binaries ===
 cloud-run-ml-api/models/*.pkl
 cloud-run-ml-api/venv/
+ml_scripts/models/*.pkl
 
-# OS files
+# === OS files ===
 .DS_Store
 Thumbs.db
+Desktop.ini
+
+# === IDE / Editor ===
+.vscode/
+.idea/
+*.swp
+*.swo

@@ -4,20 +4,17 @@ import { initializeApp, getApps, cert } from 'firebase-admin/app';
 
 // Initialize Firebase Admin if not already done
 if (!getApps().length) {
-  let serviceAccount;
-  
   try {
-    // Try to load from environment variable first (for Vercel)
-    if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
-      serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
-    } else {
-      // Fallback to local file (for development)
-      serviceAccount = require('../../lib/firebase-admin-key.json');
-    }
-    
+    const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_KEY
+      ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY)
+      : {
+          projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+          privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+        };
+
     initializeApp({
       credential: cert(serviceAccount),
-      databaseURL: process.env.FIREBASE_DATABASE_URL,
     });
   } catch (error) {
     console.error('Firebase Admin initialization error:', error);

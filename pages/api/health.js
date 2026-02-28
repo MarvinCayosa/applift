@@ -19,17 +19,5 @@ export default function handler(req, res) {
     message: 'API routes are working',
     timestamp: new Date().toISOString(),
     method: req.method,
-    env: {
-      nodeEnv: process.env.NODE_ENV,
-      vercelEnv: process.env.VERCEL_ENV || 'not-vercel',
-      // Check if env vars exist (don't expose values)
-      hasFirebaseProjectId: !!process.env.FIREBASE_PROJECT_ID,
-      hasFirebaseClientEmail: !!process.env.FIREBASE_CLIENT_EMAIL,
-      hasFirebasePrivateKey: !!process.env.FIREBASE_PRIVATE_KEY,
-      hasGcsProjectId: !!process.env.GCS_PROJECT_ID,
-      hasGcsBucketName: !!process.env.GCS_BUCKET_NAME,
-      hasGcsClientEmail: !!process.env.GCS_CLIENT_EMAIL,
-      hasGcsPrivateKey: !!process.env.GCS_PRIVATE_KEY,
-    }
   });
 }
