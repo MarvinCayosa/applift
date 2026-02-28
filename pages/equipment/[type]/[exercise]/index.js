@@ -770,7 +770,7 @@ export default function ExerciseDetailPage() {
 
                         {/* Slide 2: Last Sessions Timeline */}
                         <div className="w-full shrink-0 snap-center snap-always p-4 pt-0 flex flex-col" style={{ minWidth: '100%' }}>
-                          <p className="text-[11px] text-white/40 mb-2">Comparison from last 3 sessions</p>
+                          <p className="text-[11px] text-white/40 mb-2">Clean Reps for 3 Sessions</p>
                           {qualityComparison.length >= 3 ? (
                             <div className="flex-1 flex flex-col">
                               {/* Trend badge */}
