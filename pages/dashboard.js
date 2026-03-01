@@ -16,6 +16,7 @@ import { useUserProfile } from '../utils/userProfileStore';
 import { useWorkoutStreak } from '../utils/useWorkoutStreak';
 import { useAuth } from '../context/AuthContext';
 import { useWorkoutLogs } from '../utils/useWorkoutLogs';
+import { parseLogDate } from '../utils/workoutCache';
 import { useMovementQuality } from '../hooks/useMovementQuality';
 import ActivityOverview from '../components/ActivityOverview';
 import WorkoutStreak from '../components/WorkoutStreak';
@@ -129,10 +130,7 @@ export default function Dashboard() {
     disconnect,
     setPairMessage,
   } = useBluetooth();
-  const [profileOpen, setProfileOpen] = useState(false);
-  const [showSignOutModal, setShowSignOutModal] = useState(false);
   const [userInitials, setUserInitials] = useState('U');
-  const profileRef = useRef(null);
   const [carouselIndex, setCarouselIndex] = useState(0);
   const carouselRef = useRef(null);
   const scrollSnapTimeoutRef = useRef(null);
@@ -175,16 +173,6 @@ export default function Dashboard() {
       setUserInitials(initials);
     }
   }, [userProfile, user]);
-
-  // close profile menu on outside click
-  useEffect(() => {
-    function onDocClick(e) {
-      if (!profileRef.current) return;
-      if (!profileRef.current.contains(e.target)) setProfileOpen(false);
-    }
-    if (profileOpen) document.addEventListener('mousedown', onDocClick);
-    return () => document.removeEventListener('mousedown', onDocClick);
-  }, [profileOpen]);
 
   // Measure slide width and gap so translation stays smooth and adaptive
   useEffect(() => {
@@ -262,23 +250,6 @@ export default function Dashboard() {
   if (!loading && !isAuthenticated) {
     return null;
   }
-
-  // Handle sign out with AuthContext
-  const handleSignOutConfirm = async () => {
-    try {
-      setProfileOpen(false);
-      setShowSignOutModal(false);
-      
-      // Sign out using AuthContext
-      await signOut();
-      
-      // Redirect to splash - use replace to prevent going back to dashboard
-      router.replace('/splash');
-    } catch (error) {
-      console.error('Error signing out:', error);
-      alert('Failed to sign out. Please try again.');
-    }
-  };
 
   // Advance carousel by direction (1 = next, -1 = previous)
   const advanceCarousel = (direction) => {
@@ -372,10 +343,7 @@ export default function Dashboard() {
     const exerciseCountByDay = {}; // Track exercise count for heatmap
     
     logs.forEach((log) => {
-      // Handle both timestamp formats
-      const createdAt = log.timestamps?.started?.toDate?.() || 
-                        log.timestamps?.created?.toDate?.() ||
-                        (log.startTime ? new Date(log.startTime) : null);
+      const createdAt = parseLogDate(log);
       if (createdAt) {
         const month = createdAt.getMonth();
         const year = createdAt.getFullYear();
@@ -424,10 +392,7 @@ export default function Dashboard() {
     
     // Also check logs directly for current month
     logs.forEach((log) => {
-      // Handle both timestamp formats
-      const createdAt = log.timestamps?.started?.toDate?.() || 
-                        log.timestamps?.created?.toDate?.() ||
-                        (log.startTime ? new Date(log.startTime) : null);
+      const createdAt = parseLogDate(log);
       if (!createdAt) return;
       
       // Only include current month
@@ -593,24 +558,8 @@ export default function Dashboard() {
     
     // Calculate load from workout logs
     logs.forEach((log) => {
-      // Handle both timestamp formats
-      const createdAt = log.timestamps?.started?.toDate?.() || 
-                        log.timestamps?.created?.toDate?.() ||
-                        (log.startTime ? new Date(log.startTime) : null);
-      
-      console.log('[Dashboard] Processing log:', {
-        id: log.id,
-        createdAt,
-        startTime: log.startTime,
-        timestampsStarted: log.timestamps?.started,
-        weight: log.planned?.weight || log.weight,
-        totalReps: log.results?.totalReps || log.totalReps
-      });
-      
-      if (!createdAt) {
-        console.log('[Dashboard] Skipping log - no valid date');
-        return;
-      }
+      const createdAt = parseLogDate(log);
+      if (!createdAt) return;
       
       // Check if workout is in current week (Sunday to Saturday)
       const logDate = new Date(createdAt);
@@ -623,13 +572,6 @@ export default function Dashboard() {
       saturdayDate.setDate(sunday.getDate() + 6);
       saturdayDate.setHours(23, 59, 59, 999);
       
-      console.log('[Dashboard] Date check:', {
-        logDate: logDate.toISOString(),
-        sundayDate: sundayDate.toISOString(),
-        saturdayDate: saturdayDate.toISOString(),
-        isInWeek: logDate >= sundayDate && logDate <= saturdayDate
-      });
-      
       if (logDate >= sundayDate && logDate <= saturdayDate) {
         // Map day of week directly (Sunday=0, Saturday=6)
         const dayIndex = logDate.getDay();
@@ -641,12 +583,9 @@ export default function Dashboard() {
           const reps = log.results?.totalReps || log.totalReps || 0;
           const load = weight * reps; // Volume load formula
           weekData[dayIndex].load += load;
-          console.log('[Dashboard] Added load:', { dayIndex, dayName: dayNames[dayIndex], weight, reps, load });
         }
       }
     });
-    
-    console.log('[Dashboard] Week data:', weekData);
     
     return weekData; // Sunday-first order, all 7 days but only data up to today
   };
@@ -663,10 +602,7 @@ export default function Dashboard() {
     }
     
     logs.forEach((log) => {
-      // Handle both timestamp formats
-      const createdAt = log.timestamps?.started?.toDate?.() || 
-                        log.timestamps?.created?.toDate?.() ||
-                        (log.startTime ? new Date(log.startTime) : null);
+      const createdAt = parseLogDate(log);
       if (!createdAt) return;
       
       const logDate = new Date(createdAt);
@@ -709,9 +645,7 @@ export default function Dashboard() {
     }
     
     logs.forEach((log) => {
-      const createdAt = log.timestamps?.started?.toDate?.() || 
-                        log.timestamps?.created?.toDate?.() ||
-                        (log.startTime ? new Date(log.startTime) : null);
+      const createdAt = parseLogDate(log);
       if (!createdAt) return;
       
       const logDate = new Date(createdAt);
@@ -790,10 +724,7 @@ export default function Dashboard() {
     let lastWeekLoad = 0;
     
     logs.forEach((log) => {
-      // Handle both timestamp formats
-      const createdAt = log.timestamps?.started?.toDate?.() || 
-                        log.timestamps?.created?.toDate?.() ||
-                        (log.startTime ? new Date(log.startTime) : null);
+      const createdAt = parseLogDate(log);
       if (!createdAt) return;
       
       // Handle both data formats
@@ -946,61 +877,33 @@ export default function Dashboard() {
 
       <BottomNav />
 
-      <main className="w-full px-4 sm:px-6 md:px-8 pt-2.5 sm:pt-3.5 pt-pwa-dynamic pb-4 md:pb-6">
+      <main className="w-full px-4 md:px-8 pt-2.5 pt-pwa-dynamic pb-4 md:pb-6">
             <div className="w-full max-w-4xl mx-auto space-y-4">
               {/* Top bar: greetings left, avatar right */}
               <div className="flex items-center justify-between content-fade-up-1">
                 {/* Greetings on left */}
                 <div className="flex flex-col leading-tight">
-                  <span className="text-xs sm:text-sm text-white/40 mb-1">Start your training today!</span>
-                  <span className="text-xl sm:text-2xl md:text-3xl font-bold text-white">
+                  <span className="text-xs xs:text-sm text-white/40 mb-1">Start your training today!</span>
+                  <span className="text-2xl xs:text-3xl font-bold text-white">
                     Hi, <span style={{ color: getNameTextColor(userProfile, user?.uid) }}>
                       {getFirstWord(userProfile?.username || profile?.username || user?.displayName || 'User')}
                     </span>
                   </span>
                 </div>
 
-                {/* Colored profile avatar with initials - clickable, now on right */}
-                <div className="relative z-[10100]" ref={profileRef}>
-                  <button
-                    onClick={() => setProfileOpen(!profileOpen)}
-                    className="w-10 h-10 sm:w-12 sm:h-12 rounded-full border border-white/20 flex items-center justify-center flex-shrink-0 hover:border-white/40 transition-colors overflow-hidden"
-                    style={userProfile?.profileImage ? {} : (userProfile?.profileColor ? { background: PROFILE_COLORS.find(c => c.value === userProfile.profileColor)?.gradient || getUserAvatarColorStyle(user?.uid).background } : getUserAvatarColorStyle(user?.uid))}
-                    aria-label="Profile menu"
-                  >
-                    {userProfile?.profileImage ? (
-                      <img src={userProfile.profileImage} alt="Profile" className="w-full h-full object-cover" />
-                    ) : (
-                      <span className="text-base sm:text-lg font-semibold text-white">{userInitials}</span>
-                    )}
-                  </button>
-
-                  {/* Dropdown menu */}
-                  {profileOpen && (
-                    <div
-                      className="absolute top-14 right-0 z-[10100] min-w-[180px] rounded-2xl bg-[#00000066] border border-white/15 shadow-2xl modal-content-fade-in"
-                      style={{
-                        backdropFilter: 'blur(14px)',
-                        WebkitBackdropFilter: 'blur(14px)',
-                      }}
-                    >
-                      <button
-                        onClick={() => {
-                          setProfileOpen(false);
-                          setShowSignOutModal(true);
-                        }}
-                        className="w-full px-4 py-3 text-left text-red-400 hover:text-red-300 hover:bg-white/8 transition-colors rounded-2xl text-sm font-semibold first:rounded-t-2xl last:rounded-b-2xl flex items-center justify-between"
-                      >
-                        <span>Sign out</span>
-                        <svg className="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M21 12L13 12" />
-                          <path d="M18 15L20.913 12.087V12.087C20.961 12.039 20.961 11.961 20.913 11.913V11.913L18 9" />
-                          <path d="M16 5V4.5V4.5C16 3.67157 15.3284 3 14.5 3H5C3.89543 3 3 3.89543 3 5V19C3 20.1046 3.89543 21 5 21H14.5C15.3284 21 16 20.3284 16 19.5V19.5V19" />
-                        </svg>
-                      </button>
-                    </div>
+                {/* Profile avatar - links to settings */}
+                <button
+                  onClick={() => router.push('/settings')}
+                  className="w-10 xs:w-12 h-10 xs:h-12 rounded-full border border-white/20 flex items-center justify-center flex-shrink-0 hover:border-white/40 transition-colors overflow-hidden"
+                  style={userProfile?.profileImage ? {} : (userProfile?.profileColor ? { background: PROFILE_COLORS.find(c => c.value === userProfile.profileColor)?.gradient || getUserAvatarColorStyle(user?.uid).background } : getUserAvatarColorStyle(user?.uid))}
+                  aria-label="Go to settings"
+                >
+                  {userProfile?.profileImage ? (
+                    <img src={userProfile.profileImage} alt="Profile" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-base xs:text-lg font-semibold text-white">{userInitials}</span>
                   )}
-                </div>
+                </button>
               </div>
 
           {/* Connection status pill */}
@@ -1019,7 +922,7 @@ export default function Dashboard() {
 
           {/* Overview label outside the carousel */}
           <div className="flex items-center justify-between mb-1 md:mb-3 content-fade-up-2">
-            <h2 className="text-base sm:text-lg md:text-xl font-semibold text-white">Overview</h2>
+            <h2 className="text-lg xs:text-xl font-semibold text-white">Overview</h2>
           </div>
 
           {/* Workout Streak Section - positioned under Overview */}
@@ -1042,7 +945,7 @@ export default function Dashboard() {
                   className="flex gap-4 overflow-x-auto pb-2 snap-x snap-mandatory snap-center scrollbar-hide scroll-smooth px-4"
                 >
                   {/* Card 1: Activity Overview */}
-                  <article className="min-w-[calc(100vw-24px)] w-[calc(100vw-24px)] max-w-[384px] shrink-0 snap-center rounded-3xl bg-white/10 p-4 sm:p-5 shadow-2xl h-[290px] sm:h-[320px] flex flex-col">
+                  <article className="min-w-[calc(100vw-24px)] w-[calc(100vw-24px)] max-w-[384px] shrink-0 snap-center rounded-3xl bg-white/10 p-4 xs:p-5 shadow-2xl h-[290px] xs:h-[320px] flex flex-col">
                     <ActivityOverview
                       currentWeek={currentWeek}
                       calendar3Months={calendar3Months}
@@ -1054,9 +957,9 @@ export default function Dashboard() {
                   </article>
 
                   {/* Card 2: Recent Workouts */}
-                  <article className="min-w-[calc(100vw-24px)] w-[calc(100vw-24px)] max-w-[384px] shrink-0 snap-center rounded-3xl bg-white/10 p-4 sm:p-5 shadow-2xl h-[290px] sm:h-[320px] flex flex-col">
-                    <div className="flex items-center justify-between mb-3 sm:mb-4">
-                      <h3 className="text-lg sm:text-xl font-semibold text-white/90">Recent Workouts</h3>
+                  <article className="min-w-[calc(100vw-24px)] w-[calc(100vw-24px)] max-w-[384px] shrink-0 snap-center rounded-3xl bg-white/10 p-4 xs:p-5 shadow-2xl h-[290px] xs:h-[320px] flex flex-col">
+                    <div className="flex items-center justify-between mb-3 xs:mb-4">
+                      <h3 className="text-lg xs:text-xl font-semibold text-white/90">Recent Workouts</h3>
                       <button
                         onClick={() => router.push('/statistics')}
                         className="text-white/40 hover:text-white/60 transition-colors"
@@ -1222,7 +1125,7 @@ export default function Dashboard() {
 
           {/* Two half-width cards side by side */}
           <section className="mb-4 md:mb-6 content-fade-up-4">
-            <div className="grid grid-cols-2 gap-3 sm:gap-4">
+            <div className="grid grid-cols-2 gap-4">
               {/* Left: Equipment Distribution */}
               <EquipmentDistributionCard
                 data={equipmentDistributionData}
@@ -1266,53 +1169,6 @@ export default function Dashboard() {
           <button onClick={handleDisconnect} className="px-4 py-2 rounded-md bg-white/6 text-white border border-white/10" aria-label="Disconnect device">Disconnect</button>
         ) : null}
       </div>
-
-      {/* Sign-out confirmation modal */}
-      {showSignOutModal && (
-        <div
-          className="fixed inset-0 z-[10500] flex items-center justify-center px-4 modal-fade-in"
-          style={{
-            backgroundColor: 'rgba(0, 0, 0, 0.75)',
-            backdropFilter: 'blur(12px)',
-            WebkitBackdropFilter: 'blur(12px)',
-          }}
-          onClick={() => setShowSignOutModal(false)}
-        >
-          <div
-            className="relative max-w-xs w-full p-6 rounded-2xl bg-white/10 shadow-xl modal-content-fade-in"
-            style={{
-              boxShadow: '0 10px 40px #00000066',
-              backdropFilter: 'blur(20px)',
-              WebkitBackdropFilter: 'blur(20px)',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="text-center">
-              <h3 className="text-lg font-medium text-white mb-3">Sign Out</h3>
-              <p className="text-sm text-white/70 mb-6 leading-relaxed">
-                Are you sure you would like to sign out?
-              </p>
-            </div>
-            
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setShowSignOutModal(false)}
-                className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/90 font-medium transition-colors modal-element-fade-in border border-white/10"
-                style={{ animationDelay: '50ms' }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSignOutConfirm}
-                className="flex-1 px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-medium transition-colors modal-element-fade-in"
-                style={{ animationDelay: '120ms' }}
-              >
-                Confirm
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

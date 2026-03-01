@@ -801,7 +801,7 @@ export default function SelectedWorkout() {
         <Head>
           <title>Workout — AppLift</title>
         </Head>
-        <main className="mx-auto w-full max-w-[640px] px-4 pt-2.5 sm:pt-3.5">
+        <main className="mx-auto w-full max-w-[640px] px-4 pt-2.5 sm:pt-3.5 pt-pwa-dynamic">
           <p>Loading workout details...</p>
         </main>
       </div>

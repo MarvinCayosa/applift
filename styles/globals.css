@@ -20,7 +20,7 @@
 
 :root {
   /* exact palette sampled from hero image */
-  --bg-deep: #0B0F1A; /* darkest base - updated for splash screen match */
+  --bg-deep: #000000; /* pure black - matches all page bg-black backgrounds */
   --bg-mid: #241425; /* mid purple tone */
   --bg-warm: #3a1f1f; /* warm reddish lowlight */
   --accent-purple: #6b3a8f;
@@ -116,6 +116,7 @@ input, textarea, [contenteditable] {
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
+  background-color: #000000; /* match page backgrounds to prevent any color bleed */
 }
 
 /* Adaptive top padding utility - minimal on Android, respects iOS notch */
@@ -139,8 +140,13 @@ input, textarea, [contenteditable] {
 /* 
  * Fullscreen / standalone PWA top padding 
  * When status bar is hidden (fullscreen or standalone mode), increase top padding
- * When status bar is present (normal browser), keep small padding
+ * to compensate for the notch/cutout/dynamic island.
+ * When status bar is present (normal browser), use no extra padding.
  */
+.pt-pwa-dynamic {
+  /* Non-PWA default: no extra padding (let Tailwind pt-* handle it) */
+}
+
 @media (display-mode: fullscreen), (display-mode: standalone) {
   .pt-pwa-dynamic {
     padding-top: max(2rem, env(safe-area-inset-top, 2rem)) !important;

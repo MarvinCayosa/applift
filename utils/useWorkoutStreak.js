@@ -1,26 +1,35 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { WorkoutStreakService } from '../services/workoutStreakService';
 import { useAuth } from '../context/AuthContext';
+import { getCachedStreak, setCachedStreak, getMemoryCachedStreak } from './workoutCache';
+
+const DEFAULT_STREAK = {
+  currentStreak: 0,
+  longestStreak: 0,
+  lastWorkoutDate: null,
+  totalWorkoutDays: 0,
+  streakStartDate: null,
+  lostStreak: null,
+  streakLostDate: null
+};
 
 /**
  * Custom hook for managing workout streaks
+ * Uses persistent cache to reduce Firestore reads.
+ * Initializes from synchronous memory cache to avoid loading flash on re-navigation.
  * @returns {Object} Streak data and methods
  */
 export function useWorkoutStreak() {
   const { user } = useAuth();
-  const [streakData, setStreakData] = useState({
-    currentStreak: 0,
-    longestStreak: 0,
-    lastWorkoutDate: null,
-    totalWorkoutDays: 0,
-    streakStartDate: null,
-    lostStreak: null,
-    streakLostDate: null
-  });
-  const [loading, setLoading] = useState(true);
+
+  // Initialize from sync memory cache — no loading flash on re-navigation
+  const initialData = user?.uid ? getMemoryCachedStreak(user.uid) : null;
+
+  const [streakData, setStreakData] = useState(initialData || DEFAULT_STREAK);
+  const [loading, setLoading] = useState(!initialData);
   const [error, setError] = useState(null);
 
-  // Load initial streak data
+  // Load initial streak data (cache-first)
   useEffect(() => {
     const loadStreakData = async () => {
       if (!user?.uid) {
@@ -29,13 +38,35 @@ export function useWorkoutStreak() {
       }
 
       try {
-        setLoading(true);
+        // Only show loading if we have no sync-cached data
+        const hasSyncData = getMemoryCachedStreak(user.uid);
+        if (!hasSyncData) {
+          setLoading(true);
+        }
         setError(null);
+
+        // Try cache first
+        const cached = await getCachedStreak(user.uid);
+        if (cached) {
+          console.log(`[useWorkoutStreak] Cache hit (${cached.source})`);
+          setStreakData(cached.data);
+          setLoading(false);
+          return;
+        }
+
+        // Cache miss — fetch from Firestore
         const data = await WorkoutStreakService.getUserStreakData(user.uid);
         setStreakData(data);
+
+        // Persist to cache
+        setCachedStreak(user.uid, data).catch(() => {});
       } catch (err) {
         console.error('Error loading streak data:', err);
         setError(err.message);
+
+        // Serve stale cache on error
+        const stale = await getCachedStreak(user.uid);
+        if (stale) setStreakData(stale.data);
       } finally {
         setLoading(false);
       }
@@ -59,6 +90,8 @@ export function useWorkoutStreak() {
       const updatedData = await WorkoutStreakService.updateWorkoutStreak(user.uid, workoutDate);
       console.log('[useWorkoutStreak] Streak updated:', updatedData);
       setStreakData(updatedData);
+      // Update persistent cache
+      setCachedStreak(user.uid, updatedData).catch(() => {});
       return updatedData;
     } catch (err) {
       console.error('[useWorkoutStreak] Error recording workout:', err);
@@ -109,6 +142,8 @@ export function useWorkoutStreak() {
       setError(null);
       const data = await WorkoutStreakService.getUserStreakData(user.uid);
       setStreakData(data);
+      // Update persistent cache
+      setCachedStreak(user.uid, data).catch(() => {});
     } catch (err) {
       setError(err.message);
     } finally {

@@ -5,15 +5,23 @@
  * Aggregates data from userWorkouts/{userId}/{equipment}/{exercise}/analytics/
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../config/firestore';
 import { collection, getDocs } from 'firebase/firestore';
+import { parseLogDate, getMemoryCachedMovementQuality, getCachedMovementQuality, setCachedMovementQuality } from '../utils/workoutCache';
 
 export function useMovementQuality(logs = [], hasWorkouts = false) {
   const { user } = useAuth();
-  const [qualityData, setQualityData] = useState(null);
-  const [loading, setLoading] = useState(false);
+
+  // Initialize from sync memory cache
+  const initialData = user?.uid ? getMemoryCachedMovementQuality(user.uid) : null;
+
+  const [qualityData, setQualityData] = useState(initialData || null);
+  const [loading, setLoading] = useState(!initialData && hasWorkouts);
+
+  // Track the last logs length to avoid re-fetching on same data
+  const lastLogsLengthRef = useRef(initialData ? logs.length : -1);
 
   useEffect(() => {
     if (!hasWorkouts || logs.length === 0 || !user?.uid) {
@@ -21,8 +29,25 @@ export function useMovementQuality(logs = [], hasWorkouts = false) {
       return;
     }
 
+    // Skip re-fetch if logs count hasn't changed (same data, just a re-mount)
+    if (lastLogsLengthRef.current === logs.length && qualityData) {
+      return;
+    }
+    lastLogsLengthRef.current = logs.length;
+
     const fetchAnalytics = async () => {
-      setLoading(true);
+      // Try cache first — avoids Firestore hit on re-navigation
+      const hasSyncData = getMemoryCachedMovementQuality(user.uid);
+      if (!hasSyncData) {
+        const cached = await getCachedMovementQuality(user.uid);
+        if (cached) {
+          console.log(`[useMovementQuality] Cache hit (${cached.source})`);
+          setQualityData(cached.data);
+          setLoading(false);
+          return;
+        }
+        setLoading(true);
+      }
       try {
         // Get workouts from the last 7 days
         const today = new Date();
@@ -30,9 +55,7 @@ export function useMovementQuality(logs = [], hasWorkouts = false) {
         weekAgo.setDate(today.getDate() - 7);
         
         const weeklyLogs = logs.filter(log => {
-          const logDate = log.timestamps?.started?.toDate?.() || 
-                         log.timestamps?.created?.toDate?.() ||
-                         (log.startTime ? new Date(log.startTime) : null);
+          const logDate = parseLogDate(log);
           return logDate && logDate >= weekAgo;
         });
         
@@ -174,6 +197,8 @@ export function useMovementQuality(logs = [], hasWorkouts = false) {
         };
         
         setQualityData(result);
+        // Persist to cache
+        setCachedMovementQuality(user.uid, result).catch(() => {});
       } catch (error) {
         console.error('[useMovementQuality] Error fetching analytics:', error);
         setQualityData(null);
@@ -183,7 +208,7 @@ export function useMovementQuality(logs = [], hasWorkouts = false) {
     };
 
     fetchAnalytics();
-  }, [user?.uid, logs, hasWorkouts]);
+  }, [user?.uid, logs.length, hasWorkouts]);
 
   return { qualityData, loading };
 }

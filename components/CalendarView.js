@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
+import { parseLogDate } from '../utils/workoutCache';
 
 /*───────────────────────────  HELPERS  ───────────────────────────*/
 
@@ -61,7 +62,7 @@ function equipColor(eq) {
 
 /*───────────────────────────  COMPONENT  ───────────────────────────*/
 
-export default function CalendarView({ logs = [], userCreatedAt }) {
+export default function CalendarView({ logs = [], userCreatedAt, initialMonth, initialYear }) {
   const router = useRouter();
 
   const today = useMemo(() => {
@@ -85,8 +86,8 @@ export default function CalendarView({ logs = [], userCreatedAt }) {
     return d;
   }, [userCreatedAt, today]);
 
-  const [currentMonth, setCurrentMonth] = useState(() => today.getMonth());
-  const [currentYear, setCurrentYear] = useState(() => today.getFullYear());
+  const [currentMonth, setCurrentMonth] = useState(() => initialMonth !== undefined ? initialMonth : today.getMonth());
+  const [currentYear, setCurrentYear] = useState(() => initialYear !== undefined ? initialYear : today.getFullYear());
   const [selectedDate, setSelectedDate] = useState(today);
   const [showMonthPicker, setShowMonthPicker] = useState(false);
 
@@ -94,9 +95,7 @@ export default function CalendarView({ logs = [], userCreatedAt }) {
   const activityMap = useMemo(() => {
     const map = {};
     logs.forEach(log => {
-      const ts = log.timestamps?.started?.toDate?.() ||
-        log.timestamps?.created?.toDate?.() ||
-        (log.startTime ? new Date(log.startTime) : null);
+      const ts = parseLogDate(log);
       if (!ts) return;
 
       const key = dateKey(ts);

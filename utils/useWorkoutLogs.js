@@ -1,18 +1,31 @@
 /**
  * useWorkoutLogs Hook
  * 
- * Fetches and manages workout logs data for dashboard and history views.
- * Provides real-time updates and caching for better performance.
+ * Optimized: ONE Firestore fetch, everything derived from it.
+ * Persistent caching via IndexedDB for offline support.
+ * 
+ * Before: 3 parallel Firestore reads (logs + stats + lastWorkout)
+ *   - getUserWorkoutLogs (500 doc reads)
+ *   - getUserWorkoutStats -> internally calls getUserWorkoutLogs AGAIN (1000 doc reads)
+ *   - getLastWorkout -> internally calls getUserWorkoutLogs AGAIN (10 doc reads)
+ *   Total: ~1500+ reads per dashboard load
+ * 
+ * After: 1 Firestore fetch, stats + lastWorkout computed client-side
+ *   Total: ~500 reads (or 0 if cached)
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import {
   getUserWorkoutLogs,
-  getUserWorkoutStats,
-  getLastWorkout,
   getWorkoutCalendarData,
 } from '../services/workoutLogService';
+import {
+  getCachedLogs,
+  setCachedLogs,
+  getMemoryCachedLogs,
+  parseLogDate,
+} from './workoutCache';
 
 export function useWorkoutLogs(options = {}) {
   const { user, isAuthenticated } = useAuth();
@@ -25,59 +38,57 @@ export function useWorkoutLogs(options = {}) {
     calendarMonth = new Date().getMonth(),
   } = options;
 
-  const [logs, setLogs] = useState([]);
-  const [stats, setStats] = useState(null);
-  const [lastWorkout, setLastWorkout] = useState(null);
+  // Initialize from sync memory cache — avoids loading flash on re-navigation
+  const initialLogs = user?.uid ? getMemoryCachedLogs(user.uid) : null;
+
+  const [logs, setLogs] = useState(initialLogs || []);
   const [calendarData, setCalendarData] = useState({});
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!initialLogs);
   const [error, setError] = useState(null);
 
-  // Fetch workout logs
-  const fetchLogs = useCallback(async () => {
-    if (!user?.uid) return;
+  // ─── Single fetch: logs from cache or Firestore ─────────────
+  const fetchLogs = useCallback(async (forceRefresh = false) => {
+    if (!user?.uid) return [];
 
     try {
+      // Try persistent cache first (unless force refresh)
+      if (!forceRefresh) {
+        const cached = await getCachedLogs(user.uid);
+        if (cached) {
+          console.log(`[useWorkoutLogs] Cache hit (${cached.source}), ${cached.data.length} logs`);
+          setLogs(cached.data);
+          return cached.data;
+        }
+      }
+
+      // Cache miss or forced refresh — fetch from Firestore
+      console.log('[useWorkoutLogs] Fetching from Firestore...');
       const fetchedLogs = await getUserWorkoutLogs(user.uid, {
-        status: null, // Get all workouts
+        status: null,
         limitCount,
       });
+
       setLogs(fetchedLogs);
+
+      // Persist to cache (background)
+      setCachedLogs(user.uid, fetchedLogs).catch(() => {});
+
       return fetchedLogs;
     } catch (err) {
       console.error('[useWorkoutLogs] Error fetching logs:', err);
       setError(err.message);
+
+      // On error, try to serve stale cache
+      const staleCache = await getCachedLogs(user.uid);
+      if (staleCache) {
+        console.log('[useWorkoutLogs] Serving stale cache after error');
+        setLogs(staleCache.data);
+        return staleCache.data;
+      }
+
       return [];
     }
   }, [user?.uid, limitCount]);
-
-  // Fetch workout stats
-  const fetchStats = useCallback(async () => {
-    if (!user?.uid) return;
-
-    try {
-      const fetchedStats = await getUserWorkoutStats(user.uid);
-      setStats(fetchedStats);
-      return fetchedStats;
-    } catch (err) {
-      console.error('[useWorkoutLogs] Error fetching stats:', err);
-      // Don't set error for stats, as logs might still work
-      return null;
-    }
-  }, [user?.uid]);
-
-  // Fetch last workout
-  const fetchLastWorkout = useCallback(async () => {
-    if (!user?.uid) return;
-
-    try {
-      const workout = await getLastWorkout(user.uid);
-      setLastWorkout(workout);
-      return workout;
-    } catch (err) {
-      console.error('[useWorkoutLogs] Error fetching last workout:', err);
-      return null;
-    }
-  }, [user?.uid]);
 
   // Fetch calendar data for a specific month
   const fetchCalendarData = useCallback(async (year, month) => {
@@ -96,22 +107,23 @@ export function useWorkoutLogs(options = {}) {
     }
   }, [user?.uid]);
 
-  // Fetch all data
+  // ─── Single entry point: fetch everything needed ────────────
   const fetchAllData = useCallback(async () => {
     if (!user?.uid || !isAuthenticated) {
       setLoading(false);
       return;
     }
 
-    setLoading(true);
+    // Only show loading spinner if we have no data yet (avoids flash on re-navigation)
+    const hasSyncData = getMemoryCachedLogs(user.uid);
+    if (!hasSyncData) {
+      setLoading(true);
+    }
     setError(null);
 
     try {
-      const promises = [fetchLogs(), fetchLastWorkout()];
-      
-      if (includeStats) {
-        promises.push(fetchStats());
-      }
+      // Only fetch logs — stats and lastWorkout are derived below
+      const promises = [fetchLogs()];
       
       if (includeCalendar) {
         promises.push(fetchCalendarData(calendarYear, calendarMonth));
@@ -128,10 +140,7 @@ export function useWorkoutLogs(options = {}) {
     user?.uid, 
     isAuthenticated, 
     fetchLogs, 
-    fetchStats, 
-    fetchLastWorkout, 
     fetchCalendarData,
-    includeStats,
     includeCalendar,
     calendarYear,
     calendarMonth,
@@ -144,10 +153,98 @@ export function useWorkoutLogs(options = {}) {
     }
   }, [autoFetch, isAuthenticated, user?.uid]);
 
-  // Refresh function
+  // Force refresh (bypasses cache)
   const refresh = useCallback(async () => {
-    await fetchAllData();
-  }, [fetchAllData]);
+    if (!user?.uid || !isAuthenticated) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const promises = [fetchLogs(true)]; // force refresh
+      if (includeCalendar) {
+        promises.push(fetchCalendarData(calendarYear, calendarMonth));
+      }
+      await Promise.all(promises);
+    } catch (err) {
+      console.error('[useWorkoutLogs] Error refreshing:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.uid, isAuthenticated, fetchLogs, fetchCalendarData, includeCalendar, calendarYear, calendarMonth]);
+
+  // ─── Derive stats from logs (no extra Firestore reads) ──────
+  const stats = useMemo(() => {
+    if (logs.length === 0) return null;
+
+    const result = {
+      totalWorkouts: logs.length,
+      totalReps: 0,
+      totalSets: 0,
+      totalTime: 0,
+      totalCalories: 0,
+      equipmentDistribution: {},
+      exerciseCount: {},
+      weeklyWorkouts: 0,
+      monthlyWorkouts: 0,
+    };
+
+    const now = new Date();
+    const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    logs.forEach((log) => {
+      // Aggregate results
+      if (log.results) {
+        result.totalReps += log.results.totalReps || log.results.completedReps || 0;
+        result.totalSets += log.results.totalSets || log.results.completedSets || 0;
+        result.totalTime += log.results.totalTime || 0;
+        result.totalCalories += log.results.calories || 0;
+      } else {
+        result.totalReps += log.totalReps || 0;
+        const setsObj = log.sets || {};
+        result.totalSets += Object.keys(setsObj).length;
+      }
+
+      // Equipment distribution
+      let equipment = log._equipment || 
+                      log['exercise.equipmentPath'] ||
+                      (typeof log.exercise === 'object' ? log.exercise?.equipment : null) ||
+                      log.equipment;
+      if (equipment) {
+        equipment = equipment.toLowerCase();
+        if (equipment === 'dumbell') equipment = 'dumbbell';
+        if (equipment === 'stack') equipment = 'weight-stack';
+        if (equipment === 'weight stack') equipment = 'weight-stack';
+        result.equipmentDistribution[equipment] = (result.equipmentDistribution[equipment] || 0) + 1;
+      }
+
+      // Exercise count
+      let exercise = log._exercise || 
+                     log['exercise.namePath'] ||
+                     (typeof log.exercise === 'object' ? log.exercise?.name : null) ||
+                     (typeof log.exercise === 'string' ? log.exercise : null) ||
+                     log.exerciseName;
+      if (exercise) {
+        result.exerciseCount[exercise] = (result.exerciseCount[exercise] || 0) + 1;
+      }
+
+      // Weekly/Monthly counts
+      const createdAt = parseLogDate(log);
+      if (createdAt) {
+        if (createdAt >= oneWeekAgo) result.weeklyWorkouts++;
+        if (createdAt >= oneMonthAgo) result.monthlyWorkouts++;
+      }
+    });
+
+    return result;
+  }, [logs]);
+
+  // ─── Derive lastWorkout from logs (no extra Firestore read) ─
+  const lastWorkout = useMemo(() => {
+    return logs.length > 0 ? logs[0] : null; // logs are already sorted desc
+  }, [logs]);
 
   // Computed values
   const hasWorkouts = logs.length > 0;
@@ -158,51 +255,37 @@ export function useWorkoutLogs(options = {}) {
   // Helper to normalize equipment for display (kebab-case to Title Case)
   const normalizeEquipment = (eq) => {
     if (!eq || eq === 'Unknown') return 'Unknown';
-    // Convert kebab-case to Title Case: "weight-stack" -> "Weight Stack"
     return eq.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
   };
 
   // Helper to normalize exercise name for display (kebab-case to Title Case)
   const normalizeExercise = (ex) => {
     if (!ex || ex === 'Unknown Exercise') return 'Unknown Exercise';
-    // Convert kebab-case to Title Case: "seated-leg-extension" -> "Seated Leg Extension"
     return ex.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
   };
 
-  // Format recent workouts for display - handle both old and new data formats
-  // Show ALL workouts, not limited to 5
-  const recentWorkouts = logs.map(log => {
-    // Get exercise name - handle both formats, prefer _exercise from path
+  // Format recent workouts for display
+  const recentWorkouts = useMemo(() => logs.map(log => {
     const rawExercise = log._exercise || log.exercise?.name || log.exercise || 'Unknown Exercise';
     const exerciseName = normalizeExercise(rawExercise);
-    // Get equipment - handle both formats, prefer _equipment from path (most reliable)
     const rawEquipment = log._equipment || log.exercise?.equipment || log.equipment || 'Unknown';
     const equipment = normalizeEquipment(rawEquipment);
-    // Get weight - handle both formats
     const weight = log.planned?.weight || log.weight || 0;
     const weightUnit = log.planned?.weightUnit || log.weightUnit || 'kg';
-    // Get reps - handle both formats
     const reps = log.results?.totalReps || log.totalReps || 0;
-    // Get sets - handle both formats, with fallback to planned sets
     const sets = log.results?.totalSets || (log.sets ? Object.keys(log.sets).length : 0) || log.planned?.sets || 0;
-    // Get planned values for completion check
     const plannedSets = log.planned?.sets || sets;
     const plannedReps = (log.planned?.sets || 1) * (log.planned?.reps || 10);
-    // Check if workout is incomplete (fewer sets or reps than planned)
     const isIncomplete = sets < plannedSets || reps < plannedReps;
-    // Get duration
     const duration = log.results?.totalTime || 0;
-    // Get date - handle both timestamp formats
-    const timestamp = log.timestamps?.started?.toDate?.() || 
-                     log.timestamps?.created?.toDate?.() ||
-                     (log.startTime ? new Date(log.startTime) : null);
+    const timestamp = parseLogDate(log);
     
     return {
       id: log.id,
-      logId: log.id, // alias for clarity in navigation
+      logId: log.id,
       exercise: exerciseName,
-      rawExercise: log._exercise || rawExercise.toLowerCase().replace(/\s+/g, '-'), // kebab-case for URL
-      rawEquipment: log._equipment || rawEquipment.toLowerCase().replace(/\s+/g, '-'), // kebab-case for URL
+      rawExercise: log._exercise || rawExercise.toLowerCase().replace(/\s+/g, '-'),
+      rawEquipment: log._equipment || rawEquipment.toLowerCase().replace(/\s+/g, '-'),
       equipment,
       weight,
       weightUnit,
@@ -215,16 +298,17 @@ export function useWorkoutLogs(options = {}) {
       date: formatRelativeDate(timestamp),
       createdAt: timestamp,
     };
-  });
+  }), [logs]);
 
   // Equipment distribution for charts
-  const equipmentDistribution = Object.entries(stats?.equipmentDistribution || {}).map(
-    ([equipment, count]) => ({
-      equipment,
-      count,
-      percentage: totalWorkouts > 0 ? Math.round((count / totalWorkouts) * 100) : 0,
-    })
-  );
+  const equipmentDistribution = useMemo(() => 
+    Object.entries(stats?.equipmentDistribution || {}).map(
+      ([equipment, count]) => ({
+        equipment,
+        count,
+        percentage: totalWorkouts > 0 ? Math.round((count / totalWorkouts) * 100) : 0,
+      })
+    ), [stats, totalWorkouts]);
 
   return {
     // Data
@@ -248,8 +332,6 @@ export function useWorkoutLogs(options = {}) {
     // Actions
     refresh,
     fetchLogs,
-    fetchStats,
-    fetchLastWorkout,
     fetchCalendarData,
   };
 }

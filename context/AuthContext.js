@@ -18,6 +18,7 @@ import {
   sendPasswordResetEmail
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { clearAllCache } from '../utils/workoutCache';
 import { app } from '../config/firebase';
 import { db } from '../config/firestore';
 
@@ -281,6 +282,9 @@ export function AuthProvider({ children }) {
         localStorage.removeItem('applift:userProfile');
         sessionStorage.removeItem('applift-appmode-splash-seen');
       }
+
+      // Clear persistent workout cache
+      await clearAllCache().catch(() => {});
     } catch (error) {
       console.error('Error signing out:', error);
       throw error;

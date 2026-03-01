@@ -58,7 +58,6 @@ export default function ForgotPassword() {
           height: 100dvh;
           width: 100vw;
           overflow: hidden;
-          padding-top: max(0.5rem, env(safe-area-inset-top));
           padding-bottom: env(safe-area-inset-bottom);
           padding-left: max(1rem, env(safe-area-inset-left));
           padding-right: max(1rem, env(safe-area-inset-right));
@@ -88,7 +87,7 @@ export default function ForgotPassword() {
         }
       `}</style>
 
-      <div className="auth-container bg-black flex items-center justify-center">
+      <div className="auth-container bg-black flex items-center justify-center pt-2 pt-pwa-dynamic">
         <div className="auth-wrapper relative w-full">
           <div 
             className="bg-white/5 backdrop-blur-md rounded-[36px] shadow-2xl relative"

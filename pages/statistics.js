@@ -5,6 +5,7 @@ import BottomNav from '../components/BottomNav';
 import EquipmentCards from '../components/EquipmentCards';
 import CalendarView from '../components/CalendarView';
 import { useWorkoutLogs } from '../utils/useWorkoutLogs';
+import { parseLogDate } from '../utils/workoutCache';
 import { useAuth } from '../context/AuthContext';
 import {
   ResponsiveContainer,
@@ -139,9 +140,7 @@ export default function Statistics() {
 
   // Helper: parse log date
   const getLogDate = (log) => {
-    return log.timestamps?.started?.toDate?.() || 
-           log.timestamps?.created?.toDate?.() ||
-           (log.startTime ? new Date(log.startTime) : null);
+    return parseLogDate(log);
   };
 
   // Calculate daily load data for the CURRENT WEEK (Sun-Sat)
@@ -314,9 +313,7 @@ export default function Statistics() {
     let totalMinutes = 0;
     
     logs.forEach((log) => {
-      const createdAt = log.timestamps?.started?.toDate?.() || 
-                        log.timestamps?.created?.toDate?.() ||
-                        (log.startTime ? new Date(log.startTime) : null);
+      const createdAt = parseLogDate(log);
       if (!createdAt) return;
       
       const logDate = new Date(createdAt);
@@ -533,13 +530,14 @@ export default function Statistics() {
               <CalendarView
                 logs={logs}
                 userCreatedAt={user?.metadata?.creationTime}
+                initialMonth={router.query.month !== undefined ? parseInt(router.query.month) : undefined}
+                initialYear={router.query.year !== undefined ? parseInt(router.query.year) : undefined}
               />
             </section>
           )}
         </div>
       </main>
       
-      <BottomNav />
     </div>
   );
 }

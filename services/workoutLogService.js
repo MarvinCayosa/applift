@@ -19,6 +19,7 @@
  */
 
 import { db } from '../config/firestore';
+import { invalidateUserCache } from '../utils/workoutCache';
 import { 
   collection, 
   doc, 
@@ -43,7 +44,7 @@ const WORKOUT_LOGS_COLLECTION = 'workoutLogs'; // Legacy - for backward compatib
 const cache = {
   logs: new Map(),
   stats: new Map(),
-  TTL: 30000, // 30 seconds cache
+  TTL: 5 * 60 * 1000, // 5 minutes cache
 };
 
 /**
@@ -70,8 +71,12 @@ const setCache = (key, data) => {
  */
 export const clearUserCache = (userId) => {
   cache.logs.delete(`logs_${userId}`);
+  cache.logs.delete(`logs_${userId}_all`);
+  cache.logs.delete(`logs_${userId}_completed`);
   cache.stats.delete(`stats_${userId}`);
-  console.log('[WorkoutLogService] Cleared cache for user:', userId);
+  // Also invalidate persistent cache
+  invalidateUserCache(userId).catch(() => {});
+  console.log('[WorkoutLogService] Cleared all caches for user:', userId);
 };
 
 /**
