@@ -1,5 +1,6 @@
 import Head from 'next/head';
 import { useState, useMemo, useRef, useEffect } from 'react';
+import { useRouter } from 'next/router';
 import BottomNav from '../components/BottomNav';
 import EquipmentCards from '../components/EquipmentCards';
 import CalendarView from '../components/CalendarView';
@@ -118,8 +119,16 @@ export default function Statistics() {
     includeStats: true 
   });
   const { user } = useAuth();
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState('statistics');
   const [liftViewType, setLiftViewType] = useState('week');
+
+  // Read tab from query params (e.g. ?tab=calendar)
+  useEffect(() => {
+    if (router.isReady && router.query.tab === 'calendar') {
+      setActiveTab('calendar');
+    }
+  }, [router.isReady, router.query.tab]);
 
   // Helper: get load from a log entry
   const getLogLoad = (log) => {

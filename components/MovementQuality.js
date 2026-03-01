@@ -166,17 +166,17 @@ export default function MovementQuality({
 
   if (loading) {
     return (
-      <div className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 animate-pulse">
-        <div className="flex items-center justify-between mb-4">
-          <div className="h-5 w-40 bg-white/10 rounded"></div>
-          <div className="flex gap-2">
+      <div className="w-full bg-white/5 rounded-2xl p-3 sm:p-4 animate-pulse">
+        <div className="flex items-center justify-between mb-3 sm:mb-4">
+          <div className="h-5 w-32 sm:w-40 bg-white/10 rounded"></div>
+          <div className="flex gap-1.5 sm:gap-2">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="h-8 w-16 bg-white/10 rounded-full"></div>
+              <div key={i} className="h-7 w-12 sm:h-8 sm:w-16 bg-white/10 rounded-full"></div>
             ))}
           </div>
         </div>
-        <div className="flex items-center gap-6">
-          <div className="w-32 h-32 bg-white/10 rounded-full"></div>
+        <div className="flex items-center gap-4 sm:gap-6">
+          <div className="w-24 h-24 sm:w-32 sm:h-32 bg-white/10 rounded-full"></div>
           <div className="flex-1 space-y-3">
             {[1, 2, 3].map((i) => (
               <div key={i} className="h-8 bg-white/10 rounded-lg"></div>
@@ -191,23 +191,23 @@ export default function MovementQuality({
   if (!hasData) {
     return (
       <div className="w-full">
-        <div className="relative overflow-hidden bg-white/5 border border-white/10 rounded-2xl p-4">
+        <div className="relative overflow-hidden bg-white/5 rounded-2xl p-3 sm:p-4">
           {/* Header */}
-          <div className="flex items-center justify-between gap-3 mb-4 relative z-10">
+          <div className="flex items-center justify-between gap-3 mb-3 sm:mb-4 relative z-10">
             <div>
-              <h3 className="text-xl font-semibold text-white">Movement Quality</h3>
+              <h3 className="text-lg sm:text-xl font-semibold text-white">Movement Quality</h3>
               <p className="text-[10px] text-white/40">Weekly aggregated result</p>
             </div>
           </div>
           
           {/* Empty State */}
-          <div className="flex flex-col items-center justify-center py-8">
+          <div className="flex flex-col items-center justify-center py-6 sm:py-8">
             <div className="text-white/30 mb-2">
-              <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-10 h-10 sm:w-12 sm:h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
               </svg>
             </div>
-            <p className="text-sm text-white/40">No data available</p>
+            <p className="text-xs sm:text-sm text-white/40">No data available</p>
             <p className="text-[10px] text-white/30 mt-1">Complete workouts with IMU sensors to track quality</p>
           </div>
         </div>
@@ -218,7 +218,7 @@ export default function MovementQuality({
   return (
     <div className="w-full">
       {/* Card Container */}
-      <div className="relative overflow-hidden bg-white/5 border border-white/10 rounded-2xl p-4 transition-all duration-300">
+      <div className="relative overflow-hidden bg-white/5 rounded-2xl p-3 sm:p-4 transition-all duration-300">
         
         {/* Subtle animated background glow */}
         <div 
@@ -229,10 +229,10 @@ export default function MovementQuality({
         />
 
         {/* Header with Title and Equipment Filter Icons */}
-        <div className="flex items-center justify-between gap-3 mb-4 relative z-10">
+        <div className="flex items-center justify-between gap-2 sm:gap-3 mb-3 sm:mb-4 relative z-10">
           {/* Title - No icon */}
           <div>
-            <h3 className="text-xl font-semibold text-white">Movement Quality</h3>
+            <h3 className="text-lg sm:text-xl font-semibold text-white">Movement Quality</h3>
             <p className="text-[10px] text-white/40">Weekly aggregated result</p>
           </div>
 
@@ -243,7 +243,7 @@ export default function MovementQuality({
                 key={filter.id}
                 onClick={() => handleFilterChange(filter.id)}
                 className={`
-                  p-2.5 rounded-lg transition-all duration-300 ease-out
+                  p-2 sm:p-2.5 rounded-lg transition-all duration-300 ease-out
                   ${activeFilter === filter.id 
                     ? 'scale-105' 
                     : 'bg-white/10 hover:bg-white/15 opacity-50 hover:opacity-80'
@@ -257,7 +257,7 @@ export default function MovementQuality({
                 <img 
                   src={filter.icon.props.src} 
                   alt={filter.icon.props.alt}
-                  className="w-5 h-5"
+                  className="w-4 h-4 sm:w-5 sm:h-5"
                   style={{ 
                     filter: 'brightness(0) saturate(100%) invert(1)'
                   }}
@@ -268,11 +268,11 @@ export default function MovementQuality({
         </div>
 
         {/* Main Content */}
-        <div className="flex items-center gap-5 relative z-10">
+        <div className="flex items-center gap-3 sm:gap-5 relative z-10">
           
           {/* Circular Score Gauge */}
           <div className="relative flex-shrink-0">
-            <div className="relative w-28 h-28">
+            <div className="relative w-24 h-24 sm:w-28 sm:h-28">
               {/* Background circle */}
               <svg className="w-full h-full transform -rotate-90" viewBox="0 0 120 120">
                 <circle
@@ -304,7 +304,7 @@ export default function MovementQuality({
               {/* Center content */}
               <div className="absolute inset-0 flex flex-col items-center justify-center">
                 <span 
-                  className={`text-3xl font-bold transition-all duration-300 ${isAnimating ? 'scale-105' : 'scale-100'}`}
+                  className={`text-2xl sm:text-3xl font-bold transition-all duration-300 ${isAnimating ? 'scale-105' : 'scale-100'}`}
                   style={{ color: scoreColor }}
                 >
                   {displayScore}

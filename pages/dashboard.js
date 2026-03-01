@@ -952,8 +952,8 @@ export default function Dashboard() {
               <div className="flex items-center justify-between content-fade-up-1">
                 {/* Greetings on left */}
                 <div className="flex flex-col leading-tight">
-                  <span className="text-sm text-white/40 mb-1">Start your training today!</span>
-                  <span className="text-2xl sm:text-3xl font-bold text-white">
+                  <span className="text-xs sm:text-sm text-white/40 mb-1">Start your training today!</span>
+                  <span className="text-xl sm:text-2xl md:text-3xl font-bold text-white">
                     Hi, <span style={{ color: getNameTextColor(userProfile, user?.uid) }}>
                       {getFirstWord(userProfile?.username || profile?.username || user?.displayName || 'User')}
                     </span>
@@ -964,14 +964,14 @@ export default function Dashboard() {
                 <div className="relative z-[10100]" ref={profileRef}>
                   <button
                     onClick={() => setProfileOpen(!profileOpen)}
-                    className="w-12 h-12 sm:w-12 sm:h-12 rounded-full border border-white/20 flex items-center justify-center flex-shrink-0 hover:border-white/40 transition-colors overflow-hidden"
+                    className="w-10 h-10 sm:w-12 sm:h-12 rounded-full border border-white/20 flex items-center justify-center flex-shrink-0 hover:border-white/40 transition-colors overflow-hidden"
                     style={userProfile?.profileImage ? {} : (userProfile?.profileColor ? { background: PROFILE_COLORS.find(c => c.value === userProfile.profileColor)?.gradient || getUserAvatarColorStyle(user?.uid).background } : getUserAvatarColorStyle(user?.uid))}
                     aria-label="Profile menu"
                   >
                     {userProfile?.profileImage ? (
                       <img src={userProfile.profileImage} alt="Profile" className="w-full h-full object-cover" />
                     ) : (
-                      <span className="text-lg font-semibold text-white">{userInitials}</span>
+                      <span className="text-base sm:text-lg font-semibold text-white">{userInitials}</span>
                     )}
                   </button>
 
@@ -1019,7 +1019,7 @@ export default function Dashboard() {
 
           {/* Overview label outside the carousel */}
           <div className="flex items-center justify-between mb-1 md:mb-3 content-fade-up-2">
-            <h2 className="text-lg sm:text-xl font-semibold text-white">Overview</h2>
+            <h2 className="text-base sm:text-lg md:text-xl font-semibold text-white">Overview</h2>
           </div>
 
           {/* Workout Streak Section - positioned under Overview */}
@@ -1042,21 +1042,21 @@ export default function Dashboard() {
                   className="flex gap-4 overflow-x-auto pb-2 snap-x snap-mandatory snap-center scrollbar-hide scroll-smooth px-4"
                 >
                   {/* Card 1: Activity Overview */}
-                  <article className="min-w-[calc(100vw-24px)] w-[calc(100vw-24px)] max-w-[384px] shrink-0 snap-center rounded-3xl bg-white/10 p-5 shadow-2xl h-[320px] flex flex-col">
+                  <article className="min-w-[calc(100vw-24px)] w-[calc(100vw-24px)] max-w-[384px] shrink-0 snap-center rounded-3xl bg-white/10 p-4 sm:p-5 shadow-2xl h-[290px] sm:h-[320px] flex flex-col">
                     <ActivityOverview
                       currentWeek={currentWeek}
                       calendar3Months={calendar3Months}
                       workoutLogs={workoutLogsForCalendar}
                       onDaySelect={(day) => router.push(`/statistics?day=${day.day}`)}
-                      onMonthSelect={(month, year) => router.push(`/statistics?month=${month}&year=${year}`)}
+                      onMonthSelect={(month, year) => router.push(`/statistics?tab=calendar&month=${month}&year=${year}`)}
                       variant="mobile"
                     />
                   </article>
 
                   {/* Card 2: Recent Workouts */}
-                  <article className="min-w-[calc(100vw-24px)] w-[calc(100vw-24px)] max-w-[384px] shrink-0 snap-center rounded-3xl bg-white/10 p-5 shadow-2xl h-[320px] flex flex-col">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-xl font-semibold text-white/90">Recent Workouts</h3>
+                  <article className="min-w-[calc(100vw-24px)] w-[calc(100vw-24px)] max-w-[384px] shrink-0 snap-center rounded-3xl bg-white/10 p-4 sm:p-5 shadow-2xl h-[290px] sm:h-[320px] flex flex-col">
+                    <div className="flex items-center justify-between mb-3 sm:mb-4">
+                      <h3 className="text-lg sm:text-xl font-semibold text-white/90">Recent Workouts</h3>
                       <button
                         onClick={() => router.push('/statistics')}
                         className="text-white/40 hover:text-white/60 transition-colors"
@@ -1132,7 +1132,7 @@ export default function Dashboard() {
                     calendar3Months={calendar3Months}
                     workoutLogs={workoutLogsForCalendar}
                     onDaySelect={(day) => router.push(`/statistics?day=${day.day}`)}
-                    onMonthSelect={(month, year) => router.push(`/statistics?month=${month}&year=${year}`)}
+                    onMonthSelect={(month, year) => router.push(`/statistics?tab=calendar&month=${month}&year=${year}`)}
                     variant="desktop"
                   />
                 </div>
@@ -1222,7 +1222,7 @@ export default function Dashboard() {
 
           {/* Two half-width cards side by side */}
           <section className="mb-4 md:mb-6 content-fade-up-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3 sm:gap-4">
               {/* Left: Equipment Distribution */}
               <EquipmentDistributionCard
                 data={equipmentDistributionData}
