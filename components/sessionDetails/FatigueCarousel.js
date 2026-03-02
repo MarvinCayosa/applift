@@ -34,6 +34,8 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
   const [dragCurrentY, setDragCurrentY] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [isClosingOverlay, setIsClosingOverlay] = useState(false);
+  const [infoSwipeStartX, setInfoSwipeStartX] = useState(null);
+  const [infoSwipeX, setInfoSwipeX] = useState(0);
   const carouselRef = useRef(null);
   const SLIDES = 2;
 
@@ -54,6 +56,8 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
       setIsClosingOverlay(false);
       setDragCurrentY(0);
       setInfoSlide(0);
+      setInfoSwipeX(0);
+      setInfoSwipeStartX(null);
     }, 250);
   };
   const handleOverlayTouchEnd = (setter) => {
@@ -63,6 +67,30 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
     } else {
       setDragCurrentY(0);
     }
+  };
+
+  // Horizontal swipe handlers for info overlay slides
+  const handleInfoSwipeStart = (e) => {
+    setInfoSwipeStartX(e.touches[0].clientX);
+  };
+  const handleInfoSwipeMove = (e) => {
+    if (infoSwipeStartX === null) return;
+    const dx = e.touches[0].clientX - infoSwipeStartX;
+    const INFO_SLIDES = 2;
+    if ((infoSlide === 0 && dx > 0) || (infoSlide === INFO_SLIDES - 1 && dx < 0)) {
+      setInfoSwipeX(dx * 0.25);
+    } else {
+      setInfoSwipeX(dx);
+    }
+  };
+  const handleInfoSwipeEnd = () => {
+    const INFO_SLIDES = 2;
+    if (Math.abs(infoSwipeX) > 50) {
+      if (infoSwipeX < 0 && infoSlide < INFO_SLIDES - 1) setInfoSlide(infoSlide + 1);
+      else if (infoSwipeX > 0 && infoSlide > 0) setInfoSlide(infoSlide - 1);
+    }
+    setInfoSwipeX(0);
+    setInfoSwipeStartX(null);
   };
 
   // Scroll tracking
@@ -521,25 +549,30 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
               <div className="w-10 h-1 rounded-full bg-white/20" />
             </div>
 
-            {/* Slide content */}
-            <div className="overflow-hidden">
+            {/* Slide content — swipe left/right */}
+            <div
+              className="overflow-hidden"
+              onTouchStart={handleInfoSwipeStart}
+              onTouchMove={handleInfoSwipeMove}
+              onTouchEnd={handleInfoSwipeEnd}
+            >
               <div
-                className="flex transition-transform duration-300 ease-out"
-                style={{ transform: `translateX(-${infoSlide * 100}%)` }}
+                className={`flex ${infoSwipeStartX === null ? 'transition-transform duration-300 ease-out' : ''}`}
+                style={{ transform: `translateX(calc(-${infoSlide * 100}% + ${infoSwipeX}px))` }}
               >
-                {/* Slide 1: Understanding Fatigue */}
+                {/* Slide 1: What This Means */}
                 <div className="w-full shrink-0 px-5 overflow-y-auto" style={{ maxHeight: '65vh' }}>
-                  <h4 className="text-[16px] font-bold text-white mb-3">Understanding Fatigue</h4>
+                  <h4 className="text-[16px] font-bold text-white mb-3">What This Means</h4>
                   <p className="text-[13px] text-white/60 leading-relaxed mb-4">
-                    This score shows how tired your muscles got during your set. It compares your speed, timing, and control in your first few reps versus your last few to measure how much your performance changed.
+                    This score shows how much your muscles fatigued during the set. It compares your first few reps (when fresh) to your last few reps to measure performance drop-off.
                   </p>
                   <div className="space-y-2 mb-4">
-                    <p className="text-[13px] font-semibold text-white/70 mb-1">What the indicators mean:</p>
+                    <p className="text-[13px] font-semibold text-white/70 mb-1">The 4 indicators:</p>
                     {[
-                      { color: 'bg-cyan-400', title: 'Velocity Drop (D\u03C9)', desc: 'How much your peak movement speed dropped. Fatigued muscles produce force more slowly.' },
-                      { color: 'bg-purple-400', title: 'Rep Slowdown (I_T)', desc: 'How much longer your later reps took. When reps slow down, your muscles are generating force more slowly.' },
-                      { color: 'bg-orange-400', title: 'Jerk Increase (I_J)', desc: 'How much choppier your movement became. A fatigued CNS struggles to coordinate smooth contractions.' },
-                      { color: 'bg-rose-400', title: 'Shakiness Increase (I_S)', desc: 'How much more tremor and instability appeared. Directly related to motor unit fatigue.' },
+                      { color: 'bg-cyan-400', title: 'Speed Drop', desc: 'How much slower you moved by your last reps.' },
+                      { color: 'bg-purple-400', title: 'Rep Slowdown', desc: 'How much longer each rep took toward the end.' },
+                      { color: 'bg-orange-400', title: 'Jerkiness', desc: 'Whether your movement became choppy or uneven.' },
+                      { color: 'bg-rose-400', title: 'Shakiness', desc: 'Whether tremor or instability increased.' },
                     ].map((item, i) => (
                       <div key={i} className="flex items-start gap-2.5">
                         <div className={`w-2 h-2 rounded-full ${item.color} mt-1.5 shrink-0`} />
@@ -569,35 +602,34 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
                   </div>
                 </div>
 
-                {/* Slide 2: How It's Computed */}
+                {/* Slide 2: How It Works */}
                 <div className="w-full shrink-0 px-5 overflow-y-auto" style={{ maxHeight: '65vh' }}>
-                  <h4 className="text-[16px] font-bold text-white mb-3">How It{'\u2019'}s Computed</h4>
+                  <h4 className="text-[16px] font-bold text-white mb-3">How It Works</h4>
                   <p className="text-[13px] text-white/60 leading-relaxed mb-4">
-                    Your reps are split into thirds. The first third (when you{'\u2019'}re freshest) is compared against the last third (when you{'\u2019'}re most fatigued).
+                    Your reps are split into thirds. The first third (freshest) is compared to the last third (most tired) to see how much each metric changed.
                   </p>
+                  <p className="text-[12px] font-semibold text-white/50 mb-2">Each indicator{'\u2019'}s weight in the final score:</p>
                   <div className="space-y-3 mb-4">
                     {[
-                      { label: 'Velocity Drop (D\u03C9)', formula: '(Avg First \u2153 \u2212 Avg Last \u2153) \u00F7 Avg First \u2153', weight: '35%', color: 'text-cyan-400' },
-                      { label: 'Duration Increase (I_T)', formula: '(Avg Last \u2153 \u2212 Avg First \u2153) \u00F7 Avg First \u2153', weight: '25%', color: 'text-purple-400' },
-                      { label: 'Jerk Increase (I_J)', formula: '(Avg Last \u2153 \u2212 Avg First \u2153) \u00F7 Avg First \u2153', weight: '20%', color: 'text-orange-400' },
-                      { label: 'Shakiness Increase (I_S)', formula: '(Avg Last \u2153 \u2212 Avg First \u2153) \u00F7 Avg First \u2153', weight: '20%', color: 'text-rose-400' },
+                      { label: 'Speed Drop', weight: 35, color: 'bg-cyan-400', textColor: 'text-cyan-400' },
+                      { label: 'Rep Slowdown', weight: 25, color: 'bg-purple-400', textColor: 'text-purple-400' },
+                      { label: 'Jerkiness', weight: 20, color: 'bg-orange-400', textColor: 'text-orange-400' },
+                      { label: 'Shakiness', weight: 20, color: 'bg-rose-400', textColor: 'text-rose-400' },
                     ].map((item, i) => (
-                      <div key={i} className="rounded-xl bg-white/[0.04] p-3">
+                      <div key={i}>
                         <div className="flex items-center justify-between mb-1">
-                          <span className={`text-[13px] font-semibold ${item.color}`}>{item.label}</span>
-                          <span className="text-[11px] text-white/30 font-mono">weight: {item.weight}</span>
+                          <span className={`text-[13px] font-medium ${item.textColor}`}>{item.label}</span>
+                          <span className="text-[12px] text-white/50 font-semibold">{item.weight}%</span>
                         </div>
-                        <p className="text-[11px] text-white/40 font-mono">{item.formula}</p>
+                        <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                          <div className={`h-full rounded-full ${item.color} opacity-60`} style={{ width: `${item.weight}%` }} />
+                        </div>
                       </div>
                     ))}
                   </div>
-                  <div className="rounded-xl bg-white/[0.06] p-3 mb-4">
-                    <p className="text-[12px] font-semibold text-white/70 mb-1">Kinematic Formula</p>
-                    <p className="text-[12px] text-white/50 font-mono leading-relaxed">
-                      Fatigue = 0.35\u00D7D\u03C9 + 0.25\u00D7I_T + 0.20\u00D7I_J + 0.20\u00D7I_S
-                    </p>
-                    <p className="text-[11px] text-white/30 mt-2">
-                      With ML classification, weights shift and an execution quality factor (Q_exec, 29%) is added based on rep form analysis.
+                  <div className="rounded-xl bg-white/[0.04] p-3">
+                    <p className="text-[12px] text-white/50 leading-relaxed">
+                      The bigger the change between your first and last reps, the higher the score. A higher score isn{'\u2019'}t always bad {'\u2014'} it can mean you pushed hard.
                     </p>
                   </div>
                 </div>
