@@ -426,7 +426,7 @@ export default function Workouts() {
               >
                 {/* Info button in inner container for disconnected state */}
                 <button 
-                  onClick={() => setShowInstructionModal(true)}
+                  onClick={() => setShowOnboardingModal(true)}
                   className={`absolute top-4 right-4 z-10 flex h-7 w-7 items-center justify-center rounded-full transition-colors ${
                     connected
                       ? 'bg-[#7C3AED] text-white/90 hover:bg-[#8B5CF6]'
@@ -666,6 +666,7 @@ export default function Workouts() {
         variant="workoutSetup"
         isOpen={showOnboardingModal}
         onClose={() => setShowOnboardingModal(false)}
+        initialStep={connected ? 1 : 0}
         onComplete={() => {
           setShowOnboardingModal(false);
         }}

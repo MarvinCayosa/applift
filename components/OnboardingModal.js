@@ -31,6 +31,7 @@ const WORKOUT_STEPS = [
  *  - onSkip         () => void           (fires when the user skips / closes early)
  *  - onNavigate     (path: string) => void   (router.push wrapper)
  *  - onDontShowAgain () => void
+ *  - initialStep    number               (starting step index, e.g. 1 to skip pairing)
  */
 export default function InstructionModal({
   variant = 'welcome',
@@ -40,6 +41,7 @@ export default function InstructionModal({
   onSkip,
   onNavigate,
   onDontShowAgain,
+  initialStep = 0,
 }) {
   const bluetooth = useBluetooth();
   const {
@@ -65,13 +67,13 @@ export default function InstructionModal({
   // Reset when variant or open state changes
   useEffect(() => {
     if (isOpen) {
-      setCurrentStep(0);
+      setCurrentStep(initialStep || 0);
       setIsClosing(false);
       setDontShow(false);
       setAttachTab(0);
       setDevMode(false);
     }
-  }, [isOpen, variant]);
+  }, [isOpen, variant, initialStep]);
 
   // ── Close with exit animation ──────────────────────────────────
   const handleClose = useCallback(() => {
@@ -146,44 +148,47 @@ export default function InstructionModal({
 
   // ── WELCOME VARIANT ────────────────────────────────────────────
   const renderWelcome = () => (
-    <div className="px-1 flex flex-col h-full">
-      {/* Logo + Title */}
-      <div className="flex flex-col items-center mt-4 mb-8">
-        <div className="flex items-center gap-3 mb-4">
+    <div className="px-1 flex flex-col h-full items-center">
+      {/* Centered content with top margin */}
+      <div className="flex flex-col items-center w-full mt-4">
+        {/* Logo */}
+        <div className="mb-6">
           <img
-            src="/images/applift-logo/applift-app-logo.png"
+            src="/images/applift-logo/AppLift_Logo_White.png"
             alt="AppLift"
-            className="w-12 h-12 rounded-xl"
+            className="w-40 h-40 object-contain"
           />
-          <h2 className="text-2xl font-bold text-white">Welcome to AppLift!</h2>
         </div>
-        <p className="text-base text-white/60 text-center max-w-xs leading-relaxed">
-          Let&apos;s set up your device and show you how to start your first workout.
+
+        {/* Title */}
+        <h2 className="text-3xl font-bold text-white mb-3">Welcome to AppLift!</h2>
+
+        {/* Subtext */}
+        <p className="text-base text-white/50 text-center max-w-xs leading-relaxed mb-6">
+          Let&apos;s set up your device to start your first workout.
         </p>
-      </div>
 
-      <div className="flex-1" />
-
-      {/* Buttons */}
-      <div className="space-y-3">
-        <button
-          type="button"
-          onClick={() => {
-            onComplete?.();
-            onNavigate?.('/workouts');
-            handleClose();
-          }}
-          className="w-full py-4 text-base font-bold rounded-xl bg-violet-600 hover:bg-violet-500 active:bg-violet-700 text-white transition-all duration-150"
-        >
-          Let&apos;s get started
-        </button>
-        <button
-          type="button"
-          onClick={handleSkip}
-          className="w-full py-3 text-sm font-medium rounded-xl text-white/50 hover:text-white/70 transition-all duration-150"
-        >
-          Skip for now
-        </button>
+        {/* Buttons */}
+        <div className="w-full space-y-3">
+          <button
+            type="button"
+            onClick={() => {
+              onComplete?.();
+              onNavigate?.('/workouts');
+              handleClose();
+            }}
+            className="w-full py-4 text-base font-bold rounded-full bg-violet-600 hover:bg-violet-500 active:bg-violet-700 text-white transition-all duration-150"
+          >
+            Let&apos;s get started
+          </button>
+          <button
+            type="button"
+            onClick={handleSkip}
+            className="w-full py-3 text-sm font-medium rounded-full text-white/50 hover:text-white/70 transition-all duration-150"
+          >
+            Skip for now
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -191,7 +196,7 @@ export default function InstructionModal({
   // ── WORKOUT SETUP STEPS ────────────────────────────────────────
 
   const renderPairing = () => (
-    <div className="px-1">
+    <div className="px-1 mt-3">
       <div className="text-center mb-5">
         <h2 className="text-2xl font-bold text-white mb-2">Pair your AppLift device</h2>
         <p className="text-sm text-white/60">
@@ -283,7 +288,7 @@ export default function InstructionModal({
   );
 
   const renderNFC = () => (
-    <div className="px-1 flex flex-col h-full">
+    <div className="px-1 flex flex-col h-full mt-3">
       <div className="text-center mb-4">
         <h2 className="text-2xl font-bold text-white mb-2">Scan the NFC sticker</h2>
         <p className="text-base text-white/60">
@@ -325,7 +330,7 @@ export default function InstructionModal({
   );
 
   const renderAttach = () => (
-    <div className="px-1 flex flex-col h-full">
+    <div className="px-1 flex flex-col h-full mt-3">
       <div className="text-center mb-4">
         <h2 className="text-2xl font-bold text-white mb-2">Attach AppLift to the equipment</h2>
         <p className="text-base text-white/60">
@@ -389,46 +394,28 @@ export default function InstructionModal({
   );
 
   const renderReady = () => (
-    <div className="px-1 flex flex-col h-full items-center justify-center">
-      {/* Vertically centered content block */}
-      <div className="flex flex-col items-center justify-center flex-1 w-full">
-        <div className="w-64 h-64 rounded-2xl overflow-hidden mb-4">
+    <div className="px-1 flex flex-col h-full mt-3">
+      <div className="text-center mb-4">
+        <h2 className="text-2xl font-bold text-white mb-2">You got it!</h2>
+        <p className="text-base text-white/50 max-w-[280px] mx-auto leading-relaxed">
+          You&apos;re now ready to start your AppLift journey!
+        </p>
+      </div>
+
+      <div className="flex justify-center flex-1 items-center my-2">
+        <div className="w-72 h-72 rounded-2xl overflow-hidden">
           <img
             src="/gif/Module_Pairing.gif"
             alt="Ready to go"
             className="w-full h-full object-contain"
           />
         </div>
-        <h2 className="text-2xl font-bold text-white mb-2">You&apos;re ready!</h2>
-        <p className="text-base text-white/60 text-center max-w-xs leading-relaxed mb-6">
-          Start your AppLift journey!
-        </p>
+      </div>
 
-        {/* Buttons */}
-        <div className="w-full space-y-3 mt-3">
-          <button
-            type="button"
-            onClick={() => {
-              if (dontShow) onDontShowAgain?.();
-              onComplete?.();
-              handleClose();
-            }}
-            className="w-full py-4 text-base font-bold rounded-full bg-violet-600 hover:bg-violet-500 active:bg-violet-700 text-white transition-all duration-150"
-          >
-            Got it
-          </button>
-
-          <button
-            type="button"
-            onClick={goPrev}
-            className="w-full py-2.5 text-sm font-semibold rounded-full text-white/50 hover:text-white/70 transition-all duration-150"
-          >
-            Back
-          </button>
-        </div>
-
-        {/* Don't show again toggle */}
-        <label className="flex items-center justify-center gap-2 mt-3 cursor-pointer select-none">
+      {/* Don't show this again + Nav buttons */}
+      <div className="mt-auto space-y-4">
+        {/* Don't show this again toggle */}
+        <label className="flex items-center justify-center gap-2 cursor-pointer select-none">
           <span
             role="checkbox"
             aria-checked={dontShow}
@@ -445,8 +432,29 @@ export default function InstructionModal({
               </svg>
             )}
           </span>
-          <span className="text-[11px] text-white/40">Don&apos;t show again</span>
+          <span className="text-[11px] text-white/40">Don&apos;t show this again</span>
         </label>
+
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={goPrev}
+            className="flex-1 py-2.5 text-sm font-semibold rounded-full bg-white/[0.06] hover:bg-white/10 text-white/60 transition-all duration-150"
+          >
+            Back
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (dontShow) onDontShowAgain?.();
+              onComplete?.();
+              handleClose();
+            }}
+            className="flex-1 py-2.5 text-sm font-semibold rounded-full bg-violet-600 hover:bg-violet-500 active:bg-violet-700 text-white transition-all duration-150"
+          >
+            Start
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -489,7 +497,9 @@ export default function InstructionModal({
         }}
       >
         <div
-          className="rounded-t-3xl pt-3 pb-10 px-5 min-h-[70vh] max-h-[92vh] overflow-y-auto flex flex-col"
+          className={`rounded-t-3xl pt-3 pb-10 px-5 max-h-[92vh] overflow-y-auto flex flex-col ${
+            variant === 'welcome' ? 'min-h-[55vh]' : 'min-h-[60vh]'
+          }`}
           style={{ backgroundColor: 'rgb(38, 38, 38)' }}
         >
           {/* Drag handle */}
