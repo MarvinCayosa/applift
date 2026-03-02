@@ -46,12 +46,25 @@ const WorkoutCard = ({ workout, onWorkoutClick, selectedDay }) => {
     return name.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
   };
 
-  // Compute duration from timestamps (in seconds)
+  // Compute duration from timestamps (handles Firestore Timestamps, seconds objects, and ISO strings from cache)
   const computeDuration = (workout) => {
+    // First try pre-computed duration from results
+    if (workout.durationMs && workout.durationMs > 0) return workout.durationMs / 60000;
+    if (workout.duration && workout.duration > 0) return workout.duration;
+    
     if (!workout.timestamps) return 0;
     
-    const started = workout.timestamps.started?.seconds || workout.timestamps.created?.seconds;
-    const completed = workout.timestamps.completed?.seconds || workout.timestamps.ended?.seconds;
+    const parseTs = (ts) => {
+      if (!ts) return null;
+      if (typeof ts.toDate === 'function') return ts.toDate().getTime() / 1000;
+      if (ts.seconds !== undefined) return ts.seconds;
+      if (typeof ts === 'string') return new Date(ts).getTime() / 1000;
+      if (ts instanceof Date) return ts.getTime() / 1000;
+      return null;
+    };
+    
+    const started = parseTs(workout.timestamps.started) || parseTs(workout.timestamps.created);
+    const completed = parseTs(workout.timestamps.completed) || parseTs(workout.timestamps.ended);
     
     if (!started || !completed) return 0;
     

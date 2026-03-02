@@ -2,7 +2,7 @@
 
 ## Overview
 
-AppLift computes fatigue and velocity metrics from IMU sensor data captured during each workout. The system uses a **single source of truth**: the API computes the fatigue score server-side and stores it in Firestore. The UI displays the API score directly, with three local diagnostic sub-metrics shown as supporting indicators.
+AppLift computes fatigue and velocity metrics from IMU sensor data captured during each workout. The system uses a **single source of truth**: the API computes the fatigue score and all sub-component values (D_ω, I_T, I_J, I_S, Q_exec) server-side and stores them in Firestore. The UI displays AND decomposes the API score directly — the donut ring shows the composite fatigue score, and 4 indicator cards show the real API sub-metrics. Local fallback computation is only used when the API data is unavailable.
 
 ---
 
@@ -14,7 +14,7 @@ AppLift computes fatigue and velocity metrics from IMU sensor data captured duri
 |---|---|
 | `pages/api/analyze-workout.js` → `computeFatigueIndicators()` | Server-side computation, stored in Firestore |
 | `services/workoutAnalysisService.js` → `computeFatigueIndicators()` | Client-side mirror (used during live workout) |
-| `components/sessionDetails/FatigueCarousel.js` | Display — uses the API prop; local fallback only if API score missing |
+| `components/sessionDetails/FatigueCarousel.js` | Display — uses API score + sub-metrics (D_ω, I_T, I_J, I_S); local fallback only if API data missing |
 
 ### Algorithm — Kinematic Degradation Model
 
@@ -135,51 +135,82 @@ These thresholds are intentionally lenient because:
 
 ---
 
-## 2. Diagnostic Sub-Metrics (FatigueCarousel indicator cards)
+## 2. Fatigue Sub-Metrics (FatigueCarousel indicator cards)
 
-These three metrics are computed **locally** in `FatigueCarousel` for the indicator cards. They do **not** influence the primary fatigue score — they provide supplementary diagnostic details.
+The 4 indicator cards in the FatigueCarousel display the **same sub-metrics** computed by the API's `computeFatigueIndicators()`. They are passed from Firestore → `transformAnalysisForUI()` → `fatigueComponents` prop → `FatigueCarousel`. These are the actual components that compose the fatigue score — **not** separate local calculations.
 
-### 2.1 Velocity CV%
-
-**Coefficient of Variation** of velocity across all reps (uses MCV when available, falls back to peak velocity).
+### Data flow for sub-metrics
 
 ```
-CV = (standardDeviation(velocities) / mean(velocities)) × 100
+API computeFatigueIndicators()
+  ├─ fatigueScore  → Firestore → transformAnalysisForUI → FatigueCarousel prop (donut ring)
+  ├─ D_omega       → Firestore → transformAnalysisForUI → fatigueComponents prop → "Velocity" card
+  ├─ I_T           → Firestore → transformAnalysisForUI → fatigueComponents prop → "Slowdown" card
+  ├─ I_J           → Firestore → transformAnalysisForUI → fatigueComponents prop → "Jerk" card
+  └─ I_S           → Firestore → transformAnalysisForUI → fatigueComponents prop → "Shakiness" card
 ```
 
-| CV% | Status | Meaning |
+### 2.1 Velocity Drop (D_ω)
+
+Peak angular velocity drop from first third to last third of reps. Displayed as percentage.
+
+```
+Display value = D_omega × 100  (API stores as 0–1 fraction)
+```
+
+| Drop% | Status | Meaning |
 |---|---|---|
-| < 10% | Good | Very consistent power output |
-| 10-20% | Warning | Some variability |
-| > 20% | Bad | High variability |
+| < 10% | 🟢 Good | Power output maintained |
+| 10–20% | 🟡 Warning | Noticeable velocity decline |
+| > 20% | 🔴 Bad | Significant velocity loss |
 
-### 2.2 Tempo CV%
+### 2.2 Rep Slowdown (I_T)
 
-**Coefficient of Variation** of rep durations.
+Duration increase from first third to last third of reps.
 
 ```
-CV = (standardDeviation(durations) / mean(durations)) × 100
+Display value = I_T × 100  (API stores as 0–1 fraction)
 ```
 
-| CV% | Status | Meaning |
+| Increase% | Status | Meaning |
 |---|---|---|
-| < 12% | 🟢 Good | Steady tempo |
-| 12–25% | 🟡 Warning | Erratic pacing |
-| > 25% | 🔴 Bad | Significant tempo loss |
+| < 15% | 🟢 Good | Steady tempo |
+| 15–30% | 🟡 Warning | Reps getting slower |
+| > 30% | 🔴 Bad | Significant slowdown |
 
-### 2.3 Smoothness Decay
+### 2.3 Jerk Increase (I_J)
 
-**Percentage drop** in LDLJ-based smoothness scores from first third to last third.
+Mean jerk increase from first third to last third. Measures movement choppiness.
 
 ```
-decay = max(0, (avgSmoothFirst - avgSmoothLast) / avgSmoothFirst × 100)
+Display value = I_J × 100  (API stores as 0–1 fraction)
 ```
 
-| Decay% | Status | Meaning |
+| Increase% | Status | Meaning |
 |---|---|---|
-| < 12% | 🟢 Good | Movement quality maintained |
-| 12–30% | 🟡 Warning | Some quality loss |
-| > 30% | 🔴 Bad | Major degradation |
+| < 15% | 🟢 Good | Smooth movement maintained |
+| 15–30% | 🟡 Warning | Movement becoming choppy |
+| > 30% | 🔴 Bad | Significant jerkiness |
+
+### 2.4 Shakiness Increase (I_S)
+
+Within-rep shakiness/tremor increase from first third to last third.
+
+```
+Display value = I_S × 100  (API stores as 0–1 fraction)
+```
+
+| Increase% | Status | Meaning |
+|---|---|---|
+| < 15% | 🟢 Good | Stable motor control |
+| 15–25% | 🟡 Warning | Increasing tremor |
+| > 25% | 🔴 Bad | Significant instability |
+
+### Local Fallback
+
+When `fatigueComponents` prop is not available (API data missing), FatigueCarousel falls back to local estimation using `repsData` fields:
+- **Velocity** and **Slowdown** are computed locally from `meanVelocity`/`peakVelocity` and `time`/`duration`
+- **Jerk** and **Shakiness** show `--` (not available locally)
 
 ---
 
@@ -277,12 +308,15 @@ IMU Sensor → RepCounter (per-rep metrics)
     ↓
 analyze-workout API → computeFatigueIndicators()
     ↓
-Firestore: { fatigueScore: 10.2, fatigueLevel: 'minimal', ... }
+Firestore: { fatigueScore, fatigueLevel, D_omega, I_T, I_J, I_S, Q_exec, ... }
     ↓
 useWorkoutAnalysis hook → transformAnalysisForUI()
+    → extracts: fatigueScore, fatigueLevel, fatigueComponents { D_omega, I_T, I_J, I_S, Q_exec, hasMLClassification }
     ↓
-FatigueCarousel
-  ├── Slide 1: Donut ring (API score) + 3 diagnostic cards (local CV metrics)
+useSessionDetailsData hook → viewModel.fatigueComponents
+    ↓
+FatigueCarousel (props: fatigueScore, fatigueLevel, fatigueComponents, setsData)
+  ├── Slide 1: Donut ring (API score) + 4 indicator cards (API sub-metrics: D_ω, I_T, I_J, I_S)
   └── Slide 2: Velocity bar chart (local per-rep baseline comparison)
 ```
 
@@ -292,8 +326,12 @@ FatigueCarousel
 |---|---|
 | `pages/api/analyze-workout.js` | Server-side fatigue computation |
 | `services/workoutAnalysisService.js` | Client-side mirror for live workout |
-| `hooks/useWorkoutAnalysis.js` | Transforms API response for UI |
-| `components/sessionDetails/FatigueCarousel.js` | Display (session-details, workout-finished, shared page) |
+| `hooks/useWorkoutAnalysis.js` | Transforms API response for UI, extracts `fatigueComponents` |
+| `hooks/useSessionDetailsData.js` | Passes `fatigueComponents` through to viewModel |
+| `components/sessionDetails/FatigueCarousel.js` | Display — uses API sub-metrics directly (session-details, workout-finished, shared page) |
+| `pages/workout-finished.js` | Passes `fatigueComponents` prop to FatigueCarousel |
+| `pages/session-details/index.js` | Passes `fatigueComponents` prop to FatigueCarousel |
+| `pages/shared/[id].js` | Passes `fatigueComponents` prop to FatigueCarousel |
 
 ---
 
@@ -302,7 +340,8 @@ FatigueCarousel
 | Metric | Minimum reps needed |
 |---|---|
 | Fatigue score (API) | 3 reps |
-| FatigueCarousel sub-metrics | 2 reps (velocity/tempo), 3 reps (smoothness) |
+| FatigueCarousel indicator cards (API mode) | 3 reps (same as fatigue score — data comes from same computation) |
+| FatigueCarousel indicator cards (local fallback) | 2 reps (velocity/slowdown only; jerk & shakiness show `--`) |
 | Velocity analysis bars | 1 rep |
 | Effective rep classification | 2 reps (need baseline) |
 

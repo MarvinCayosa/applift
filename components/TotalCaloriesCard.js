@@ -62,9 +62,19 @@ export default function TotalCaloriesCard({ logs = [], hasData = false }) {
     let cals = 0
     let count = 0
 
+    // Helper to parse timestamps from Firestore Timestamps, cache ISO strings, or Date objects
+    const parseTimestamp = (ts) => {
+      if (!ts) return null
+      if (typeof ts.toDate === 'function') return ts.toDate()
+      if (ts.seconds !== undefined) return new Date(ts.seconds * 1000)
+      if (typeof ts === 'string') return new Date(ts)
+      if (ts instanceof Date) return ts
+      return null
+    }
+
     logs.forEach((log) => {
-      const createdAt = log.timestamps?.started?.toDate?.() ||
-                        log.timestamps?.created?.toDate?.() ||
+      const createdAt = parseTimestamp(log.timestamps?.started) ||
+                        parseTimestamp(log.timestamps?.created) ||
                         (log.startTime ? new Date(log.startTime) : null)
       if (!createdAt || createdAt < filterStart) return
 

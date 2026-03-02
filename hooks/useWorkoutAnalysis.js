@@ -202,6 +202,14 @@ export function transformAnalysisForUI(analysis) {
     // Fatigue analysis
     fatigueScore: fatigue?.fatigueScore || 0,
     fatigueLevel: fatigue?.fatigueLevel || 'minimal',
+    fatigueComponents: {
+      D_omega: fatigue?.D_omega ?? null,
+      I_T: fatigue?.I_T ?? null,
+      I_J: fatigue?.I_J ?? null,
+      I_S: fatigue?.I_S ?? null,
+      Q_exec: fatigue?.Q_exec ?? null,
+      hasMLClassification: fatigue?.hasMLClassification ?? false,
+    },
     
     // Consistency
     consistencyScore: consistency?.score || 0,

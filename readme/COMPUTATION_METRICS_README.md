@@ -449,6 +449,19 @@ Fatigue Score = (0.25 × Velocity Drop) + (0.18 × Duration Increase)
 
 > **For the physical therapist:** This multi-indicator approach mirrors how a therapist clinically assesses fatigue: looking at speed of movement, time to complete tasks, smoothness of motion, presence of tremor, and form breakdown. The weighted formula combines these into a single actionable number. The thresholds are grounded in velocity-based training research (González-Badillo & Sánchez-Medina, 2010; Pareja-Blanco et al., 2017).
 
+### How It Appears in the App
+
+The **Fatigue Analysis** card in the session details page shows:
+
+- **Donut ring** — the composite fatigue score (0–100) with color-coded level
+- **4 indicator cards** showing the real sub-metrics from the same computation:
+  - **Velocity** — D_ω × 100 (peak angular velocity drop %)
+  - **Slowdown** — I_T × 100 (rep duration increase %)
+  - **Jerk** — I_J × 100 (movement choppiness increase %)
+  - **Shakiness** — I_S × 100 (tremor/instability increase %)
+
+All values (score + indicators) come from the same `computeFatigueIndicators()` function — the API computes them, stores them in Firestore, and the UI displays them directly via the `fatigueComponents` prop. This ensures the score and its breakdown are always consistent.
+
 ---
 
 ## 9. Velocity Analysis & Consistency

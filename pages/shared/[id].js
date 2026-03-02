@@ -262,6 +262,7 @@ export default function SharedWorkoutPage() {
             setsData={s.setsData || []}
             fatigueScore={s.fatigueScore}
             fatigueLevel={s.fatigueLevel}
+            fatigueComponents={s.fatigueComponents}
             selectedSet="all"
           />
 

@@ -1,142 +1,105 @@
-# Performance Insights Card — Design & Fix Documentation
+# Performance Insights — Design & Fix Documentation
 
 ## Problem Statement
 
-Three session-details sections — **Consistency**, **Fatigue Analysis**, and **Velocity Loss** — had critical bugs and were spread across two separate components (`ExecutionConsistencyCard` + `FatigueCarousel`). They were combined into a single `PerformanceInsightsCard` that fixes all issues and grounds every metric in published sports-science methodology.
+The FatigueCarousel had a critical data mismatch: the donut fatigue score came from the API (`computeFatigueIndicators()`), but the 3 indicator cards (Velocity, Slowdown, Control) were computed **locally** from `repsData` fields that were often missing or zero. This caused the score to show (e.g.) 42 "Moderate" while all 3 indicators showed 0.0%.
 
 ---
 
 ## Bugs Found & Fixed
 
-### Bug 1 — Velocity = 0 in fatigue indicators but non-zero in Velocity Loss
+### Bug 1 — Indicator cards show 0% while fatigue score is non-zero
 
 **Root cause:**  
-The FatigueCarousel used `propScore` (from the Firestore analytics document) as the donut score when `selectedSet === 'all'`, but computed the three indicator values (Velocity, Slowdown, Stability) locally from `rep.peakVelocity` and `rep.time`. When analytics data was available but the local `repsData` came from the workout-monitor (which stores `peakVelocity` as a crude estimate from `peakAcceleration / 2`), the server score was accurate but the indicators showed different values — or even all zeros when the fields were missing.
+The FatigueCarousel used `propScore` (from the Firestore analytics document) as the donut score, but computed the three indicator values locally from `rep.meanVelocity`, `rep.time`, and `rep.smoothnessScore`. The API fatigue score uses raw IMU kinematic data (gyro peaks, jerk, shakiness) that is NOT stored per-rep in `repsData` — so the local calculation had no data to work with.
 
 **Fix:**  
-`PerformanceInsightsCard` uses a **single data pipeline** (`extractRepKinematics`) that feeds all three sections. One array → one source of truth. The score is **never** taken from a different source than the indicators. If server data is present in `repsData` (merged via analytics), both the score and indicators reflect it. If only local data exists, both reflect that.
+The API's `computeFatigueIndicators()` already computes and stores `D_omega`, `I_T`, `I_J`, `I_S` in Firestore. These are now:
+1. Extracted by `transformAnalysisForUI()` into a `fatigueComponents` object
+2. Passed through `useSessionDetailsData` viewModel
+3. Passed as a `fatigueComponents` prop to `FatigueCarousel`
+4. Displayed directly as the 4 indicator cards
 
-### Bug 2 — Score shows 60 or 100 when all three fatigue indicators are 0
+### Bug 2 — Score and indicators from different data sources
 
 **Root cause:**  
-When `selectedSet === 'all'`, the old code used:
-```js
-let score = selectedSet === 'all' ? propScore : null;
-```
-This took `propScore` directly from the Firestore analytics doc (which was computed server-side using full kinematic analysis including jerk, shakiness, ROM, and ML classification). But the indicators were computed locally from `rep.peakVelocity`, `rep.time`, and `rep.smoothnessScore` — which may all be 0 or absent in the local `repsData`.
+Two separate fatigue calculations existed:
+- **API-side:** `computeFatigueIndicators()` using D_ω (gyro), I_T (duration), I_J (jerk), I_S (shakiness), Q_exec (ML quality)
+- **UI-side:** Local computation in FatigueCarousel using `rep.meanVelocity`, `rep.time`, `rep.smoothnessScore`
 
-**Result:** Score = 60 (from server), all indicators = 0% (from local data).
+These used different data, different metrics, and different weights (old local: 0.35×D + 0.25×T + 0.40×S vs API: 0.35×D_ω + 0.25×I_T + 0.20×I_J + 0.20×I_S).
 
 **Fix:**  
-The new `computeFatigue()` function computes both the score AND the indicators from the same `reps` array. No mixing of server vs local data sources. The fatigue score formula uses the same first-third vs last-third comparison that the server uses:
-
-```
-score = clamp((0.40 × velocityDrop + 0.30 × durationIncrease + 0.30 × smoothnessDrop) × 100)
-```
-
-### Bug 3 — Consistency metric was not grounded
-
-**Root cause:**  
-The old `ExecutionConsistencyCard` computed consistency by resampling chart curves, computing mean deviation, and normalizing — a bespoke algorithm that wasn't grounded in exercise science literature.
-
-**Fix:**  
-Now uses the **same formula from `resegment_reps_fixed.py`** (line 1264):
-```python
-consistency_score = 100 - min(100, (duration_std/avg_duration + amplitude_std/avg_amplitude) * 50)
-```
-
-This is essentially **coefficient of variation (CV)** of rep duration and signal amplitude. This is the standard approach in:
-- PUSH Band velocity tracking apps
-- Velocity-Based Training (VBT) research (Jovanović & Flanagan, 2014)
-- RepOne, GymAware, and other commercial VBT systems
-
-The card now shows:
-- **Duration variability** (±Xs) — standard deviation of rep times
-- **Amplitude variability** (±X) — standard deviation of signal peak-to-trough
-- **Consistency score** — derived from CV of both metrics
+Eliminated the local sub-metric computation entirely (when API data is available). FatigueCarousel now shows the actual API sub-metrics. Local fallback only activates when `fatigueComponents` prop is null.
 
 ---
 
 ## Architecture
 
-### Before (2 components, 2 data pipelines)
+### Before (2 data pipelines — BROKEN)
 
 ```
-ExecutionConsistencyCard
-  └─ reads chartData from repsData
-  └─ computes curve deviation
-  └─ uses analysisScore (server) as override
+API computeFatigueIndicators()
+  ├─ fatigueScore  ──→ Firestore ──→ transformAnalysisForUI ──→ FatigueCarousel prop ✅
+  ├─ D_omega       ──→ Firestore ──→ NOT extracted ❌
+  ├─ I_T           ──→ Firestore ──→ NOT extracted ❌
+  ├─ I_J           ──→ Firestore ──→ NOT extracted ❌
+  └─ I_S           ──→ Firestore ──→ NOT extracted ❌
 
-FatigueCarousel (2-slide carousel)
-  Slide 1: Fatigue Analysis
-    └─ reads peakVelocity, time, smoothnessScore from repsData (local)
-    └─ uses propScore (server) for the donut score
-    └─ BUG: score and indicators from different sources
-  Slide 2: Velocity Loss
-    └─ reads peakVelocity from repsData
-    └─ computes baseline, drop, effective reps
+FatigueCarousel (local computation)
+  ├─ Donut ring: propScore (API) ✅
+  ├─ Velocity card: local CV% from rep.meanVelocity ❌ (often 0)
+  ├─ Slowdown card: local CV% from rep.time ❌ (often 0)
+  └─ Control card: local smoothness decay from rep.smoothnessScore ❌ (often 0)
 ```
 
-### After (1 component, 1 data pipeline)
+**Result:** Score = 42, all indicators = 0.0% — completely inconsistent.
+
+### After (single data pipeline — FIXED)
 
 ```
-PerformanceInsightsCard
-  └─ extractRepKinematics(): ONE function extracts all kinematic arrays
-      → duration, velocity, smoothness, amplitude, chartData per rep
-  └─ computeConsistency(): CV of duration & amplitude (resegment formula)
-  └─ computeFatigue(): first-third vs last-third (VBT standard)
-  └─ computeVelocity(): per-rep velocity bars with 20% threshold
+API computeFatigueIndicators()
+  ├─ fatigueScore        ──→ Firestore ──→ transformAnalysisForUI ──→ fatigueScore prop ──→ Donut ring ✅
+  ├─ fatigueLevel        ──→ Firestore ──→ transformAnalysisForUI ──→ fatigueLevel prop ──→ Donut label ✅
+  ├─ D_omega             ──→ Firestore ──→ transformAnalysisForUI ──→ fatigueComponents prop ──→ "Velocity" card ✅
+  ├─ I_T                 ──→ Firestore ──→ transformAnalysisForUI ──→ fatigueComponents prop ──→ "Slowdown" card ✅
+  ├─ I_J                 ──→ Firestore ──→ transformAnalysisForUI ──→ fatigueComponents prop ──→ "Jerk" card ✅
+  └─ I_S                 ──→ Firestore ──→ transformAnalysisForUI ──→ fatigueComponents prop ──→ "Shakiness" card ✅
 ```
 
-All three sections read from the **same `reps` array**. No mixing of server vs local data sources.
+**Result:** Score and all 4 indicators come from the same `computeFatigueIndicators()` call — always consistent.
 
 ---
 
-## Metrics Explained
+## Indicator Card Thresholds
 
-### Consistency
+### Velocity (D_ω × 100%)
+| Value | Status | Color |
+|---|---|---|
+| < 10% | Good | 🟢 Green |
+| 10–20% | Warning | 🟡 Yellow |
+| > 20% | Bad | 🔴 Red |
 
-| Metric | Formula | Source |
-|--------|---------|--------|
-| Duration variability | `std(rep_durations)` | resegment_reps_fixed.py |
-| Amplitude variability | `std(rep_amplitudes)` | resegment_reps_fixed.py |
-| Consistency score | `100 − min(100, (dur_cv + amp_cv) × 50)` | resegment_reps_fixed.py line 1264 |
+### Slowdown (I_T × 100%)
+| Value | Status | Color |
+|---|---|---|
+| < 15% | Good | 🟢 Green |
+| 15–30% | Warning | 🟡 Yellow |
+| > 30% | Bad | 🔴 Red |
 
-**Interpretation:**
-- ≥90% = Excellent — highly repeatable reps
-- ≥75% = Good — minor variation, normal
-- ≥60% = Fair — noticeable inconsistency
-- <60% = Needs Work — high variability
+### Jerk (I_J × 100%)
+| Value | Status | Color |
+|---|---|---|
+| < 15% | Good | 🟢 Green |
+| 15–30% | Warning | 🟡 Yellow |
+| > 30% | Bad | 🔴 Red |
 
-### Fatigue Analysis
-
-| Metric | Formula | Grounding |
-|--------|---------|-----------|
-| Velocity drop | `(v_first_third − v_last_third) / v_first_third × 100` | González-Badillo et al. (2017) |
-| Rep slowdown | `(dur_last_third − dur_first_third) / dur_first_third × 100` | Standard VBT practice |
-| Form decay | `(smooth_first − smooth_last) / smooth_first × 100` | PUSH Band app methodology |
-| Composite score | `0.40 × vel + 0.30 × dur + 0.30 × form` | Weighted composite (velocity dominant) |
-
-**Fatigue levels:**
-- <10 = Minimal — excellent endurance
-- <20 = Low — manageable fatigue
-- <35 = Moderate — expected for hypertrophy sets
-- <55 = High — significant performance degradation
-- ≥55 = Severe — consider reducing volume
-
-### Velocity Loss
-
-| Metric | Formula | Grounding |
-|--------|---------|-----------|
-| Baseline | average of first 2 reps | VBT standard (freshest reps) |
-| Total drop | `(baseline − last_rep) / baseline × 100` | Bryan Mann's VBT research |
-| Effective reps | reps with <20% velocity loss from baseline | Bryan Mann recommendation |
-
-**Why 20% threshold (not 10%):**
-The original code used 10%, which is the NSCA's "velocity-based autoregulation" threshold for powerlifting. For general fitness and hypertrophy training (which AppLift targets), 20% is more appropriate:
-- **10%**: Optimal for maximal strength / nervous system training
-- **20%**: Standard for hypertrophy / general fitness (Bryan Mann, 2016)
-- **30%+**: Metabolic / endurance emphasis
+### Shakiness (I_S × 100%)
+| Value | Status | Color |
+|---|---|---|
+| < 15% | Good | 🟢 Green |
+| 15–25% | Warning | 🟡 Yellow |
+| > 25% | Bad | 🔴 Red |
 
 ---
 
@@ -144,32 +107,31 @@ The original code used 10%, which is the NSCA's "velocity-based autoregulation" 
 
 | File | Change |
 |------|--------|
-| `components/sessionDetails/PerformanceInsightsCard.js` | **NEW** — unified card |
-| `pages/session-details/index.js` | Replaced `ExecutionConsistencyCard` + `FatigueCarousel` with `PerformanceInsightsCard` |
-| `components/sessionDetails/ExecutionConsistencyCard.js` | No longer imported (kept for reference) |
-| `components/sessionDetails/FatigueCarousel.js` | No longer imported (kept for reference) |
+| `hooks/useWorkoutAnalysis.js` | `transformAnalysisForUI` now extracts `fatigueComponents: { D_omega, I_T, I_J, I_S, Q_exec, hasMLClassification }` |
+| `hooks/useSessionDetailsData.js` | Passes `fatigueComponents` through to viewModel |
+| `pages/workout-finished.js` | Passes `fatigueComponents` prop to FatigueCarousel + share data |
+| `pages/session-details/index.js` | Passes `fatigueComponents` prop to FatigueCarousel + share data |
+| `pages/shared/[id].js` | Passes `fatigueComponents` prop to FatigueCarousel |
+| `components/sessionDetails/FatigueCarousel.js` | Uses API sub-metrics directly; shows 4 indicator cards; local fallback only when API unavailable |
 
 ---
 
-## Data Flow
+## Info Overlay Updates
 
+The FatigueCarousel's info overlay (tap ℹ️) now shows the real formula:
+
+**Slide 1 — Understanding Fatigue:**
+- Velocity Drop (Dω) — peak movement speed decline
+- Rep Slowdown (I_T) — rep duration increase
+- Jerk Increase (I_J) — movement choppiness
+- Shakiness Increase (I_S) — tremor and instability
+
+**Slide 2 — How It's Computed:**
 ```
-Workout Monitor → repsData (local)
-  Fields: repNumber, time (duration), rom, peakVelocity, chartData, liftingTime, loweringTime
-
-Analytics API → analysisUI (server, merged into repsData)
-  Adds: smoothnessScore, classification, romDegrees, more accurate peakVelocity
-
-GCS workout_data.json → gcsData (sensor data, merged when no analytics)
-  Adds: classification, smoothnessScore, quality
-
-     ↓ All merged into vm.mergedSetsData ↓
-
-PerformanceInsightsCard
-  extractRepKinematics() → { duration, velocity, smoothness, amplitude }[]
-  → computeConsistency() → { score, durationVariability, amplitudeVariability }
-  → computeFatigue() → { score, level, velocityDrop, durationIncrease, smoothnessDrop }
-  → computeVelocity() → { bars[], baseline, drop, effective, total }
+Fatigue = 0.35×Dω + 0.25×I_T + 0.20×I_J + 0.20×I_S
 ```
+With ML classification, weights shift and Q_exec (29%) is added.
 
-All three computation functions receive the **same rep array** — impossible for them to disagree on underlying data.
+---
+
+*Note: The `PerformanceInsightsCard` component exists but is not used in production. FatigueCarousel remains the active component for fatigue display.*

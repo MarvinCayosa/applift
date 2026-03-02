@@ -2,26 +2,30 @@
  * FatigueCarousel
  *
  * Two-slide carousel:
- *   Slide 1 - Fatigue Analysis  (donut ring + 3 diagnostic metric cards + info tooltip)
+ *   Slide 1 - Fatigue Analysis  (donut ring + 4 diagnostic metric cards + info tooltip)
  *   Slide 2 - Velocity Loss     (stats row + bar chart)
  *
  * === Fatigue Score ===
- *   The primary fatigue score comes from the API's kinematic analysis
- *   (first-third vs last-third degradation in velocity, tempo, jerk, shakiness,
- *    plus ML classification quality). This is the fatigueScore/fatigueLevel prop.
+ *   The primary fatigue score and its sub-components come from the API's
+ *   kinematic analysis (computeFatigueIndicators in workoutAnalysisService).
  *
- *   Three diagnostic sub-metrics are computed locally for the indicator cards:
- *     1. Velocity CV% — power-output consistency
- *     2. Tempo CV%    — rep duration consistency
- *     3. Smoothness Decay — movement quality degradation
+ *   Four diagnostic sub-metrics are displayed in the indicator cards:
+ *     1. Velocity (D_ω)  — peak angular velocity drop, first-third vs last-third
+ *     2. Slowdown (I_T)  — rep duration increase, first-third vs last-third
+ *     3. Jerk (I_J)      — jerk (choppiness) increase, first-third vs last-third
+ *     4. Shakiness (I_S) — tremor/instability increase, first-third vs last-third
  *
- *   If the API score is not available, falls back to a local composite.
+ *   When ML classification is available, the fatigue score also includes
+ *   Q_exec (execution quality penalty), but this is reflected in the
+ *   composite donut score rather than a separate card.
+ *
+ *   If API sub-metrics are not available, falls back to local estimation.
  */
 
 import { useMemo, useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 
-export default function FatigueCarousel({ setsData, fatigueScore: propScore, fatigueLevel: propLevel, selectedSet = 'all' }) {
+export default function FatigueCarousel({ setsData, fatigueScore: propScore, fatigueLevel: propLevel, fatigueComponents: propComponents, selectedSet = 'all' }) {
   const [activeSlide, setActiveSlide] = useState(0);
   const [showFatigueInfo, setShowFatigueInfo] = useState(false);
   const [showVelocityInfo, setShowVelocityInfo] = useState(false);
@@ -74,77 +78,135 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
   }, []);
 
   // ======================================================================
-  // FATIGUE METRICS — API score is primary; local sub-metrics for diagnostics
+  // FATIGUE METRICS — Use API sub-components (D_ω, I_T, I_J, I_S) directly
+  // Falls back to local estimation only when API data is unavailable
   // ======================================================================
   const fatigue = useMemo(() => {
+    // ---- PRIMARY: Use API sub-metrics when available ----
+    const hasApiComponents = propComponents &&
+      (propComponents.D_omega !== null || propComponents.I_T !== null ||
+       propComponents.I_J !== null || propComponents.I_S !== null);
+    const hasApiScore = typeof propScore === 'number' && propScore >= 0;
+
+    if (hasApiComponents) {
+      const D = propComponents.D_omega ?? 0;
+      const T = propComponents.I_T ?? 0;
+      const J = propComponents.I_J ?? 0;
+      const S = propComponents.I_S ?? 0;
+      const Q = propComponents.Q_exec ?? 0;
+      const hasML = propComponents.hasMLClassification ?? false;
+
+      const score = hasApiScore ? propScore : 0;
+
+      // Convert 0-1 fractional values to percentages for display
+      const velDrop = Math.max(0, D * 100);
+      const durIncrease = Math.max(0, T * 100);
+      const jerkIncrease = Math.max(0, J * 100);
+      const shakinessIncrease = Math.max(0, S * 100);
+
+      // Determine fatigue level
+      let level;
+      if (score < 15)      level = 'Minimal';
+      else if (score < 30) level = 'Low';
+      else if (score < 50) level = 'Moderate';
+      else if (score < 70) level = 'High';
+      else                 level = 'Severe';
+
+      // Status thresholds for indicator cards
+      const velStatus = velDrop < 10 ? 'good' : velDrop < 20 ? 'warn' : 'bad';
+      const durStatus = durIncrease < 15 ? 'good' : durIncrease < 30 ? 'warn' : 'bad';
+      const jerkStatus = jerkIncrease < 15 ? 'good' : jerkIncrease < 30 ? 'warn' : 'bad';
+      const shakStatus = shakinessIncrease < 15 ? 'good' : shakinessIncrease < 25 ? 'warn' : 'bad';
+
+      const indicators = [
+        {
+          label: 'Velocity',
+          value: velDrop.toFixed(1),
+          unit: '%',
+          status: velStatus,
+        },
+        {
+          label: 'Slowdown',
+          value: durIncrease.toFixed(1),
+          unit: '%',
+          status: durStatus,
+        },
+        {
+          label: 'Jerk',
+          value: jerkIncrease.toFixed(1),
+          unit: '%',
+          status: jerkStatus,
+        },
+        {
+          label: 'Shakiness',
+          value: shakinessIncrease.toFixed(1),
+          unit: '%',
+          status: shakStatus,
+        },
+      ];
+
+      return {
+        score: Math.round(score * 10) / 10,
+        level,
+        indicators,
+        hasInsufficientData: false,
+        hasML,
+        qExec: hasML ? Math.round(Q * 100) : null,
+      };
+    }
+
+    // ---- FALLBACK: Local estimation from repsData when API unavailable ----
     const sets = selectedSet === 'all'
       ? (setsData || [])
       : (setsData || []).filter(s => s.setNumber === parseInt(selectedSet));
 
     const velocities = [];
     const durations = [];
-    const smoothnessScores = [];
 
     sets.forEach(set =>
       (set.repsData || []).forEach(rep => {
-        // Prefer MCV (meanVelocity) for fatigue assessment; fall back to peakVelocity
         const mcv = parseFloat(rep.meanVelocity) || 0;
         const pv = parseFloat(rep.peakVelocity) || 0;
         const v = mcv > 0 ? mcv : pv;
         const d = parseFloat(rep.time) || parseFloat(rep.duration) || (rep.durationMs ? rep.durationMs / 1000 : 0);
-        const s = rep.smoothnessScore ?? rep.smoothness ?? null;
         velocities.push(v);
         durations.push(d);
-        if (s !== null && s !== undefined) smoothnessScores.push(s);
       })
     );
 
     const n = velocities.length;
     if (n < 2) {
-      return { score: 0, level: 'Low', indicators: [], hasInsufficientData: true };
+      return { score: 0, level: 'Low', indicators: [], hasInsufficientData: true, hasML: false, qExec: null };
     }
 
     const mean = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
 
-    // -- True sub-metric 1: Velocity Drop (first-third vs last-third) --
+    // Velocity Drop (first-third vs last-third)
     const nonZeroVels = velocities.filter(v => v > 0);
     const hasVelData = nonZeroVels.length >= 2;
-    const avgVelFirst = hasVelData ? mean(nonZeroVels.slice(0, Math.max(1, Math.floor(nonZeroVels.length / 3)))) : 0;
-    const avgVelLast = hasVelData ? mean(nonZeroVels.slice(-Math.max(1, Math.floor(nonZeroVels.length / 3)))) : 0;
+    const third = Math.max(1, Math.floor(nonZeroVels.length / 3));
+    const avgVelFirst = hasVelData ? mean(nonZeroVels.slice(0, third)) : 0;
+    const avgVelLast = hasVelData ? mean(nonZeroVels.slice(-third)) : 0;
     const velocityDrop = avgVelFirst > 0 ? Math.max(0, ((avgVelFirst - avgVelLast) / avgVelFirst) * 100) : 0;
 
-    // -- True sub-metric 2: Tempo Slowdown (duration increase first vs last third) --
+    // Duration Increase (first-third vs last-third)
     const nonZeroDurs = durations.filter(d => d > 0);
     const hasDurData = nonZeroDurs.length >= 2;
-    const avgDurFirst = hasDurData ? mean(nonZeroDurs.slice(0, Math.max(1, Math.floor(nonZeroDurs.length / 3)))) : 0;
-    const avgDurLast = hasDurData ? mean(nonZeroDurs.slice(-Math.max(1, Math.floor(nonZeroDurs.length / 3)))) : 0;
+    const dThird = Math.max(1, Math.floor(nonZeroDurs.length / 3));
+    const avgDurFirst = hasDurData ? mean(nonZeroDurs.slice(0, dThird)) : 0;
+    const avgDurLast = hasDurData ? mean(nonZeroDurs.slice(-dThird)) : 0;
     const durationIncrease = avgDurFirst > 0 ? Math.max(0, ((avgDurLast - avgDurFirst) / avgDurFirst) * 100) : 0;
 
-    // -- True sub-metric 3: Smoothness Decay (first-third vs last-third) --
-    const hasSmoothData = smoothnessScores.length >= 3;
-    let smoothDecay = 0;
-    if (hasSmoothData) {
-      const sThird = Math.max(1, Math.floor(smoothnessScores.length / 3));
-      const avgSmoothFirst = mean(smoothnessScores.slice(0, sThird));
-      const avgSmoothLast = mean(smoothnessScores.slice(-sThird));
-      smoothDecay = avgSmoothFirst > 0 ? Math.max(0, ((avgSmoothFirst - avgSmoothLast) / avgSmoothFirst) * 100) : 0;
-    }
-
-    // ---- PRIMARY SCORE: use API prop when available ----
+    // Local fallback score (only velocity + duration available locally)
     let score;
-    const hasApiScore = typeof propScore === 'number' && propScore >= 0;
-
     if (hasApiScore) {
       score = propScore;
     } else {
-      // Fallback: local composite from true drop values
       const D = Math.max(0, velocityDrop) / 100;
       const T = Math.max(0, durationIncrease) / 100;
-      const S = Math.max(0, smoothDecay) / 100;
-      score = Math.min(100, (0.35 * D + 0.25 * T + 0.40 * S) * 100);
+      score = Math.min(100, (0.50 * D + 0.50 * T) * 100);
     }
 
-    // Forgiving thresholds
     let level;
     if (score < 15)      level = 'Minimal';
     else if (score < 30) level = 'Low';
@@ -152,10 +214,8 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
     else if (score < 70) level = 'High';
     else                 level = 'Severe';
 
-    // Status thresholds for indicator cards
     const velStatus = !hasVelData ? 'neutral' : velocityDrop < 10 ? 'good' : velocityDrop < 20 ? 'warn' : 'bad';
     const durStatus = !hasDurData ? 'neutral' : durationIncrease < 15 ? 'good' : durationIncrease < 30 ? 'warn' : 'bad';
-    const smStatus  = !hasSmoothData ? 'neutral' : smoothDecay < 10 ? 'good' : smoothDecay < 25 ? 'warn' : 'bad';
 
     const indicators = [
       {
@@ -171,10 +231,16 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
         status: durStatus,
       },
       {
-        label: 'Control',
-        value: hasSmoothData ? smoothDecay.toFixed(1) : '--',
+        label: 'Jerk',
+        value: '--',
         unit: '%',
-        status: smStatus,
+        status: 'neutral',
+      },
+      {
+        label: 'Shakiness',
+        value: '--',
+        unit: '%',
+        status: 'neutral',
       },
     ];
 
@@ -183,8 +249,10 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
       level,
       indicators,
       hasInsufficientData: false,
+      hasML: false,
+      qExec: null,
     };
-  }, [setsData, selectedSet, propScore]);
+  }, [setsData, selectedSet, propScore, propComponents]);
 
   // ======================================================================
   // VELOCITY METRICS
@@ -296,13 +364,12 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
             </button>
           </div>
 
-          <div className="flex gap-3">
-            {/* Donut - large, no background */}
+          <div className="flex gap-3 items-stretch">
+            {/* Donut - sized to match indicator cards height */}
             <div
               className="flex-shrink-0 flex flex-col items-center justify-center"
-              style={{ width: 160, height: 160 }}
             >
-              <div className="relative" style={{ width: 140, height: 140 }}>
+              <div className="relative" style={{ width: 160, height: 160 }}>
                 <svg viewBox="0 0 140 140" className="w-full h-full -rotate-90">
                   <circle cx="70" cy="70" r={R} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="10" />
                   <circle
@@ -325,18 +392,18 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
               </div>
             </div>
 
-            {/* 3 indicator cards */}
-            <div className="flex-1 flex flex-col gap-2">
+            {/* 4 indicator cards */}
+            <div className="flex-1 flex flex-col gap-1.5">
               {fatigue.indicators.map((ind, i) => {
                 const sc = statusColor(ind.status);
                 return (
-                  <div key={i} className={`flex-1 rounded-xl ${sc.bg} px-3.5 py-2.5 flex items-center justify-between min-h-[42px]`}>
-                    <div className="flex items-center gap-2">
+                  <div key={i} className={`flex-1 rounded-xl ${sc.bg} px-3 py-1.5 flex items-center justify-between min-h-[34px]`}>
+                    <div className="flex items-center gap-1.5">
                       <div className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />
-                      <span className="text-[12px] text-gray-300 font-medium leading-tight">{ind.label}</span>
+                      <span className="text-[11px] text-gray-300 font-medium leading-tight">{ind.label}</span>
                     </div>
                     <div className="flex items-baseline gap-0.5">
-                      <span className={`text-[15px] font-bold tabular-nums ${sc.text}`}>{ind.value}</span>
+                      <span className={`text-[14px] font-bold tabular-nums ${sc.text}`}>{ind.value}</span>
                       <span className="text-[9px] text-gray-500">{ind.unit}</span>
                     </div>
                   </div>
@@ -469,9 +536,10 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
                   <div className="space-y-2 mb-4">
                     <p className="text-[13px] font-semibold text-white/70 mb-1">What the indicators mean:</p>
                     {[
-                      { color: 'bg-cyan-400', title: 'Velocity Drop', desc: 'How much your lifting speed dropped from your first reps to your last. A small drop means you maintained power well.' },
-                      { color: 'bg-purple-400', title: 'Rep Slowdown', desc: 'How much longer your later reps took compared to your first. When reps slow down, your muscles are running low on energy.' },
-                      { color: 'bg-orange-400', title: 'Control Loss', desc: 'How much your movement smoothness decreased. A bigger drop means your muscles are struggling to control the weight.' },
+                      { color: 'bg-cyan-400', title: 'Velocity Drop (D\u03C9)', desc: 'How much your peak movement speed dropped. Fatigued muscles produce force more slowly.' },
+                      { color: 'bg-purple-400', title: 'Rep Slowdown (I_T)', desc: 'How much longer your later reps took. When reps slow down, your muscles are generating force more slowly.' },
+                      { color: 'bg-orange-400', title: 'Jerk Increase (I_J)', desc: 'How much choppier your movement became. A fatigued CNS struggles to coordinate smooth contractions.' },
+                      { color: 'bg-rose-400', title: 'Shakiness Increase (I_S)', desc: 'How much more tremor and instability appeared. Directly related to motor unit fatigue.' },
                     ].map((item, i) => (
                       <div key={i} className="flex items-start gap-2.5">
                         <div className={`w-2 h-2 rounded-full ${item.color} mt-1.5 shrink-0`} />
@@ -509,9 +577,10 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
                   </p>
                   <div className="space-y-3 mb-4">
                     {[
-                      { label: 'Velocity Drop (D)', formula: '(Avg First ⅓ − Avg Last ⅓) ÷ Avg First ⅓', weight: '35%', color: 'text-cyan-400' },
-                      { label: 'Tempo Slowdown (T)', formula: '(Avg Last ⅓ − Avg First ⅓) ÷ Avg First ⅓', weight: '25%', color: 'text-purple-400' },
-                      { label: 'Control Loss (S)', formula: '(Smooth First ⅓ − Smooth Last ⅓) ÷ Smooth First ⅓', weight: '40%', color: 'text-orange-400' },
+                      { label: 'Velocity Drop (D\u03C9)', formula: '(Avg First \u2153 \u2212 Avg Last \u2153) \u00F7 Avg First \u2153', weight: '35%', color: 'text-cyan-400' },
+                      { label: 'Duration Increase (I_T)', formula: '(Avg Last \u2153 \u2212 Avg First \u2153) \u00F7 Avg First \u2153', weight: '25%', color: 'text-purple-400' },
+                      { label: 'Jerk Increase (I_J)', formula: '(Avg Last \u2153 \u2212 Avg First \u2153) \u00F7 Avg First \u2153', weight: '20%', color: 'text-orange-400' },
+                      { label: 'Shakiness Increase (I_S)', formula: '(Avg Last \u2153 \u2212 Avg First \u2153) \u00F7 Avg First \u2153', weight: '20%', color: 'text-rose-400' },
                     ].map((item, i) => (
                       <div key={i} className="rounded-xl bg-white/[0.04] p-3">
                         <div className="flex items-center justify-between mb-1">
@@ -523,12 +592,12 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
                     ))}
                   </div>
                   <div className="rounded-xl bg-white/[0.06] p-3 mb-4">
-                    <p className="text-[12px] font-semibold text-white/70 mb-1">Final Formula</p>
+                    <p className="text-[12px] font-semibold text-white/70 mb-1">Kinematic Formula</p>
                     <p className="text-[12px] text-white/50 font-mono leading-relaxed">
-                      Fatigue = 0.35 × D + 0.25 × T + 0.40 × S
+                      Fatigue = 0.35\u00D7D\u03C9 + 0.25\u00D7I_T + 0.20\u00D7I_J + 0.20\u00D7I_S
                     </p>
-                    <p className="text-[11px] text-white/30 mt-1">
-                      When an API score is available from full kinematic analysis, it takes priority over this local computation.
+                    <p className="text-[11px] text-white/30 mt-2">
+                      With ML classification, weights shift and an execution quality factor (Q_exec, 29%) is added based on rep form analysis.
                     </p>
                   </div>
                 </div>

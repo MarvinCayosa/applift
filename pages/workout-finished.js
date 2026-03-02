@@ -687,6 +687,7 @@ export default function WorkoutFinished() {
         chartData: analysisData?.chartData || [],
         fatigueScore: analysisData?.fatigueScore ?? null,
         fatigueLevel: analysisData?.fatigueLevel || null,
+        fatigueComponents: analysisData?.fatigueComponents || null,
         consistencyScore: analysisData?.consistencyScore ?? null,
         mlClassification: analysisData?.mlClassification || null,
         avgConcentric: analysisData?.avgConcentric || 0,
@@ -810,6 +811,7 @@ export default function WorkoutFinished() {
             setsData={mergedSetsData}
             fatigueScore={analysisData?.fatigueScore}
             fatigueLevel={analysisData?.fatigueLevel}
+            fatigueComponents={analysisData?.fatigueComponents}
             selectedSet="all"
           />
 

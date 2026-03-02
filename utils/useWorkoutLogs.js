@@ -63,6 +63,14 @@ export function useWorkoutLogs(options = {}) {
 
       // Cache miss or forced refresh — fetch from Firestore
       console.log('[useWorkoutLogs] Fetching from Firestore...');
+      
+      // Clear the service-level in-memory cache to ensure a fresh Firestore query
+      // This is needed because workoutLogService has its own Map-based cache
+      try {
+        const { clearUserCache } = await import('../services/workoutLogService');
+        clearUserCache(user.uid);
+      } catch (_) {}
+      
       const fetchedLogs = await getUserWorkoutLogs(user.uid, {
         status: null,
         limitCount,
@@ -151,7 +159,29 @@ export function useWorkoutLogs(options = {}) {
     if (autoFetch && isAuthenticated && user?.uid) {
       fetchAllData();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoFetch, isAuthenticated, user?.uid]);
+
+  // Re-fetch when page becomes visible (user returns from workout flow)
+  // and when persistent cache was invalidated
+  useEffect(() => {
+    if (!autoFetch || !isAuthenticated || !user?.uid) return;
+    
+    const handleVisibility = async () => {
+      if (document.visibilityState === 'visible') {
+        // Check if cache was invalidated (no cached data means fresh fetch needed)
+        const cached = await getCachedLogs(user.uid);
+        if (!cached) {
+          console.log('[useWorkoutLogs] Cache invalidated, re-fetching fresh data...');
+          fetchAllData();
+        }
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.uid, isAuthenticated]);
 
   // Force refresh (bypasses cache)
   const refresh = useCallback(async () => {

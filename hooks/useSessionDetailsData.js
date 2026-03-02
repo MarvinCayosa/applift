@@ -409,6 +409,7 @@ export default function useSessionDetailsData({ logId, equipment, exercise }) {
       // Fatigue
       fatigueScore: analysisUI?.fatigueScore || 0,
       fatigueLevel: analysisUI?.fatigueLevel || 'Low',
+      fatigueComponents: analysisUI?.fatigueComponents || null,
 
       // Consistency
       consistencyScore: analysisUI?.consistencyScore || 0,

@@ -101,6 +101,22 @@ if ALL kinematic indicators < 15% → fatigue capped at 45
 - Pareja-Blanco et al. (2017) - fatigue thresholds for different training goals
 - Weakley et al. (2021) - velocity-based training review
 
+### UI Display Architecture
+
+The FatigueCarousel component displays two slides:
+
+**Slide 1 — Fatigue Analysis:**
+- **Donut ring**: Shows the composite `fatigueScore` (0–100) from the API
+- **4 indicator cards**: Show the real API sub-metrics directly:
+  - **Velocity** → `D_omega × 100` (%)
+  - **Slowdown** → `I_T × 100` (%)
+  - **Jerk** → `I_J × 100` (%)
+  - **Shakiness** → `I_S × 100` (%)
+
+**Slide 2 — Velocity Analysis:** Per-rep velocity bar chart with effective/ineffective classification.
+
+**Data flow:** `computeFatigueIndicators()` → Firestore → `transformAnalysisForUI()` → `fatigueComponents` prop → FatigueCarousel. The donut score and indicator cards come from the **same computation** — no separate local calculation.
+
 ---
 
 ## 2. Velocity Analysis  

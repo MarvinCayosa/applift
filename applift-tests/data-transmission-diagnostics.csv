@@ -33,7 +33,7 @@ Test #,Duration (s),Received,Est. Sent,Loss,Success %,Throughput (kbps),Avg Inte
 26,29.9,299,300,1,99.7,4.47,100.5,34.3
 27,29.8,295,299,4,98.7,4.43,101.4,34.6
 28,22.4,215,226,11,95.1,4.29,104.9,71.5
-30,29.8,295,299,4,98.7,4.43,101.4,37.1
+
 
 Inter-Packet Intervals (ms) - Last Test
 Index,Web Interval (ms),Device Timestamp Delta (ms)

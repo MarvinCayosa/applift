@@ -85,6 +85,7 @@ export default function SessionDetailsPage() {
         chartData: vm.chartData,
         fatigueScore: vm.fatigueScore,
         fatigueLevel: vm.fatigueLevel,
+        fatigueComponents: vm.fatigueComponents || null,
         consistencyScore: vm.consistencyScore,
         mlClassification: vm.mlClassification,
         avgConcentric: vm.avgConcentric,
@@ -265,6 +266,7 @@ export default function SessionDetailsPage() {
             setsData={vm.mergedSetsData}
             fatigueScore={vm.fatigueScore}
             fatigueLevel={vm.fatigueLevel}
+            fatigueComponents={vm.fatigueComponents}
             selectedSet="all"
           />
 

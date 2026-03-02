@@ -418,11 +418,31 @@ export default function Dashboard() {
         return str.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
       };
       
+      // Compute duration: prefer durationMs, fallback to totalTime, then compute from timestamps
+      let durationMinutes = 0;
+      if (log.results?.durationMs > 0) {
+        durationMinutes = log.results.durationMs / 60000;
+      } else if (log.results?.totalTime > 0) {
+        durationMinutes = log.results.totalTime / 60;
+      } else if (log.timestamps?.started && log.timestamps?.completed) {
+        const parseTs = (ts) => {
+          if (!ts) return null;
+          if (typeof ts.toDate === 'function') return ts.toDate().getTime();
+          if (ts.seconds !== undefined) return ts.seconds * 1000;
+          if (typeof ts === 'string') return new Date(ts).getTime();
+          return null;
+        };
+        const s = parseTs(log.timestamps.started);
+        const e = parseTs(log.timestamps.completed);
+        if (s && e) durationMinutes = (e - s) / 60000;
+      }
+      
       workoutLogs[day].push({
         id: log.id,
         exercise: normalizeForDisplay(rawExercise),
         equipment: normalizeForDisplay(rawEquipment),
-        duration: Math.round((log.results?.totalTime || 0) / 60), // Convert seconds to minutes
+        duration: Math.round(durationMinutes), // Duration in minutes
+        durationMs: log.results?.durationMs || 0, // Pass raw durationMs for ActivityOverview
         startTime: createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }),
         exerciseCount: 1,
         status: log.status || 'completed',

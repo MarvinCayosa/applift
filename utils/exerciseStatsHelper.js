@@ -101,13 +101,20 @@ export function computeProgressionData(logs, analyticsMap = {}, metric = 'load',
   }
 
   if (period === 'month') {
+    // Use current calendar month weeks (day 1-7 = W1, 8-14 = W2, etc.)
+    const currentMonth = now.getMonth()
+    const currentYear = now.getFullYear()
+    const currentWeekNum = Math.ceil(now.getDate() / 7)
     const buckets = {}
-    for (let i = 0; i < 4; i++) buckets[`W${i + 1}`] = { val: 0, order: i }
+    for (let i = 0; i < currentWeekNum; i++) buckets[`W${i + 1}`] = { val: 0, order: i }
     logs.forEach((log) => {
       const d = getLogDate(log)
-      if (!d || d < startDate) return
-      const idx = Math.min(Math.floor((d - startDate) / (7 * 864e5)), 3)
-      buckets[`W${idx + 1}`].val += getMetricVal(log)
+      if (!d) return
+      if (d.getMonth() !== currentMonth || d.getFullYear() !== currentYear) return
+      const weekIdx = Math.ceil(d.getDate() / 7)
+      if (weekIdx <= currentWeekNum && buckets[`W${weekIdx}`]) {
+        buckets[`W${weekIdx}`].val += getMetricVal(log)
+      }
     })
     return Object.entries(buckets)
       .sort(([, a], [, b]) => a.order - b.order)

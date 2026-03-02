@@ -471,6 +471,17 @@ export default function WorkoutMonitor() {
         });
         if (fsResp.ok) {
           console.log('[WorkoutMonitor] ✅ Firestore workout log saved (deferred)');
+          // Invalidate all caches so dashboard/equipment pages show fresh data
+          try {
+            const { clearUserCache } = await import('../services/workoutLogService');
+            clearUserCache(user.uid);
+            // Clear exercise stats sessionStorage
+            const prefix = `exStats_${user.uid}_`;
+            for (let i = sessionStorage.length - 1; i >= 0; i--) {
+              const key = sessionStorage.key(i);
+              if (key?.startsWith(prefix)) sessionStorage.removeItem(key);
+            }
+          } catch (_) {}
         } else {
           console.warn('[WorkoutMonitor] Firestore save returned', fsResp.status);
         }
@@ -956,6 +967,16 @@ export default function WorkoutMonitor() {
               });
               if (fsResp.ok) {
                 console.log(`[OfflineSync] ✅ Firestore workout log saved for session ${sessionId}`);
+                // Invalidate all caches so dashboard/equipment pages show fresh data
+                try {
+                  const { clearUserCache } = await import('../services/workoutLogService');
+                  clearUserCache(user.uid);
+                  const prefix = `exStats_${user.uid}_`;
+                  for (let i = sessionStorage.length - 1; i >= 0; i--) {
+                    const cacheKey = sessionStorage.key(i);
+                    if (cacheKey?.startsWith(prefix)) sessionStorage.removeItem(cacheKey);
+                  }
+                } catch (_) {}
               } else {
                 console.warn(`[OfflineSync] Firestore save failed for session ${sessionId}, status: ${fsResp.status}`);
               }

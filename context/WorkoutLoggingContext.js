@@ -609,20 +609,24 @@ export function WorkoutLoggingProvider({ children }) {
         };
         await saveToFirestore();
 
-        // Invalidate exercise stats cache so History page shows fresh data
+        // Invalidate ALL caches so dashboard/equipment pages show fresh data
+        // clearUserCache handles: service-level Map cache + persistent (memory + IndexedDB)
         try {
-          const eq = (result.metadata?.equipment || '').trim()
-            .replace(/([a-z])([A-Z])/g, '$1-$2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
-            .toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').replace(/-+/g, '-').replace(/^-|-$/g, '');
-          const ex = (result.metadata?.exercise || '').trim()
-            .replace(/([a-z])([A-Z])/g, '$1-$2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
-            .toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').replace(/-+/g, '-').replace(/^-|-$/g, '');
-          const prefix = `exStats_${user.uid}_${eq}_${ex}_`;
+          const { clearUserCache } = await import('../services/workoutLogService');
+          clearUserCache(user.uid);
+          console.log('[WorkoutLogging] Invalidated all workout caches for user:', user.uid);
+        } catch (cacheErr) {
+          console.warn('[WorkoutLogging] Failed to invalidate workout cache:', cacheErr);
+        }
+
+        // Clear ALL exercise stats sessionStorage caches for this user
+        try {
+          const prefix = `exStats_${user.uid}_`;
           for (let i = sessionStorage.length - 1; i >= 0; i--) {
             const key = sessionStorage.key(i);
             if (key?.startsWith(prefix)) sessionStorage.removeItem(key);
           }
-          console.log('[WorkoutLogging] Cleared exercise stats cache:', prefix);
+          console.log('[WorkoutLogging] Cleared all exercise stats caches');
         } catch (_) {}
       }
       
