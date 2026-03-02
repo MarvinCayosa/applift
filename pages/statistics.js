@@ -91,6 +91,7 @@ function MetricCardsCarousel({
     {
       label: 'Avg Frequency',
       value: frequencyValue,
+      unit: 'days',
       sublabel: frequencyLabel,
       bgColor: 'bg-violet-400',
       textColor: 'text-black',
@@ -135,11 +136,14 @@ function MetricCardsCarousel({
               {card.label}
             </div>
             <div className="mt-3">
-              <div>
+              <div className="flex items-baseline gap-1">
                 <AnimatedValue
                   value={card.value}
                   className={`text-5xl font-bold ${card.textColor}`}
                 />
+                {card.unit && (
+                  <span className={`text-lg font-medium ${card.labelColor}`}>{card.unit}</span>
+                )}
               </div>
               <div 
                 className={`text-sm mt-2 ${card.onTap ? 'inline-flex items-center gap-1 px-2.5 py-1 rounded-full' : card.labelColor}`}
