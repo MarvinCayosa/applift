@@ -6,7 +6,9 @@ import ConnectPill from '../components/ConnectPill';
 import EquipmentIcon from '../components/EquipmentIcon';
 import EquipmentSelectionModal from '../components/EquipmentSelectionModal';
 import InstructionModal from '../components/InstructionModal';
+import OnboardingModal from '../components/OnboardingModal';
 import { useBluetooth } from '../context/BluetoothProvider';
+import { useOnboarding } from '../hooks/useOnboarding';
 
 const exercisesByEquipment = {
   Barbell: [
@@ -119,7 +121,14 @@ export default function Workouts() {
   const workoutCarouselRef = useRef(null);
   const [showEquipmentModal, setShowEquipmentModal] = useState(false);
   const [showInstructionModal, setShowInstructionModal] = useState(false);
+  const [showOnboardingModal, setShowOnboardingModal] = useState(false);
   const [wasConnected, setWasConnected] = useState(false);
+  const {
+    shouldShowWorkoutTutorial,
+    markWorkoutTutorialShown,
+    markDontShowAgain,
+    markCompleted,
+  } = useOnboarding();
 
   // Get workouts based on scanned equipment - memoized to prevent recreation
   const workouts = useMemo(() => {
@@ -137,6 +146,14 @@ export default function Workouts() {
     }
     return exercisesByEquipment[scannedEquipment.type] || [];
   }, [scannedEquipment]);
+
+  // Auto-open workout onboarding modal for users who haven't seen it
+  useEffect(() => {
+    if (shouldShowWorkoutTutorial) {
+      const t = setTimeout(() => setShowOnboardingModal(true), 500);
+      return () => clearTimeout(t);
+    }
+  }, [shouldShowWorkoutTutorial]);
 
   useEffect(() => {
     function onDocClick(e) {
@@ -642,6 +659,20 @@ export default function Workouts() {
       <InstructionModal 
         isOpen={showInstructionModal}
         onClose={() => setShowInstructionModal(false)}
+      />
+
+      {/* Onboarding workout setup modal */}
+      <OnboardingModal
+        variant="workoutSetup"
+        isOpen={showOnboardingModal}
+        onClose={() => setShowOnboardingModal(false)}
+        onComplete={() => {
+          setShowOnboardingModal(false);
+        }}
+        onSkip={() => {
+          setShowOnboardingModal(false);
+        }}
+        onDontShowAgain={() => markDontShowAgain()}
       />
 
       {/* Existing bottom nav */}
