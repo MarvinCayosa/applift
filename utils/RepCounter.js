@@ -9,7 +9,36 @@
  * - Dynamic threshold adaptation based on recent movement
  * - Continuous rep segmentation with NO GAPS using boundary tracking
  * - Rep metadata with precise boundary information
+ * - Exercise-specific counting direction (concentric phase only)
  */
+
+// Counting direction: which phase to count as a rep
+// 'valley-to-peak': Count when lifting up (Valley → Peak) - most exercises
+// 'peak-to-valley': Count when pulling down (Peak → Valley) - pulldown exercises
+const COUNT_DIRECTION = {
+  VALLEY_TO_PEAK: 'valley-to-peak',  // Lifting up = rep (curls, bench press push, squats push)
+  PEAK_TO_VALLEY: 'peak-to-valley',  // Pulling down = rep (lat pulldown)
+};
+
+// Exercise-specific counting direction
+// Most exercises count the concentric (lifting) phase
+// Pulldown exercises count the "pull" as the rep
+const EXERCISE_COUNT_DIRECTION = {
+  0: COUNT_DIRECTION.VALLEY_TO_PEAK,  // Concentration Curls - curl up
+  1: COUNT_DIRECTION.VALLEY_TO_PEAK,  // Overhead Extension - push up
+  2: COUNT_DIRECTION.VALLEY_TO_PEAK,  // Bench Press - push up from chest
+  3: COUNT_DIRECTION.VALLEY_TO_PEAK,  // Back Squats - stand up
+  4: COUNT_DIRECTION.PEAK_TO_VALLEY,  // Lateral Pulldown - pull down
+  5: COUNT_DIRECTION.VALLEY_TO_PEAK,  // Seated Leg Extension - extend up
+};
+
+// Equipment name → exercise code mapping (same as ROMComputer)
+const EQUIPMENT_EXERCISE_MAP = {
+  'dumbbell': { 'concentration curls': 0, 'overhead extension': 1 },
+  'barbell': { 'bench press': 2, 'back squats': 3 },
+  'weight stack': { 'lateral pulldown': 4, 'seated leg extension': 5, 'leg extension': 5 },
+};
+
 export class RepCounter {
   constructor(config = {}) {
     this.repCount = 0;
@@ -56,6 +85,51 @@ export class RepCounter {
     // Statistics
     this.repTimes = [];
     this.repStartTime = 0;
+    
+    // Exercise-specific counting direction
+    // Default: valley-to-peak (count when lifting - works for most exercises)
+    this.exerciseCode = config.exerciseCode ?? 0;
+    this.countDirection = config.countDirection || EXERCISE_COUNT_DIRECTION[this.exerciseCode] || COUNT_DIRECTION.VALLEY_TO_PEAK;
+  }
+  
+  /**
+   * Set exercise type from equipment and workout names
+   * This configures the appropriate counting direction for the exercise
+   * @param {string} equipment - Equipment name (e.g., 'barbell', 'dumbbell')
+   * @param {string} workout - Exercise name (e.g., 'bench press', 'concentration curls')
+   */
+  setExerciseFromNames(equipment, workout) {
+    const equipmentLower = (equipment || '').toLowerCase().trim();
+    const workoutLower = (workout || '').toLowerCase().trim();
+    
+    // Find matching exercise code
+    let exerciseCode = 0; // Default to concentration curls
+    for (const [eqName, exercises] of Object.entries(EQUIPMENT_EXERCISE_MAP)) {
+      if (equipmentLower.includes(eqName)) {
+        for (const [exName, code] of Object.entries(exercises)) {
+          if (workoutLower.includes(exName)) {
+            exerciseCode = code;
+            break;
+          }
+        }
+      }
+    }
+    
+    this.exerciseCode = exerciseCode;
+    this.countDirection = EXERCISE_COUNT_DIRECTION[exerciseCode] || COUNT_DIRECTION.VALLEY_TO_PEAK;
+    
+    console.log(`[RepCounter] Exercise set: code=${exerciseCode}, countDirection=${this.countDirection} (${equipment}/${workout})`);
+  }
+  
+  /**
+   * Set counting direction directly
+   * @param {'valley-to-peak' | 'peak-to-valley'} direction
+   */
+  setCountDirection(direction) {
+    if (direction === COUNT_DIRECTION.VALLEY_TO_PEAK || direction === COUNT_DIRECTION.PEAK_TO_VALLEY) {
+      this.countDirection = direction;
+      console.log(`[RepCounter] Count direction set to: ${direction}`);
+    }
   }
   
   /**
@@ -221,41 +295,51 @@ export class RepCounter {
       }
     }
     
-    // Detect rep completion: valley -> peak pattern (1 rep = one cycle)
-    // Simple: just need one valley and one peak to count as a rep
+    // Detect rep completion based on exercise-specific counting direction
+    // Only count ONE direction to prevent double-counting:
+    // - 'valley-to-peak': Count when lifting (most exercises)
+    // - 'peak-to-valley': Count when pulling down (pulldown exercises)
     if (valleys.length >= 1 && peaks.length >= 1) {
       const lastValley = valleys[valleys.length - 1];
       const lastPeak = peaks[peaks.length - 1];
       
-      // Determine which came first to decide the direction
       let isValidRep = false;
       let startPoint, endPoint, prominence, repDuration;
       
-      // Case 1: Valley -> Peak (lifting up from bottom)
-      if (lastValley.index < lastPeak.index) {
-        // Skip if we've already counted this peak
-        if (lastPeak.index <= this.lastDetectedPeakIndex) {
-          return;
+      // Only count in the configured direction to prevent double-counting
+      if (this.countDirection === 'valley-to-peak') {
+        // Count Valley -> Peak (lifting up from bottom)
+        // This is the concentric phase for: curls, bench press, squats, leg extension
+        if (lastValley.index < lastPeak.index) {
+          // Skip if we've already counted this peak
+          if (lastPeak.index <= this.lastDetectedPeakIndex) {
+            return;
+          }
+          
+          startPoint = lastValley;
+          endPoint = lastPeak;
+          prominence = Math.abs(lastPeak.value - lastValley.value);
+          repDuration = (lastPeak.time - lastValley.time) / 1000;
+          isValidRep = true;
         }
-        
-        startPoint = lastValley;
-        endPoint = lastPeak;
-        prominence = Math.abs(lastPeak.value - lastValley.value);
-        repDuration = (lastPeak.time - lastValley.time) / 1000;
-        isValidRep = true;
+        // For valley-to-peak mode, ignore peak->valley movements (eccentric phase)
       }
-      // Case 2: Peak -> Valley (lowering down from top)
-      else if (lastPeak.index < lastValley.index) {
-        // Skip if we've already counted this valley
-        if (lastValley.index <= this.lastDetectedValleyIndex) {
-          return;
+      else if (this.countDirection === 'peak-to-valley') {
+        // Count Peak -> Valley (pulling down from top)
+        // This is the concentric phase for: lat pulldown
+        if (lastPeak.index < lastValley.index) {
+          // Skip if we've already counted this valley
+          if (lastValley.index <= this.lastDetectedValleyIndex) {
+            return;
+          }
+          
+          startPoint = lastPeak;
+          endPoint = lastValley;
+          prominence = Math.abs(lastPeak.value - lastValley.value);
+          repDuration = (lastValley.time - lastPeak.time) / 1000;
+          isValidRep = true;
         }
-        
-        startPoint = lastPeak;
-        endPoint = lastValley;
-        prominence = Math.abs(lastPeak.value - lastValley.value);
-        repDuration = (lastValley.time - lastPeak.time) / 1000;
-        isValidRep = true;
+        // For peak-to-valley mode, ignore valley->peak movements (releasing weight)
       }
       
       if (isValidRep) {

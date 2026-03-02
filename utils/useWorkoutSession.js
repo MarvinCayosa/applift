@@ -317,6 +317,14 @@ export function useWorkoutSession({
     }
   }, [equipment, workout]);
   
+  // Initialize RepCounter with exercise-specific counting direction
+  // This prevents double-counting issues (e.g., bench press counting both lift and lower)
+  useEffect(() => {
+    if (equipment && workout) {
+      repCounterRef.current.setExerciseFromNames(equipment, workout);
+    }
+  }, [equipment, workout]);
+  
   // Workout tracking
   const [currentSet, setCurrentSet] = useState(1);
   
