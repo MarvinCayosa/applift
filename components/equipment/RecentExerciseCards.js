@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
+import { parseLogDate } from '../../utils/workoutCache'
 
 /**
  * Horizontally‑scrollable row of recent‑exercise cards.
@@ -15,9 +16,7 @@ export default function RecentExerciseCards({ exercises, exerciseLogs, primaryCo
   exercises.forEach((ex) => {
     const logs = exerciseLogs[ex.key] || []
     logs.forEach((log) => {
-      const date = log.timestamps?.started?.toDate?.()
-        || log.timestamps?.created?.toDate?.()
-        || (log.startTime ? new Date(log.startTime) : null)
+      const date = parseLogDate(log)
       if (!date) return
 
       const totalSets = log.results?.totalSets || log.results?.completedSets || 0
