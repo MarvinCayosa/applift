@@ -18,35 +18,84 @@ import {
   Tooltip
 } from 'recharts';
 
+// Filter label map
+const FILTER_LABELS = { week: 'This Week', month: 'This Month', allTime: 'All Time' };
+const FILTER_ORDER = ['week', 'month', 'allTime'];
+
+const FREQ_LABELS = { week: 'Per Week', month: 'Per Month' };
+const FREQ_ORDER = ['week', 'month'];
+
+function cycleFreqFilter(current) {
+  const idx = FREQ_ORDER.indexOf(current);
+  return FREQ_ORDER[(idx + 1) % FREQ_ORDER.length];
+}
+
+function cycleFilter(current) {
+  const idx = FILTER_ORDER.indexOf(current);
+  return FILTER_ORDER[(idx + 1) % FILTER_ORDER.length];
+}
+function AnimatedValue({ value, className }) {
+  const [displayed, setDisplayed] = useState(value);
+  const [animating, setAnimating] = useState(false);
+
+  useEffect(() => {
+    if (value !== displayed) {
+      setAnimating(true);
+      const t = setTimeout(() => {
+        setDisplayed(value);
+        setAnimating(false);
+      }, 150);
+      return () => clearTimeout(t);
+    }
+  }, [value]);
+
+  return (
+    <span
+      className={`inline-block transition-all duration-300 ease-out ${className} ${
+        animating ? 'opacity-0 translate-y-1' : 'opacity-100 translate-y-0'
+      }`}
+    >
+      {displayed}
+    </span>
+  );
+}
+
 // Metric Cards Carousel Component matching the reference design
-function MetricCardsCarousel({ totalWorkouts, weekDuration, avgLoadPerWorkout, consistencyScore }) {
+function MetricCardsCarousel({
+  workoutValue, workoutFilter, onWorkoutFilterChange,
+  durationValue, durationFilter, onDurationFilterChange,
+  frequencyValue, frequencyLabel, onFrequencyFilterChange
+}) {
   const scrollRef = useRef(null);
   const [activeIndex, setActiveIndex] = useState(0);
 
   const cards = [
     {
       label: 'Total Workouts',
-      value: totalWorkouts.toString(),
-      sublabel: null,
+      value: workoutValue.toString(),
+      sublabel: FILTER_LABELS[workoutFilter],
       bgColor: 'bg-orange-500',
       textColor: 'text-black',
-      labelColor: 'text-black/80'
+      labelColor: 'text-black/80',
+      onTap: onWorkoutFilterChange
     },
     {
       label: 'Duration',
-      value: weekDuration.formatted,
-      sublabel: 'This Week',
+      value: durationValue,
+      sublabel: FILTER_LABELS[durationFilter],
       bgColor: 'bg-lime-400',
       textColor: 'text-black',
-      labelColor: 'text-black/70'
+      labelColor: 'text-black/70',
+      onTap: onDurationFilterChange
     },
     {
-      label: 'Consistency Score',
-      value: `${consistencyScore}%`,
-      sublabel: 'Last 30 days',
+      label: 'Avg Frequency',
+      value: frequencyValue,
+      sublabel: frequencyLabel,
       bgColor: 'bg-violet-400',
       textColor: 'text-black',
-      labelColor: 'text-black/70'
+      labelColor: 'text-black/70',
+      onTap: onFrequencyFilterChange
     }
   ];
 
@@ -78,21 +127,34 @@ function MetricCardsCarousel({ totalWorkouts, weekDuration, avgLoadPerWorkout, c
         {cards.map((card, index) => (
           <div
             key={index}
-            className={`${card.bgColor} rounded-3xl p-5 flex-shrink-0 snap-start`}
+            onClick={card.onTap || undefined}
+            className={`${card.bgColor} rounded-3xl p-5 flex-shrink-0 snap-start ${card.onTap ? 'cursor-pointer active:scale-[0.97] transition-transform' : ''}`}
             style={{ width: '75%', minHeight: '140px' }}
           >
             <div className={`text-sm font-medium ${card.labelColor}`}>
               {card.label}
             </div>
             <div className="mt-3">
-              <div className={`text-5xl font-bold ${card.textColor}`}>
-                {card.value}
+              <div>
+                <AnimatedValue
+                  value={card.value}
+                  className={`text-5xl font-bold ${card.textColor}`}
+                />
               </div>
-              {card.sublabel && (
-                <div className={`text-sm ${card.labelColor} mt-1`}>
-                  {card.sublabel}
-                </div>
-              )}
+              <div 
+                className={`text-sm mt-2 ${card.onTap ? 'inline-flex items-center gap-1 px-2.5 py-1 rounded-full' : card.labelColor}`}
+                style={card.onTap ? { backgroundColor: 'hsl(0deg 0% 3.1% / 9%)' } : undefined}
+              >
+                <AnimatedValue
+                  value={card.sublabel}
+                  className={card.onTap ? 'text-black/70 font-medium' : ''}
+                />
+                {card.onTap && (
+                  <svg className="w-3 h-3 text-black/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                  </svg>
+                )}
+              </div>
             </div>
           </div>
         ))}
@@ -123,6 +185,9 @@ export default function Statistics() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('statistics');
   const [liftViewType, setLiftViewType] = useState('week');
+  const [workoutFilter, setWorkoutFilter] = useState('allTime');
+  const [durationFilter, setDurationFilter] = useState('week');
+  const [freqFilter, setFreqFilter] = useState('week');
 
   // Read tab from query params (e.g. ?tab=calendar)
   useEffect(() => {
@@ -294,73 +359,89 @@ export default function Statistics() {
   const totalLoad = currentLoadData.length > 0 ? currentLoadData.reduce((sum, item) => sum + (item.load || 0), 0) : 0;
   const hasChartData = currentLoadData.length > 0 && currentLoadData.some(item => item.load > 0);
 
-  // Calculate total workouts
-  const totalWorkouts = logs.length;
+  // ── Filtered Workout Count (week / month / allTime) ──
+  const filteredWorkoutCount = useMemo(() => {
+    if (workoutFilter === 'allTime') return logs.length;
 
-  // Calculate total duration this week
-  const calculateWeekDuration = () => {
     const today = new Date();
-    const dayOfWeek = today.getDay();
-    
-    const sunday = new Date(today);
-    sunday.setDate(today.getDate() - dayOfWeek);
-    sunday.setHours(0, 0, 0, 0);
-    
-    const saturdayDate = new Date(sunday);
-    saturdayDate.setDate(sunday.getDate() + 6);
-    saturdayDate.setHours(23, 59, 59, 999);
-    
+    let start;
+    if (workoutFilter === 'week') {
+      start = new Date(today);
+      start.setDate(today.getDate() - today.getDay());
+      start.setHours(0, 0, 0, 0);
+    } else {
+      // month
+      start = new Date(today.getFullYear(), today.getMonth(), 1);
+    }
+
+    return logs.filter(log => {
+      const d = parseLogDate(log);
+      return d && new Date(d) >= start;
+    }).length;
+  }, [logs, workoutFilter]);
+
+  // ── Duration calculation helper ──
+  const calcDuration = (filterLogs) => {
     let totalMinutes = 0;
-    
-    logs.forEach((log) => {
-      const createdAt = parseLogDate(log);
-      if (!createdAt) return;
-      
-      const logDate = new Date(createdAt);
-      if (logDate >= sunday && logDate <= saturdayDate) {
-        // Check for durationMs (milliseconds) or totalTime (seconds)
-        const durationMs = log.results?.durationMs || 0;
-        const totalTimeSeconds = log.results?.totalTime || 0;
-        
-        if (durationMs > 0) {
-          totalMinutes += durationMs / 60000; // Convert ms to minutes
-        } else if (totalTimeSeconds > 0) {
-          totalMinutes += totalTimeSeconds / 60; // Convert seconds to minutes
-        }
-      }
+    filterLogs.forEach(log => {
+      const durationMs = log.results?.durationMs || 0;
+      const totalTimeSeconds = log.results?.totalTime || 0;
+      if (durationMs > 0) totalMinutes += durationMs / 60000;
+      else if (totalTimeSeconds > 0) totalMinutes += totalTimeSeconds / 60;
     });
-    
     const hours = Math.floor(totalMinutes / 60);
     const minutes = Math.round(totalMinutes % 60);
-    return { hours, minutes, formatted: `${hours}h ${minutes}m` };
+    return `${hours}h ${minutes}m`;
   };
 
-  const weekDuration = calculateWeekDuration();
+  // ── Filtered Duration (week / month / allTime) ──
+  const filteredDuration = useMemo(() => {
+    if (durationFilter === 'allTime') return calcDuration(logs);
+
+    const today = new Date();
+    let start;
+    if (durationFilter === 'week') {
+      start = new Date(today);
+      start.setDate(today.getDate() - today.getDay());
+      start.setHours(0, 0, 0, 0);
+    } else {
+      start = new Date(today.getFullYear(), today.getMonth(), 1);
+    }
+
+    const filtered = logs.filter(log => {
+      const d = parseLogDate(log);
+      return d && new Date(d) >= start;
+    });
+    return calcDuration(filtered);
+  }, [logs, durationFilter]);
+
+  // Total workouts (used by chart section)
+  const totalWorkouts = logs.length;
 
   // Calculate average load per workout
   const avgLoadPerWorkout = totalWorkouts > 0 ? Math.round(totalLoad / totalWorkouts) : 0;
 
-  // Calculate consistency score: active workout days in last 14 days
-  const consistencyScore = useMemo(() => {
-    const DAYS_OBSERVED = 30;
+  // ── Workout Frequency (per week or per month, over last 90 days) ──
+  const workoutFrequency = useMemo(() => {
+    const DAYS_WINDOW = 90;
     const today = new Date();
     today.setHours(23, 59, 59, 999);
     const startDate = new Date(today);
-    startDate.setDate(today.getDate() - (DAYS_OBSERVED - 1));
+    startDate.setDate(today.getDate() - (DAYS_WINDOW - 1));
     startDate.setHours(0, 0, 0, 0);
 
-    const activeDays = new Set();
-    logs.forEach((log) => {
-      const createdAt = getLogDate(log);
-      if (!createdAt) return;
-      const logDate = new Date(createdAt);
-      if (logDate >= startDate && logDate <= today) {
-        const dayKey = `${logDate.getFullYear()}-${logDate.getMonth()}-${logDate.getDate()}`;
-        activeDays.add(dayKey);
-      }
-    });
+    const logsInWindow = logs.filter(log => {
+      const d = parseLogDate(log);
+      return d && new Date(d) >= startDate;
+    }).length;
 
-    return Math.round((activeDays.size / DAYS_OBSERVED) * 100);
+    const weeks = DAYS_WINDOW / 7;
+    const months = DAYS_WINDOW / 30;
+
+    const perWeek = (logsInWindow / weeks).toFixed(1);
+    const perMonth = (logsInWindow / months).toFixed(1);
+
+    return { perWeek, perMonth };
   }, [logs]);
 
   return (
@@ -510,10 +591,15 @@ export default function Statistics() {
               {/* Metric Cards */}
               <section className="mb-6 opacity-0 animate-fade-up" style={{ animationDelay: '0.35s', animationFillMode: 'forwards' }}>
                 <MetricCardsCarousel
-                  totalWorkouts={totalWorkouts}
-                  weekDuration={weekDuration}
-                  avgLoadPerWorkout={avgLoadPerWorkout}
-                  consistencyScore={consistencyScore}
+                  workoutValue={filteredWorkoutCount}
+                  workoutFilter={workoutFilter}
+                  onWorkoutFilterChange={() => setWorkoutFilter(f => cycleFilter(f))}
+                  durationValue={filteredDuration}
+                  durationFilter={durationFilter}
+                  onDurationFilterChange={() => setDurationFilter(f => cycleFilter(f))}
+                  frequencyValue={freqFilter === 'week' ? workoutFrequency.perWeek : workoutFrequency.perMonth}
+                  frequencyLabel={FREQ_LABELS[freqFilter]}
+                  onFrequencyFilterChange={() => setFreqFilter(f => cycleFreqFilter(f))}
                 />
               </section>
 

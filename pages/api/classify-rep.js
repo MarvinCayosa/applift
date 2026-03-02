@@ -120,6 +120,72 @@ const percentile = (arr, p) => {
   return sorted[lower] * (1 - weight) + (sorted[upper] || sorted[lower]) * weight;
 };
 
+// ---- Downsample 10Hz sensor data to 7Hz for model compatibility ----
+// Models were trained on ~7Hz data. If the incoming sample rate is higher,
+// we linearly interpolate all signals down to 7Hz so the feature distributions
+// (jerk, smoothness, peak counts, LDLJ, etc.) match training data.
+const TARGET_SAMPLE_RATE_HZ = 7;
+
+function downsampleTo7Hz(samples) {
+  if (!samples || samples.length < 3) return samples;
+
+  // Compute actual sample rate from timestamps
+  const timestamps = samples.map(s => {
+    const ts = s.timestamp_ms ?? s.timestamp ?? 0;
+    return typeof ts === 'number' ? ts : parseFloat(ts) || 0;
+  });
+
+  const totalDurationMs = timestamps[timestamps.length - 1] - timestamps[0];
+  if (totalDurationMs <= 0) return samples;
+
+  const actualRate = (samples.length - 1) / (totalDurationMs / 1000);
+
+  // Only downsample if rate is meaningfully above target (> 8Hz)
+  if (actualRate <= TARGET_SAMPLE_RATE_HZ + 1) return samples;
+
+  console.log(`[Downsample] Detected ${actualRate.toFixed(1)}Hz → resampling to ${TARGET_SAMPLE_RATE_HZ}Hz`);
+
+  // Calculate how many samples we need at 7Hz
+  const targetCount = Math.max(3, Math.round((totalDurationMs / 1000) * TARGET_SAMPLE_RATE_HZ) + 1);
+  const startTs = timestamps[0];
+  const interval = totalDurationMs / (targetCount - 1);
+
+  // Get all numeric keys from the first sample for interpolation
+  const numericKeys = Object.keys(samples[0]).filter(k => {
+    const v = samples[0][k];
+    return typeof v === 'number' && k !== 'timestamp_ms' && k !== 'timestamp';
+  });
+
+  const resampled = [];
+
+  for (let i = 0; i < targetCount; i++) {
+    const targetTs = startTs + i * interval;
+
+    // Find the two bracketing original samples
+    let lo = 0, hi = timestamps.length - 1;
+    while (lo < hi - 1) {
+      const mid = (lo + hi) >> 1;
+      if (timestamps[mid] <= targetTs) lo = mid; else hi = mid;
+    }
+
+    const t0 = timestamps[lo];
+    const t1 = timestamps[hi];
+    const frac = t1 !== t0 ? (targetTs - t0) / (t1 - t0) : 0;
+
+    // Linearly interpolate every numeric field
+    const newSample = { timestamp_ms: targetTs };
+    for (const key of numericKeys) {
+      const v0 = samples[lo][key] ?? 0;
+      const v1 = samples[hi][key] ?? 0;
+      newSample[key] = v0 + frac * (v1 - v0);
+    }
+    resampled.push(newSample);
+  }
+
+  console.log(`[Downsample] ${samples.length} samples → ${resampled.length} samples`);
+  return resampled;
+}
+
 // Sanitize a value to ensure it's a valid finite number
 const sanitizeNumber = (val) => {
   if (val === undefined || val === null || typeof val !== 'number' || !isFinite(val) || isNaN(val)) {
@@ -139,11 +205,14 @@ const sanitizeFeatures = (features) => {
 
 // Extract features from rep data (matching Python feature extraction)
 function extractFeatures(repData) {
-  const samples = repData.samples || repData;
+  const rawSamples = repData.samples || repData;
   
-  if (!samples || !Array.isArray(samples) || samples.length === 0) {
+  if (!rawSamples || !Array.isArray(rawSamples) || rawSamples.length === 0) {
     return null;
   }
+  
+  // Downsample to 7Hz to match model training data
+  const samples = downsampleTo7Hz(rawSamples);
   
   const features = {};
   
