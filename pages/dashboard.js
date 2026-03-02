@@ -23,6 +23,8 @@ import WorkoutStreak from '../components/WorkoutStreak';
 import { useBluetooth } from '../context/BluetoothProvider';
 import { shouldUseAppMode } from '../utils/pwaInstalled';
 import { getUserAvatarColorStyle, getUserTextColor, getFirstWord } from '../utils/colorUtils';
+import OnboardingModal from '../components/OnboardingModal';
+import { useOnboarding } from '../hooks/useOnboarding';
 
 // Profile colors for custom avatar (must match settings.js)
 const PROFILE_COLORS = [
@@ -51,6 +53,8 @@ export default function Dashboard() {
   const { profile } = useUserProfile();
   const { user, userProfile, signOut, loading, isAuthenticated } = useAuth();
   const { streakData, loading: streakLoading, error: streakError, refreshStreakData } = useWorkoutStreak();
+  const { shouldShowWelcome, markWelcomeShown } = useOnboarding();
+  const [showWelcomeModal, setShowWelcomeModal] = useState(false);
 
   // Refresh streak data when dashboard becomes visible
   useEffect(() => {
@@ -152,6 +156,15 @@ export default function Dashboard() {
       router.replace('/splash');
     }
   }, [isAuthenticated, loading, router]);
+
+  // Auto-open welcome onboarding modal for new / incomplete-onboarding users
+  useEffect(() => {
+    if (shouldShowWelcome && isAuthenticated && !loading) {
+      // Small delay so the dashboard renders first
+      const t = setTimeout(() => setShowWelcomeModal(true), 600);
+      return () => clearTimeout(t);
+    }
+  }, [shouldShowWelcome, isAuthenticated, loading]);
 
   // Calculate user initials from username or displayName
   useEffect(() => {
@@ -1189,6 +1202,19 @@ export default function Dashboard() {
           <button onClick={handleDisconnect} className="px-4 py-2 rounded-md bg-white/6 text-white border border-white/10" aria-label="Disconnect device">Disconnect</button>
         ) : null}
       </div>
+
+      {/* Welcome onboarding modal */}
+      <OnboardingModal
+        variant="welcome"
+        isOpen={showWelcomeModal}
+        onClose={() => setShowWelcomeModal(false)}
+        onComplete={() => markWelcomeShown()}
+        onSkip={() => markWelcomeShown()}
+        onNavigate={(path) => {
+          markWelcomeShown();
+          router.push(path);
+        }}
+      />
     </div>
   );
 }
