@@ -174,6 +174,7 @@ export default function CalibrationModal({ isOpen, onClose, onCalibrate, equipme
   const lastRepTimeRef = useRef(0);
   const sampleCountRef = useRef(0);
   const pendingRepCompletionRef = useRef(null); // timestamp when rep completion was triggered (delay to capture post-motion rest)
+  const calibrationStillCountRef = useRef(0);   // consecutive still samples for rest detection
   
   // Keep refs in sync with state
   useEffect(() => { stepRef.current = step; }, [step]);
@@ -197,6 +198,7 @@ export default function CalibrationModal({ isOpen, onClose, onCalibrate, equipme
       repInProgressRef.current = false;
       lastRepTimeRef.current = 0;
       sampleCountRef.current = 0;
+      calibrationStillCountRef.current = 0;
       
       // Initialize ROMComputer
       const rc = new ROMComputer();
@@ -287,8 +289,10 @@ export default function CalibrationModal({ isOpen, onClose, onCalibrate, equipme
         const isStroke = romType === 'stroke';
         
         if (!repInProgressRef.current && rc.liveRepROM > 5) {
-          // Rep motion started
+          // Rep motion started — liveRepROM exceeds threshold
+          // (EMA filter is now primed from first sample, so this triggers promptly)
           repInProgressRef.current = true;
+          calibrationStillCountRef.current = 0;  // Reset rest counter
           rc.startCalibrationRep();
           // Clear sampleHistory so each rep has clean detection data
           rc.sampleHistory = [];
@@ -300,19 +304,36 @@ export default function CalibrationModal({ isOpen, onClose, onCalibrate, equipme
           let repComplete = false;
           
           if (isStroke) {
-            // STROKE exercises: detect return-to-start via displacement
-            // The rep is done when displacement returns near 0 after reaching a significant peak.
-            // This is far more reliable than plateau detection on the monotonically-increasing liveRepROM.
+            // STROKE exercises: detect return-to-rest via accel+gyro stillness.
+            // Live displacement drifts due to double integration, making "return to
+            // start position" detection unreliable. Instead, we detect when the sensor
+            // is STILL (low accel deviation + low gyro) after significant motion.
+            // This is the same rest-detection approach used in retroCorrect.
             const peakReached = rc.liveRepROM > minROM;
-            const currentDisp = Math.abs(rc.liveDisplacementCm);
-            const peakDisp = Math.max(Math.abs(rc.repMaxAngle), Math.abs(rc.repMinAngle));
-            // Returned to within 30% of peak displacement from starting position
-            const returnedToStart = peakReached && peakDisp > 3 && currentDisp < peakDisp * 0.30;
-            // Need enough samples (at least ~0.5s of data at 50-60Hz)
-            const enoughData = rc.currentRepData.length > 30;
             
-            if (returnedToStart && enoughData) {
-              repComplete = true;
+            // Check instantaneous stillness using the latest IMU data
+            const g = rc.gravityMag || 9.81;
+            const lastSample = rc.currentRepData[rc.currentRepData.length - 1];
+            if (lastSample && peakReached) {
+              const aMagDev = Math.abs(Math.sqrt(lastSample.ax**2 + lastSample.ay**2 + lastSample.az**2) - g);
+              const gMag = Math.sqrt(lastSample.gx**2 + lastSample.gy**2 + lastSample.gz**2);
+              // Check if gyro units are radians or degrees
+              const gMagRad = rc.gyroInRadians ? gMag : gMag * (Math.PI / 180);
+              const isCurrentlyStill = aMagDev < 0.30 && gMagRad < 0.12;
+              
+              if (isCurrentlyStill) {
+                calibrationStillCountRef.current = (calibrationStillCountRef.current || 0) + 1;
+              } else {
+                calibrationStillCountRef.current = 0;
+              }
+              
+              // Need at least 5 consecutive still samples (~0.25s at 20Hz) to confirm rest
+              const STILL_SAMPLES_NEEDED = 5;
+              const enoughData = rc.currentRepData.length > 20;
+              
+              if (calibrationStillCountRef.current >= STILL_SAMPLES_NEEDED && enoughData) {
+                repComplete = true;
+              }
             }
           } else {
             // ANGLE exercises: use the existing plateau detection on sampleHistory

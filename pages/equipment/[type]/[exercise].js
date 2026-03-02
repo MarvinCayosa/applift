@@ -164,7 +164,7 @@ export default function ExerciseDetailPage() {
           <section className="content-fade-up-2">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-bold text-white">Workout History</h2>
-              {sessions.length > ITEMS_PER_PAGE && (
+              {sessions.length > 0 && (
                 <span className="text-xs text-white/40 tabular-nums">
                   {(currentPage - 1) * ITEMS_PER_PAGE + 1}–{Math.min(currentPage * ITEMS_PER_PAGE, sessions.length)} of {sessions.length}
                 </span>
@@ -310,7 +310,7 @@ export default function ExerciseDetailPage() {
                 </div>
 
                 {/* Pagination Controls */}
-                {totalPages > 1 && (
+                {sessions.length > 0 && (
                   <div className="flex items-center justify-center gap-1.5 pt-4 pb-2">
                     {/* Previous */}
                     <button

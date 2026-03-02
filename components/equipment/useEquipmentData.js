@@ -51,11 +51,18 @@ export default function useEquipmentData(equipmentSlug) {
 
     equipmentLogs.forEach((log) => {
       const name = (log.exercise?.namePath || log.exercise?.name || '').toLowerCase()
+      const key = (log.exercise?.key || '').toLowerCase()
       const match = config.exercises.find((ex) =>
-        ex.firestoreNames.some((fn) => fn.toLowerCase() === name)
+        ex.firestoreNames.some((fn) => {
+          const fnLower = fn.toLowerCase()
+          // Exact match OR contains match (handles variants like "Dumbbell Concentration Curls")
+          return fnLower === name || name.includes(fnLower) || fnLower === key || key.includes(ex.key)
+        })
       )
       if (match) {
         grouped[match.key].push(log)
+      } else {
+        console.log(`[useEquipmentData] Unmatched log: name="${name}" key="${key}"`)
       }
     })
 

@@ -119,6 +119,14 @@ export class ROMComputer {
     this.savedPreRepBuffer = null;  // snapshot of preRepBuffer saved after each rep
     this.PRE_REP_BUFFER_SIZE = 30;  // ~0.5s at 60Hz - enough to capture pre-motion stillness
     this.maxHistorySize = 200;      // ~10s at 20Hz
+    
+    // Stroke rolling buffer: keeps ALL recent raw samples across rep boundaries.
+    // RepCounter detects half-reps (valley→peak or peak→valley), so splitting
+    // currentRepData at those boundaries gives ROM only half the motion.
+    // Instead, we retroCorrect the last ~4s of samples and extract peak-to-trough.
+    this.strokeRollingBuffer = [];  // raw sensor data for last ~4s
+    this.STROKE_BUFFER_DURATION = 4000; // ms — 4 seconds of data
+    this.emaInitialized = false;    // whether EMA filter has been primed
   }
   
   // ---- ROM type detection ----
@@ -362,6 +370,15 @@ export class ROMComputer {
     // Single-stage at 0.25 prev was too weak — noise passed through to double integration
     // causing quadratic position drift. Two stages of 0.4/0.6 is equivalent to a
     // ~4th-order IIR filter with good noise rejection while preserving 0.5-2Hz exercise motion.
+    //
+    // IMPORTANT: Prime EMA from first sample instead of starting from 0.
+    // Starting from 0 attenuates the first 3-5 samples by 35-64%, which causes
+    // the first rep's live displacement to be severely under-reported.
+    if (!this.emaInitialized) {
+      this.prevVertAccel = rawVertAccel;
+      this.prevVertAccel2 = rawVertAccel;
+      this.emaInitialized = true;
+    }
     const stage1 = 0.4 * this.prevVertAccel + 0.6 * rawVertAccel;
     const vertAccel = 0.4 * this.prevVertAccel2 + 0.6 * stage1;
     this.prevVertAccel = stage1;
@@ -472,7 +489,7 @@ export class ROMComputer {
     
     // Maintain pre-rep rolling buffer (for stroke exercises, so retroCorrect has rest segments)
     const romType = this.getROMType(this.exerciseType);
-    if (romType === 'stroke' && !this.isCalibrationRep) {
+    if (romType === 'stroke') {
       const sampleForBuffer = {
         ax: accelX, ay: accelY, az: accelZ,
         gx: gyroX, gy: gyroY, gz: gyroZ,
@@ -482,9 +499,22 @@ export class ROMComputer {
         velocity: this.velocity,
         vertAccel: vertAccel
       };
-      this.preRepBuffer.push(sampleForBuffer);
-      if (this.preRepBuffer.length > this.PRE_REP_BUFFER_SIZE) {
-        this.preRepBuffer.shift();
+      
+      if (!this.isCalibrationRep) {
+        this.preRepBuffer.push(sampleForBuffer);
+        if (this.preRepBuffer.length > this.PRE_REP_BUFFER_SIZE) {
+          this.preRepBuffer.shift();
+        }
+      }
+      
+      // Stroke rolling buffer: keeps last ~4s of raw data for full-cycle ROM extraction.
+      // This buffer is NOT cleared between reps — it spans rep boundaries so that
+      // retroCorrect always has a full up+down cycle regardless of where the RepCounter
+      // splits the rep. Trimmed by timestamp, not sample count.
+      this.strokeRollingBuffer.push(sampleForBuffer);
+      const cutoff = timestamp - this.STROKE_BUFFER_DURATION;
+      while (this.strokeRollingBuffer.length > 0 && this.strokeRollingBuffer[0].ts < cutoff) {
+        this.strokeRollingBuffer.shift();
       }
     }
   }
@@ -549,7 +579,8 @@ export class ROMComputer {
     this.liveRepROM = 0;
     this.liveAdjustedROM = 0;
     
-    // Reset stroke state
+    // Reset stroke state (calibration context — EMA IS reset because
+    // calibration reps are self-contained and don't need continuous filter state)
     if (romType === 'stroke') {
       this.velocity = 0;
       this.displacement = 0;
@@ -558,6 +589,7 @@ export class ROMComputer {
       this.minDisplacement = 0;
       this.prevVertAccel = 0;
       this.prevVertAccel2 = 0;
+      this.emaInitialized = false;
     }
     
     const unit = romType === 'angle' ? '°' : ' cm';
@@ -599,22 +631,25 @@ export class ROMComputer {
       }
     } else {
       // For stroke ROM during workout:
-      // Prepend savedPreRepBuffer (captured at set start / after last rep) to give
-      // retroCorrect access to pre-motion rest samples for better drift cancellation.
-      if (this.savedPreRepBuffer && this.savedPreRepBuffer.length > 0) {
-        const combined = [...this.savedPreRepBuffer, ...this.currentRepData];
-        // Temporarily replace currentRepData for retroCorrect calculation
+      // Use the strokeRollingBuffer (last ~4s of continuous data) instead of
+      // currentRepData (which only has samples since the last rep boundary).
+      // RepCounter detects half-reps (valley→peak or peak→valley), so
+      // currentRepData only contains half the physical motion. The rolling
+      // buffer always spans at least one full up+down cycle, giving
+      // retroCorrect the complete motion + pre-motion rest for anchoring.
+      // This fixes the "first rep ROM always too low" issue because the rolling
+      // buffer includes pre-motion stillness that currentRepData lacks.
+      if (this.strokeRollingBuffer.length >= 10) {
+        const bufferCopy = [...this.strokeRollingBuffer];
+        // Temporarily swap currentRepData for retroCorrect
         const original = this.currentRepData;
-        this.currentRepData = combined;
+        this.currentRepData = bufferCopy;
         romValue = this.computeStrokeROM();
-        this.currentRepData = original; // Restore
-        console.log(`[ROMComputer] completeRep: used ${this.savedPreRepBuffer.length} pre-motion + ${original.length} motion samples`);
+        this.currentRepData = original;
+        console.log(`[ROMComputer] completeRep: used ${bufferCopy.length} rolling buffer samples (${((bufferCopy[bufferCopy.length-1].ts - bufferCopy[0].ts)/1000).toFixed(1)}s)`);
       } else {
         romValue = this.computeStrokeROM();
       }
-      
-      // Save current preRepBuffer for next rep (it now contains post-motion rest samples)
-      this.savedPreRepBuffer = [...this.preRepBuffer];
     }
     
     // Clamp to exercise-specific physical maximum — anything above is sensor drift
@@ -631,14 +666,17 @@ export class ROMComputer {
     this.repROMs.push(repROM);
     
     // Zero-velocity reset at rep boundary for stroke
+    // IMPORTANT: Do NOT reset prevVertAccel/prevVertAccel2 (EMA filter state).
+    // Resetting them re-starts the cascaded EMA from 0, which attenuates the
+    // first 3-5 samples of the next rep by 35-64%. The EMA state should be
+    // continuous across rep boundaries for accurate live tracking.
     if (romType === 'stroke') {
       this.velocity = 0;
       this.displacement = 0;
       this.peakDisplacement = 0;
       this.minDisplacement = 0;
       this.stillCounter = 0;
-      this.prevVertAccel = 0;
-      this.prevVertAccel2 = 0;
+      // prevVertAccel, prevVertAccel2 — PRESERVED (continuous EMA)
     }
     this.currentRepData = [];
     this.repMinAngle = Infinity;
@@ -1103,6 +1141,8 @@ export class ROMComputer {
     this.sampleHistory = [];
     this.preRepBuffer = [];           // Clear rolling buffer
     this.savedPreRepBuffer = null;    // Will be populated after first samples come in
+    this.strokeRollingBuffer = [];    // Clear stroke rolling buffer for new set
+    this.emaInitialized = false;      // Re-prime EMA from first sample of new set
     this.velocity = 0;
     this.displacement = 0;
     this.stillCounter = 0;
@@ -1136,6 +1176,8 @@ export class ROMComputer {
     this.currentRepData = [];
     this.preRepBuffer = [];
     this.savedPreRepBuffer = null;
+    this.strokeRollingBuffer = [];
+    this.emaInitialized = false;
     this.velocity = 0;
     this.displacement = 0;
     this.lastTimestamp = 0;
