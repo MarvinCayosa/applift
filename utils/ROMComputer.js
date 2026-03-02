@@ -9,8 +9,10 @@
  * 
  * - STROKE ROM (barbell / weight stack exercises):
  *   Sensor on the bar or flat on the weight stack — constrained to 1D vertical motion.
- *   1. Detect gravity axis: at rest, whichever accel axis reads ~9.8 m/s² is vertical.
- *   2. Subtract gravity from that axis → linear acceleration.
+ *   Applied to: Bench Press, Back Squats, Lateral Pulldown, Seated Leg Extension.
+ *   VERTICAL ONLY — horizontal and diagonal acceleration are ignored.
+ *   1. At rest, capture gravity vector → compute unit vector (vertical reference axis).
+ *   2. Each sample: project raw accel onto gravity unit vector → vertical-only linear accel.
  *   3. Double-integrate per rep: accel → velocity → displacement (cm).
  *   4. ZUPT (Zero-Velocity Update) at top/bottom of each rep kills drift.
  *   ROM = peak-to-trough vertical displacement within a rep.
@@ -24,13 +26,15 @@
 
 // Exercise code → ROM type mapping
 // Dumbbell exercises (0,1) = angle, everything else = stroke
+// Stroke ROM only applies to vertical-motion exercises:
+//   Bench Press, Back Squats, Lateral Pulldown, Seated Leg Extension
 const EXERCISE_ROM_TYPE = {
   0: 'angle', // Concentration Curls
   1: 'angle', // Overhead Extension
-  2: 'stroke', // Bench Press
-  3: 'stroke', // Back Squats
-  4: 'stroke', // Lateral Pulldown
-  5: 'stroke', // Seated Leg Extension
+  2: 'stroke', // Bench Press (vertical bar path)
+  3: 'stroke', // Back Squats (vertical bar path)
+  4: 'stroke', // Lateral Pulldown (vertical stack motion)
+  5: 'stroke', // Seated Leg Extension (vertical stack motion)
 };
 
 // Equipment name → exercise code mapping for lookup
@@ -61,6 +65,7 @@ export class ROMComputer {
     this.peakDisplacement = 0;
     this.minDisplacement = 0;
     this.baselineGravity = null;    // calibrated gravity vector {x,y,z} from baseline hold
+    this.gravityUnitVec = null;     // unit vector along gravity axis (vertical reference)
     this.gravityMag = 9.81;         // calibrated gravity magnitude (from rest accel vector norm)
     this.gyroBias = {x:0,y:0,z:0}; // calibrated gyro offset (native units) from baseline hold
     this.gyroInRadians = false;     // auto-detected: true if ESP32 outputs rad/s
@@ -182,6 +187,26 @@ export class ROMComputer {
     const r = this.quatMultiply(this.quatMultiply(q, p), this.quatConjugate(q));
     return { x: r.x, y: r.y, z: r.z };
   }
+
+  /**
+   * Project raw acceleration onto the gravity axis (vertical only).
+   * Returns the signed scalar component along the gravity direction minus gravity magnitude.
+   * This ignores ALL horizontal and diagonal acceleration — only vertical motion is measured.
+   *
+   * Why not quaternion rotation?
+   *   Quaternion rotation maps accel to a full 3D world frame, then extracts world-Z.
+   *   If the quaternion has drift or orientation error, horizontal accelerations leak into Z.
+   *   Gravity-axis projection is immune to this — it uses the stable gravity reference
+   *   established at rest, projecting raw accel directly onto that axis.
+   */
+  projectOnGravity(ax, ay, az) {
+    if (!this.gravityUnitVec) return 0;
+    const gu = this.gravityUnitVec;
+    // dot(rawAccel, gravityUnitVector) = component along gravity axis
+    const verticalComponent = ax * gu.x + ay * gu.y + az * gu.z;
+    // Subtract gravity magnitude to get linear vertical acceleration
+    return verticalComponent - this.gravityMag;
+  }
   
   // ---- Main sample entry ----
   addSample(data) {
@@ -245,24 +270,36 @@ export class ROMComputer {
     if (this.sampleHistory.length > this.maxHistorySize) this.sampleHistory.shift();
   }
   
-  // ---- STROKE ROM (vertical displacement via quaternion gravity removal) ----
-  // Ported from reference implementation (references/ROMComputer.js).
-  // Improved approach using ESP32's onboard quaternion for gravity removal:
-  //   1. Rotate measured accel to world frame using quaternion
-  //   2. Subtract calibrated gravity magnitude from world-Z → vertical linear accel
+  // ---- STROKE ROM (vertical-only displacement via gravity-axis projection) ----
+  // VERTICAL ONLY: Projects acceleration onto the gravity axis established at rest.
+  // This inherently ignores ALL horizontal and diagonal acceleration components.
+  // Applied to: Bench Press, Back Squats, Lateral Pulldown, Seated Leg Extension.
+  //
+  // Pipeline:
+  //   1. At rest, capture gravity vector → compute unit vector (vertical reference)
+  //   2. Each sample: dot(rawAccel, gravityUnitVec) − gravityMag = vertical linear accel
   //   3. EMA smoothing (0.25 prev + 0.75 current) to reduce noise spikes
   //   4. Dead-zone (NOISE_FLOOR = 0.06 m/s²) for sensor noise
-  //   5. Combined accel+gyro ZUPT for stillness detection (way more robust than accel-only)
-  //   6. Trapezoidal integration: accel → velocity → displacement (more accurate than Euler)
+  //   5. Combined accel+gyro ZUPT for stillness detection
+  //   6. Trapezoidal integration: accel → velocity → displacement
   //   7. Velocity clamping (MAX_VELOCITY = 2.0 m/s) prevents runaway drift
   // ROM = peak-to-trough vertical displacement within a rep.
   addStrokeSample(q, accelX, accelY, accelZ, gyroX, gyroY, gyroZ, timestamp) {
-    // === First sample: initialize gravity magnitude ===
+    // === First sample: initialize gravity magnitude and vertical reference axis ===
     if (this.baselineGravity === null) {
       this.baselineGravity = { x: accelX, y: accelY, z: accelZ };
       this.gravityMag = Math.sqrt(accelX*accelX + accelY*accelY + accelZ*accelZ);
+      // Compute gravity unit vector — this defines the "vertical" axis for the entire rep
+      // All subsequent accelerations are projected onto this axis, ignoring horizontal/diagonal
+      if (this.gravityMag > 0) {
+        this.gravityUnitVec = {
+          x: accelX / this.gravityMag,
+          y: accelY / this.gravityMag,
+          z: accelZ / this.gravityMag
+        };
+      }
       this.lastTimestamp = timestamp;
-      console.log(`🔍 [ROM DEBUG] Gravity mag=${this.gravityMag.toFixed(4)} from first sample`);
+      console.log(`🔍 [ROM DEBUG] Gravity mag=${this.gravityMag.toFixed(4)} axis=(${this.gravityUnitVec?.x.toFixed(3)},${this.gravityUnitVec?.y.toFixed(3)},${this.gravityUnitVec?.z.toFixed(3)}) from first sample`);
       return;
     }
     
@@ -271,12 +308,12 @@ export class ROMComputer {
     if (dt <= 0 || dt >= 0.5) { this.lastTimestamp = timestamp; return; }
     this.lastTimestamp = timestamp;
     
-    // === STEP 1: Quaternion-based gravity removal ===
-    // Rotate measured accel from sensor frame to world frame using ESP32's fused quaternion.
-    // This is orientation-independent — no need to detect which axis is "up".
-    const accelWorld = this.rotateVector({ x: accelX, y: accelY, z: accelZ }, q);
-    // Vertical linear acceleration = world-Z component minus calibrated gravity
-    const rawVertAccel = accelWorld.z - this.gravityMag;
+    // === STEP 1: Gravity-axis projection (vertical only) ===
+    // Project raw acceleration onto the gravity unit vector established at rest.
+    // This extracts ONLY the vertical component — horizontal and diagonal are ignored.
+    // Unlike quaternion rotation (which can leak horizontal accel through orientation error),
+    // gravity-axis projection is stable and purely vertical.
+    const rawVertAccel = this.projectOnGravity(accelX, accelY, accelZ);
     
     // === STEP 2: Light EMA smoothing ===
     // alpha=0.25 on previous + 0.75 on current: preserves motion signal, reduces noise spikes.
@@ -606,7 +643,7 @@ export class ROMComputer {
   // ========== RETROSPECTIVE CORRECTION (Forward-Backward Integration) ==========
   // Ported from references/vertical_rom_test.html
   // After a rep ends, re-process all samples with:
-  // 1. Quaternion-based vertical acceleration extraction
+  // 1. Gravity-axis projection for vertical-only acceleration (ignores horizontal/diagonal)
   // 2. Acceleration bias estimation & removal from rest segments
   // 3. Light smoothing to reduce noise amplification
   // 4. Forward-backward velocity integration (drift cancellation)
@@ -618,7 +655,7 @@ export class ROMComputer {
     const n = samples.length;
     if (n < 5) return null;
     
-    // ====== STEP 1: Extract raw vertical acceleration ======
+    // ====== STEP 1: Extract vertical-only acceleration (gravity-axis projection) ======
     const rawAcc = new Float64Array(n);
     const dts = new Float64Array(n);
     
@@ -628,10 +665,9 @@ export class ROMComputer {
         const dt = (s.ts - samples[i - 1].ts) / 1000;
         dts[i] = (dt > 0 && dt < 0.5) ? dt : 0;
       }
-      // Quaternion gravity removal: rotate accel to world frame, subtract gravity
-      const q = { w: s.qw, x: s.qx, y: s.qy, z: s.qz };
-      const aw = this.rotateVector({ x: s.ax, y: s.ay, z: s.az }, q);
-      rawAcc[i] = aw.z - g;
+      // Vertical-only: project raw accel onto gravity axis, subtract gravity magnitude
+      // This ignores all horizontal and diagonal acceleration components
+      rawAcc[i] = this.projectOnGravity(s.ax, s.ay, s.az);
     }
     
     // ====== STEP 2: Detect rest/still segments (accel + gyro) ======
@@ -930,10 +966,17 @@ export class ROMComputer {
     this.baselineAngle = { roll: sumRoll/n, pitch: sumPitch/n, yaw: sumYaw/n };
     this.baselineGravity = { x: sumAx/n, y: sumAy/n, z: sumAz/n };
     
-    // Set gravity magnitude for quaternion-based approach (vector norm of averaged accel)
-    // This replaces the old axis-detection approach. The quaternion rotation handles
-    // projecting to world-Z regardless of sensor orientation.
+    // Set gravity magnitude and vertical reference axis from averaged accel at rest.
+    // The gravity unit vector defines the "vertical" direction for stroke ROM —
+    // all acceleration is projected onto this axis, ignoring horizontal/diagonal.
     this.gravityMag = Math.sqrt(this.baselineGravity.x**2 + this.baselineGravity.y**2 + this.baselineGravity.z**2);
+    if (this.gravityMag > 0) {
+      this.gravityUnitVec = {
+        x: this.baselineGravity.x / this.gravityMag,
+        y: this.baselineGravity.y / this.gravityMag,
+        z: this.baselineGravity.z / this.gravityMag
+      };
+    }
     
     // Compute gyro bias from rest samples (if gyro data available)
     // At rest, any non-zero gyro reading is bias/offset that should be subtracted.
@@ -983,6 +1026,7 @@ export class ROMComputer {
     this.baselineQuat = null;
     this.baselineAngle = null;
     this.baselineGravity = null;
+    this.gravityUnitVec = null;
     this.gravityMag = 9.81;
     this.gyroBias = {x:0,y:0,z:0};
     this.gyroInRadians = false;
@@ -1012,6 +1056,7 @@ export class ROMComputer {
     this.baselineQuat = null;
     this.baselineAngle = null;
     this.baselineGravity = null;
+    this.gravityUnitVec = null;
     this.gravityMag = 9.81;
     this.gyroBias = {x:0,y:0,z:0};
     this.gyroInRadians = false;

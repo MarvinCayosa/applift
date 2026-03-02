@@ -16,9 +16,10 @@ AppLift supports two distinct ROM calculation methods based on equipment type:
 
 ### 2. **Stroke ROM** (Linear Displacement Exercises)  
 - **Equipment**: Barbell, Weight Stack
-- **Exercises**: Bench Press, Back Squats, Lateral Pulldown, Leg Extension
+- **Exercises**: Bench Press, Back Squats, Lateral Pulldown, Seated Leg Extension
 - **Unit**: Centimeters (cm)
-- **Method**: Quaternion gravity removal + vertical displacement integration
+- **Method**: Gravity-axis projection (vertical only) + displacement integration
+- **Vertical only**: Horizontal and diagonal acceleration components are ignored
 
 ---
 
@@ -53,12 +54,16 @@ repROM = maxAngle - minAngle
 
 **Used for**: Barbell/weight stack exercises with constrained vertical motion
 
+**Vertical only**: Only the component of acceleration along the gravity axis is used. Horizontal and diagonal accelerations are completely ignored. This is achieved by projecting raw acceleration onto the gravity unit vector (established during calibration), rather than using quaternion rotation to world frame.
+
 #### Algorithm Steps:
 
 ```javascript
-// 1. Quaternion-based gravity removal
-accelWorld = rotateVector(accelSensor, quaternion)
-verticalAccel = accelWorld.z - calibratedGravityMagnitude
+// 1. Gravity-axis projection (vertical only)
+// At rest, gravity vector is captured → unit vector computed
+gravityUnitVec = normalize(baselineGravity)
+// Each sample: project raw accel onto gravity axis, ignore horizontal/diagonal
+verticalAccel = dot(rawAccel, gravityUnitVec) - gravityMagnitude
 
 // 2. EMA smoothing (preserves slow movements)
 smoothedAccel = 0.25 * prevAccel + 0.75 * rawAccel
@@ -80,7 +85,7 @@ repROM = maxDisplacement - minDisplacement
 
 | Aspect | Old Algorithm | New Algorithm | Benefit |
 |--------|---------------|---------------|---------|
-| **Gravity Removal** | Single-axis detection | Quaternion world-frame projection | Orientation-independent |
+| **Gravity Removal** | Single-axis detection | Gravity-axis projection (vertical only) | Ignores horizontal/diagonal completely |
 | **Filtering** | High-pass filter (0.12 α) | EMA smoothing (0.25 α) | Preserves slow movements |
 | **ZUPT** | Accel-only (0.3 threshold) | Combined accel+gyro (0.12 + 0.06) | More robust stillness detection |
 | **Integration** | Euler + 0.97 drag | Trapezoidal + velocity clamping | Higher accuracy, no artificial damping |
@@ -202,10 +207,10 @@ const targetROM = rom.setTargetFromCalibration([rom1, rom2, rom3]);
 const EXERCISE_ROM_TYPE = {
   0: 'angle',   // Concentration Curls (dumbbell)
   1: 'angle',   // Overhead Extension (dumbbell)
-  2: 'stroke',  // Bench Press (barbell)
-  3: 'stroke',  // Back Squats (barbell)
-  4: 'stroke',  // Lateral Pulldown (weight stack)
-  5: 'stroke',  // Seated Leg Extension (weight stack)
+  2: 'stroke',  // Bench Press (barbell) — vertical bar path
+  3: 'stroke',  // Back Squats (barbell) — vertical bar path
+  4: 'stroke',  // Lateral Pulldown (weight stack) — vertical stack motion
+  5: 'stroke',  // Seated Leg Extension (weight stack) — vertical stack motion
 };
 ```
 
@@ -304,11 +309,10 @@ ROMComputer.js
 - **Cross-session analytics**: ROM trend analysis over time
 
 ### Known Limitations
-- **Stroke ROM orientation dependency**: Requires roughly vertical motion
-- **Single-plane measurement**: Current stroke algorithm assumes primary vertical component
+- **Vertical-only measurement**: Stroke ROM measures only vertical displacement — exercises with significant horizontal motion components (e.g., cable flyes) are not supported for stroke ROM
 - **Calibration requirement**: Each exercise needs initial calibration setup
 
 ---
 
-*Last updated: February 27, 2026*
-*Algorithm version: v2.0 (Quaternion-based gravity removal)*
+*Last updated: March 2, 2026*
+*Algorithm version: v2.1 (Gravity-axis projection — vertical only)*

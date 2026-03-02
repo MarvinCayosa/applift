@@ -233,10 +233,12 @@ Bottom position ────   ▼
 
 **Calculation (5-step process):**
 
-1. **Gravity Removal:** The sensor always measures gravity (~9.81 m/s²) plus any actual movement acceleration. We remove gravity by:
-   - Using the quaternion to rotate the acceleration into a "world frame" (so we know which direction is truly up).
-   - Subtracting the calibrated gravity magnitude from the vertical component.
-   - What remains is the "linear acceleration" — just the movement.
+1. **Gravity-Axis Projection (Vertical Only):** The sensor always measures gravity (~9.81 m/s²) plus any actual movement acceleration. We isolate just the **vertical** component by:
+   - During calibration, capturing the gravity vector at rest and computing its **unit vector** (the vertical reference axis).
+   - Each sample: projecting the raw acceleration onto this gravity unit vector → only the vertical component remains.
+   - Subtracting the calibrated gravity magnitude from this projection.
+   - **Horizontal and diagonal acceleration is completely ignored** — only vertical motion counts.
+   - This is more robust than quaternion-based rotation, which can leak horizontal acceleration through orientation drift.
 
 2. **Noise Filtering:**
    - Apply EMA (Exponential Moving Average) smoothing: 25% previous value + 75% current value.
