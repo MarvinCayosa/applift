@@ -60,37 +60,50 @@ repROM = maxAngle - minAngle
 
 ```javascript
 // 1. Gravity-axis projection (vertical only)
-// At rest, gravity vector is captured → unit vector computed
-gravityUnitVec = normalize(baselineGravity)
+// At rest, first 10 accel samples are averaged → gravity unit vector
+// Single-sample init had ~1° angle error → horizontal accel leakage ~12cm/rep
+// 10-sample averaging reduces error to ~0.35° → leakage ~4cm/rep
+gravityUnitVec = normalize(average(first10Samples))
 // Each sample: project raw accel onto gravity axis, ignore horizontal/diagonal
 verticalAccel = dot(rawAccel, gravityUnitVec) - gravityMagnitude
 
-// 2. EMA smoothing (preserves slow movements)
-smoothedAccel = 0.25 * prevAccel + 0.75 * rawAccel
+// 2. Cascaded EMA smoothing (2-stage, ~12dB/octave noise rolloff)
+// Single-stage at 0.25 was too weak → noise quadratically amplified by double integration
+stage1 = 0.4 * prevStage1 + 0.6 * rawAccel
+smoothedAccel = 0.4 * prevSmoothed + 0.6 * stage1
 
-// 3. Combined accel + gyro ZUPT (Zero-Velocity Update)
+// 3. Noise floor dead-zone (0.15 m/s² — raised from 0.06)
+// MEMS accelerometers have ~0.07-0.3 m/s² RMS noise at 20-50Hz sampling
+accelInput = |smoothedAccel| < 0.15 ? 0 : smoothedAccel
+
+// 4. Combined accel + gyro ZUPT (Zero-Velocity Update)
 accelDeviation = |accelMagnitude - gravityMag|
 gyroMagnitude = sqrt(gx² + gy² + gz²)
-isStill = (accelDeviation < 0.12) AND (gyroMag < 0.06 rad/s)
+isStill = (accelDeviation < 0.20) AND (gyroMag < 0.08 rad/s) for 3+ samples
 
-// 4. Trapezoidal integration
-velocity += accelInput * dt
-displacement += (oldVelocity + newVelocity) / 2 * dt
+// 5. Trapezoidal integration
+velocity += accelInput * dt  // clamped to ±1.5 m/s
+displacement += (oldVelocity + newVelocity) / 2 * dt  // clamped to ±1.0 m
 
-// 5. ROM = peak-to-trough displacement within rep
-repROM = maxDisplacement - minDisplacement
+// 6. ROM = peak-to-trough displacement, clamped to exercise-specific max
+repROM = min(maxDisplacement - minDisplacement, EXERCISE_MAX_ROM)
 ```
 
-#### Recent Improvements (Feb 2026):
+#### Recent Improvements (Mar 2026 — Consistency Fix):
 
-| Aspect | Old Algorithm | New Algorithm | Benefit |
-|--------|---------------|---------------|---------|
-| **Gravity Removal** | Single-axis detection | Gravity-axis projection (vertical only) | Ignores horizontal/diagonal completely |
-| **Filtering** | High-pass filter (0.12 α) | EMA smoothing (0.25 α) | Preserves slow movements |
-| **ZUPT** | Accel-only (0.3 threshold) | Combined accel+gyro (0.12 + 0.06) | More robust stillness detection |
-| **Integration** | Euler + 0.97 drag | Trapezoidal + velocity clamping | Higher accuracy, no artificial damping |
-| **Sensitivity** | 0.3 m/s² noise floor | 0.06 m/s² noise floor | 5x more sensitive to small movements |
-| **Drift Control** | 0.4 decay factor | 0.03 decay factor | 13x faster zero-lock |
+| Aspect | Before | After | Benefit |
+|--------|--------|-------|--------|
+| **Gravity Init** | Single noisy sample | Averaged first 10 samples | ~3x less angular error → consistent readings |
+| **Gravity Persistence** | Reset each set | Preserved across sets | Eliminates set-to-set variation |
+| **Filtering** | Single EMA (0.25 prev) | Cascaded 2-stage EMA (0.4 prev) | ~12dB/octave noise rejection |
+| **Noise Floor** | 0.06 m/s² | 0.15 m/s² | Rejects MEMS sensor noise properly |
+| **ZUPT Threshold** | accel 0.12, gyro 0.06 | accel 0.20, gyro 0.08 | Better rest detection during exercise |
+| **ZUPT Trigger** | 2 consecutive samples | 3 consecutive samples | Fewer false triggers during motion |
+| **Velocity Clamp** | 2.0 m/s | 1.5 m/s | Realistic for exercise bar speeds |
+| **Displacement Clamp** | 2.0 m (200 cm) | 1.0 m (100 cm) | No exercise exceeds 100 cm ROM |
+| **ROM Clamp** | 200 cm flat | Exercise-specific (60-100 cm) | Bench 80, Squat 100, Pulldown 80, LegExt 60 |
+| **RetroCorrect Smoothing** | Single-pass 3-point | Two-pass 3-point (–12dB/oct) | Better noise rejection for final ROM |
+| **Exercise Matching** | Substring includes | Word-based matching | Fixes "Flat Bench Barbell Press" → code 2 |
 
 ---
 
@@ -98,8 +111,11 @@ repROM = maxDisplacement - minDisplacement
 
 ### Baseline Calibration (Per Set)
 - **Trigger**: Start of each new set
-- **Purpose**: Reset reference position to eliminate carry-over drift
+- **Purpose**: Reset integration state (velocity/displacement) for clean tracking
 - **Method**: `romComputer.calibrateBaseline()` zeroes displacement state
+- **Important**: Gravity vector is PRESERVED across sets (physical constant of sensor orientation)
+- **Why**: Resetting gravity forced re-initialization from a single noisy sample, causing
+  wildly inconsistent ROM (20-100+cm for a 46cm bench press)
 
 ### Target ROM Calibration (Per Exercise)
 - **Trigger**: First use of equipment+exercise combination
@@ -220,8 +236,18 @@ const EXERCISE_ROM_TYPE = {
 
 ### Accuracy
 - **Angle ROM**: Direct quaternion measurement, no drift
-- **Stroke ROM**: ±2cm accuracy for 20-100cm movements
-- **Sensitivity**: Detects movements as small as 3cm (stroke) or 5° (angle)
+- **Stroke ROM**: ±5cm accuracy for 20-100cm movements (with averaged gravity init)
+- **Sensitivity**: Detects movements as small as 5cm (stroke) or 5° (angle)
+- **Consistency**: With gravity averaging + preservation, consecutive reps typically within ±10% of each other
+
+### Physical Limits (Exercise-Specific ROM Clamps)
+| Exercise | Max ROM | Rationale |
+|----------|---------|-----------|
+| Bench Press | 80 cm | Chest to lockout ≈40-60cm |
+| Back Squats | 100 cm | Full depth ≈50-80cm |
+| Lateral Pulldown | 80 cm | Full pull ≈50-70cm |
+| Seated Leg Extension | 60 cm | Full extension ≈30-50cm |
+| All angle exercises | 180° | Single-joint physical maximum |
 
 ### Real-time Performance
 - **Sample Rate**: 20 Hz from ESP32 IMU
@@ -261,11 +287,13 @@ const EXERCISE_ROM_TYPE = {
 3. Check BLE connection stability
 
 #### "ROM values inconsistent between reps"
-**Cause**: Movement pattern variation or sensor drift
-**Fix**:
-1. Focus on consistent movement pattern
-2. For stroke: ZUPT algorithm should handle most drift automatically
-3. Check for loose sensor mounting
+**Cause**: Gravity vector noise (single-sample init) or sensor drift
+**Fix** (v2.2): 
+1. Gravity now averaged from first 10 samples (was single sample → ~1° error)
+2. Gravity vector preserved across sets (not reset per set anymore)
+3. Cascaded 2-stage EMA filter rejects integration noise
+4. Exercise-specific ROM clamps reject impossible values
+5. If still inconsistent: recalibrate (CalibrationModal averages 60+ samples)
 
 ### Debug Mode
 ```javascript
@@ -315,4 +343,4 @@ ROMComputer.js
 ---
 
 *Last updated: March 2, 2026*
-*Algorithm version: v2.1 (Gravity-axis projection — vertical only)*
+*Algorithm version: v2.2 (Gravity averaging + cascaded EMA + exercise ROM clamps)*

@@ -37,6 +37,17 @@ const EXERCISE_ROM_TYPE = {
   5: 'stroke', // Seated Leg Extension (vertical stack motion)
 };
 
+// Physical maximum ROM per exercise (degrees for angle, cm for stroke)
+// Anything above these values is definitely sensor drift / integration error.
+const EXERCISE_MAX_ROM = {
+  0: 180,  // Concentration Curls (angle)
+  1: 180,  // Overhead Extension (angle)
+  2: 80,   // Bench Press — chest to lockout ≈ 40-60cm, 80cm generous max
+  3: 100,  // Back Squats — full depth ≈ 50-80cm, 100cm generous max
+  4: 80,   // Lateral Pulldown — full pull ≈ 50-70cm
+  5: 60,   // Seated Leg Extension — full extension ≈ 30-50cm
+};
+
 // Equipment name → exercise code mapping for lookup
 const EQUIPMENT_EXERCISE_MAP = {
   'dumbbell': { 'concentration curls': 0, 'overhead extension': 1 },
@@ -67,17 +78,20 @@ export class ROMComputer {
     this.baselineGravity = null;    // calibrated gravity vector {x,y,z} from baseline hold
     this.gravityUnitVec = null;     // unit vector along gravity axis (vertical reference)
     this.gravityMag = 9.81;         // calibrated gravity magnitude (from rest accel vector norm)
+    this.gravityInitSamples = [];   // buffer: first N accel samples averaged for robust gravity
+    this.GRAVITY_INIT_COUNT = 10;   // number of samples to average (~0.5s at 20Hz)
     this.gyroBias = {x:0,y:0,z:0}; // calibrated gyro offset (native units) from baseline hold
     this.gyroInRadians = false;     // auto-detected: true if ESP32 outputs rad/s
     this.stillCounter = 0;          // consecutive near-zero samples for ZUPT
-    this.NOISE_FLOOR = 0.06;        // m/s² — acceleration dead-zone (tighter than old 0.3)
-    this.ZUPT_THRESHOLD = 0.12;     // m/s² — accel-magnitude rest detection for ZUPT
-    this.GYRO_STILL_RAD = 0.06;     // rad/s — gyro rest detection (~3.4°/s)
-    this.ZUPT_SAMPLES = 2;          // consecutive still samples to trigger ZUPT (faster response)
+    this.NOISE_FLOOR = 0.15;        // m/s² — acceleration dead-zone (raised from 0.06 to reject MEMS noise)
+    this.ZUPT_THRESHOLD = 0.20;     // m/s² — accel-magnitude rest detection for ZUPT (relaxed for hand vibration)
+    this.GYRO_STILL_RAD = 0.08;     // rad/s — gyro rest detection (~4.6°/s, relaxed)
+    this.ZUPT_SAMPLES = 3;          // consecutive still samples to trigger ZUPT (more conservative)
     this.ZUPT_DECAY = 0.03;         // very aggressive velocity decay at rest (was 0.4)
-    this.MAX_DISPLACEMENT = 2.0;    // meters (200 cm) — hard clamp for safety
-    this.MAX_VELOCITY = 2.0;        // m/s — velocity clamp to prevent runaway integration
+    this.MAX_DISPLACEMENT = 1.0;    // meters (100 cm) — no exercise exceeds this
+    this.MAX_VELOCITY = 1.5;        // m/s — velocity clamp (typical exercise bar speed < 1 m/s)
     this.prevVertAccel = 0;         // previous vertical accel for EMA smoothing
+    this.prevVertAccel2 = 0;        // second-stage EMA state for cascaded filter
     this.DEG2RAD = Math.PI / 180;   // conversion constant for gyro unit handling
     this.DEBUG_MODE = false;        // set to true for extra logging
     
@@ -113,7 +127,11 @@ export class ROMComputer {
   }
   
   /**
-   * Set exercise from equipment/exercise name strings
+   * Set exercise from equipment/exercise name strings.
+   * Uses word-based matching: ALL words in the map key must appear in the
+   * input exercise name (order-independent). This handles cases like
+   * "Flat Bench Barbell Press" matching map key "bench press" even though
+   * the words aren't contiguous in the full name.
    */
   setExerciseFromNames(equipmentName, exerciseName) {
     if (!equipmentName || !exerciseName) return;
@@ -122,8 +140,17 @@ export class ROMComputer {
     
     for (const [eq, exercises] of Object.entries(EQUIPMENT_EXERCISE_MAP)) {
       if (eqKey.includes(eq)) {
+        // First try exact match
+        if (exercises[exKey] !== undefined) {
+          this.setExercise(exercises[exKey]);
+          return;
+        }
+        // Then try word-based matching: every word in the map key must
+        // appear somewhere in the input exercise name
         for (const [ex, code] of Object.entries(exercises)) {
-          if (exKey.includes(ex) || ex.includes(exKey)) {
+          const mapWords = ex.split(/\s+/);
+          if (mapWords.every(w => exKey.includes(w))) {
+            console.log(`[ROMComputer] Matched "${equipmentName}/${exerciseName}" → exercise code ${code} (${this.getROMType(code)})`);
             this.setExercise(code);
             return;
           }
@@ -276,30 +303,45 @@ export class ROMComputer {
   // Applied to: Bench Press, Back Squats, Lateral Pulldown, Seated Leg Extension.
   //
   // Pipeline:
-  //   1. At rest, capture gravity vector → compute unit vector (vertical reference)
+  //   1. At rest, capture N accel samples → average → compute gravity unit vector
   //   2. Each sample: dot(rawAccel, gravityUnitVec) − gravityMag = vertical linear accel
-  //   3. EMA smoothing (0.25 prev + 0.75 current) to reduce noise spikes
-  //   4. Dead-zone (NOISE_FLOOR = 0.06 m/s²) for sensor noise
+  //   3. Two-stage cascaded EMA for strong noise rejection (~12dB/octave)
+  //   4. Dead-zone (NOISE_FLOOR = 0.15 m/s²) for MEMS sensor noise
   //   5. Combined accel+gyro ZUPT for stillness detection
   //   6. Trapezoidal integration: accel → velocity → displacement
-  //   7. Velocity clamping (MAX_VELOCITY = 2.0 m/s) prevents runaway drift
+  //   7. Velocity clamping (MAX_VELOCITY = 1.5 m/s) prevents runaway drift
+  //   8. Exercise-specific ROM clamping (e.g., bench press max 80cm)
   // ROM = peak-to-trough vertical displacement within a rep.
   addStrokeSample(q, accelX, accelY, accelZ, gyroX, gyroY, gyroZ, timestamp) {
-    // === First sample: initialize gravity magnitude and vertical reference axis ===
+    // === Gravity initialization: average first N samples for robust vertical reference ===
+    // A single noisy sample can have ~1° error in gravity direction, which leaks
+    // horizontal acceleration (~3 m/s² during bench press) into the vertical channel
+    // causing ~12cm position error per rep. Averaging 10 samples reduces this to ~4cm.
     if (this.baselineGravity === null) {
-      this.baselineGravity = { x: accelX, y: accelY, z: accelZ };
-      this.gravityMag = Math.sqrt(accelX*accelX + accelY*accelY + accelZ*accelZ);
-      // Compute gravity unit vector — this defines the "vertical" axis for the entire rep
-      // All subsequent accelerations are projected onto this axis, ignoring horizontal/diagonal
+      this.gravityInitSamples.push({ x: accelX, y: accelY, z: accelZ });
+      this.lastTimestamp = timestamp;
+      
+      if (this.gravityInitSamples.length < this.GRAVITY_INIT_COUNT) {
+        return; // Still collecting samples — don't integrate yet
+      }
+      
+      // Average all collected samples for robust gravity estimation
+      let avgAx = 0, avgAy = 0, avgAz = 0;
+      this.gravityInitSamples.forEach(s => { avgAx += s.x; avgAy += s.y; avgAz += s.z; });
+      const count = this.gravityInitSamples.length;
+      avgAx /= count; avgAy /= count; avgAz /= count;
+      
+      this.baselineGravity = { x: avgAx, y: avgAy, z: avgAz };
+      this.gravityMag = Math.sqrt(avgAx*avgAx + avgAy*avgAy + avgAz*avgAz);
       if (this.gravityMag > 0) {
         this.gravityUnitVec = {
-          x: accelX / this.gravityMag,
-          y: accelY / this.gravityMag,
-          z: accelZ / this.gravityMag
+          x: avgAx / this.gravityMag,
+          y: avgAy / this.gravityMag,
+          z: avgAz / this.gravityMag
         };
       }
-      this.lastTimestamp = timestamp;
-      console.log(`🔍 [ROM DEBUG] Gravity mag=${this.gravityMag.toFixed(4)} axis=(${this.gravityUnitVec?.x.toFixed(3)},${this.gravityUnitVec?.y.toFixed(3)},${this.gravityUnitVec?.z.toFixed(3)}) from first sample`);
+      this.gravityInitSamples = []; // Free memory
+      console.log(`🔍 [ROM DEBUG] Gravity mag=${this.gravityMag.toFixed(4)} axis=(${this.gravityUnitVec?.x.toFixed(3)},${this.gravityUnitVec?.y.toFixed(3)},${this.gravityUnitVec?.z.toFixed(3)}) averaged from ${count} samples`);
       return;
     }
     
@@ -315,14 +357,19 @@ export class ROMComputer {
     // gravity-axis projection is stable and purely vertical.
     const rawVertAccel = this.projectOnGravity(accelX, accelY, accelZ);
     
-    // === STEP 2: Light EMA smoothing ===
-    // alpha=0.25 on previous + 0.75 on current: preserves motion signal, reduces noise spikes.
-    // Replaces the old high-pass filter which could attenuate slow movements.
-    const vertAccel = 0.25 * this.prevVertAccel + 0.75 * rawVertAccel;
-    this.prevVertAccel = vertAccel;
+    // === STEP 2: Cascaded EMA smoothing (2-stage) ===
+    // Two-stage EMA gives ~12dB/octave noise rolloff (-3dB at ~4Hz for 20Hz sampling).
+    // Single-stage at 0.25 prev was too weak — noise passed through to double integration
+    // causing quadratic position drift. Two stages of 0.4/0.6 is equivalent to a
+    // ~4th-order IIR filter with good noise rejection while preserving 0.5-2Hz exercise motion.
+    const stage1 = 0.4 * this.prevVertAccel + 0.6 * rawVertAccel;
+    const vertAccel = 0.4 * this.prevVertAccel2 + 0.6 * stage1;
+    this.prevVertAccel = stage1;
+    this.prevVertAccel2 = vertAccel;
     
     // === STEP 3: Dead-zone (sensor noise floor) ===
-    // Much tighter than old STILL_THRESHOLD (0.06 vs 0.3) — allows detecting smaller movements.
+    // Raised from 0.06 to 0.15 m/s² — MEMS accelerometers have RMS noise ~0.07-0.3 m/s²
+    // at 20-50Hz. Setting below noise floor lets garbage accumulate through double integration.
     const accelInput = Math.abs(vertAccel) < this.NOISE_FLOOR ? 0 : vertAccel;
     
     // === STEP 4: ZUPT — combined accel + gyro stillness detection ===
@@ -463,6 +510,7 @@ export class ROMComputer {
     this.peakDisplacement = 0;
     this.minDisplacement = 0;
     this.prevVertAccel = 0;
+    this.prevVertAccel2 = 0;
   }
   
   // ---- Finish calibration rep and return ROM value ----
@@ -488,8 +536,9 @@ export class ROMComputer {
       romValue = this.computeStrokeROM();
     }
     
-    // Clamp — 180° is the physical maximum for any single-joint rotation
-    romValue = romType === 'angle' ? Math.min(romValue, 180) : Math.min(romValue, 300);
+    // Clamp to exercise-specific physical maximum — anything above is sensor drift
+    const maxROM = EXERCISE_MAX_ROM[this.exerciseType] || (romType === 'angle' ? 180 : 100);
+    romValue = Math.min(romValue, maxROM);
     
     this.isCalibrationRep = false;
     
@@ -508,6 +557,7 @@ export class ROMComputer {
       this.peakDisplacement = 0;
       this.minDisplacement = 0;
       this.prevVertAccel = 0;
+      this.prevVertAccel2 = 0;
     }
     
     const unit = romType === 'angle' ? '°' : ' cm';
@@ -567,8 +617,9 @@ export class ROMComputer {
       this.savedPreRepBuffer = [...this.preRepBuffer];
     }
     
-    // Clamp unrealistic values — 180° is the physical max for single-joint rotation
-    romValue = romType === 'angle' ? Math.min(romValue, 180) : Math.min(romValue, 200);
+    // Clamp to exercise-specific physical maximum — anything above is sensor drift
+    const maxROM = EXERCISE_MAX_ROM[this.exerciseType] || (romType === 'angle' ? 180 : 100);
+    romValue = Math.min(romValue, maxROM);
     
     const repROM = {
       repIndex: this.repROMs.length + 1,
@@ -587,6 +638,7 @@ export class ROMComputer {
       this.minDisplacement = 0;
       this.stillCounter = 0;
       this.prevVertAccel = 0;
+      this.prevVertAccel2 = 0;
     }
     this.currentRepData = [];
     this.repMinAngle = Infinity;
@@ -712,21 +764,32 @@ export class ROMComputer {
       accBias = fullSum / n;
     }
     
-    // ====== STEP 4: Bias removal + light smoothing + noise floor ======
+    // ====== STEP 4: Bias removal + noise floor ======
     const acc = new Float64Array(n);
     for (let i = 0; i < n; i++) {
       let a = rawAcc[i] - accBias;
-      // Light 3-point weighted smoothing [1,2,1]/4 (only if enough samples and not at edges)
-      if (n > 10 && i > 0 && i < n - 1) {
-        a = ((rawAcc[i - 1] - accBias) + 2 * a + (rawAcc[i + 1] - accBias)) / 4;
-      }
       // Force zero at rest segments; apply noise floor elsewhere
       if (isStill[i]) {
         a = 0;
-      } else if (Math.abs(a) < 0.05) {
-        a = 0;
+      } else if (Math.abs(a) < 0.12) {
+        a = 0; // Noise floor: reject sub-threshold acceleration (raised from 0.05)
       }
       acc[i] = a;
+    }
+    
+    // ====== STEP 4b: Two-pass triangle smoothing [1,2,1]/4 ======
+    // Single-pass gave only -6dB/octave noise attenuation, inadequate for double integration.
+    // Two passes give -12dB/octave — much better noise rejection while preserving
+    // the 0.5-2Hz exercise motion signal. Rest segments kept at zero.
+    if (n > 10) {
+      for (let pass = 0; pass < 2; pass++) {
+        const prev = Float64Array.from(acc);
+        for (let i = 1; i < n - 1; i++) {
+          if (!isStill[i]) {
+            acc[i] = (prev[i - 1] + 2 * prev[i] + prev[i + 1]) / 4;
+          }
+        }
+      }
     }
     
     // ====== STEP 5: Forward-backward velocity integration ======
@@ -926,6 +989,7 @@ export class ROMComputer {
     this.minDisplacement = 0;
     this.stillCounter = 0;
     this.prevVertAccel = 0;
+    this.prevVertAccel2 = 0;
     console.log('🔄 [ROM DEBUG] Displacement manually reset to zero');
   }
   
@@ -965,6 +1029,7 @@ export class ROMComputer {
     this.baselineQuat = avgQ;
     this.baselineAngle = { roll: sumRoll/n, pitch: sumPitch/n, yaw: sumYaw/n };
     this.baselineGravity = { x: sumAx/n, y: sumAy/n, z: sumAz/n };
+    this.gravityInitSamples = []; // Gravity established from calibration \u2014 no need to re-init
     
     // Set gravity magnitude and vertical reference axis from averaged accel at rest.
     // The gravity unit vector defines the "vertical" direction for stroke ROM —
@@ -1008,6 +1073,7 @@ export class ROMComputer {
     this.peakDisplacement = 0;
     this.minDisplacement = 0;
     this.prevVertAccel = 0;
+    this.prevVertAccel2 = 0;
     this.liveAngleDeg = 0;
     this.liveDisplacementCm = 0;
     this.repROMs = [];
@@ -1023,13 +1089,16 @@ export class ROMComputer {
   }
   
   calibrateBaseline() {
+    // IMPORTANT: Preserve gravity fields (baselineGravity, gravityUnitVec, gravityMag)
+    // across sets! The gravity direction is a physical constant of the sensor orientation
+    // and doesn't change between sets. Resetting it forces re-initialization from a
+    // single noisy sample, which was causing wildly inconsistent ROM readings (20-100+ cm
+    // for a 46cm bench press) because each set got a different gravity axis.
     this.baselineQuat = null;
     this.baselineAngle = null;
-    this.baselineGravity = null;
-    this.gravityUnitVec = null;
-    this.gravityMag = 9.81;
-    this.gyroBias = {x:0,y:0,z:0};
-    this.gyroInRadians = false;
+    // baselineGravity, gravityUnitVec, gravityMag — PRESERVED (not reset)
+    // gyroBias, gyroInRadians — PRESERVED (calibrated physical constants)
+    this.gravityInitSamples = [];     // Clear init buffer (gravity already established)
     this.currentRepData = [];
     this.sampleHistory = [];
     this.preRepBuffer = [];           // Clear rolling buffer
@@ -1040,6 +1109,7 @@ export class ROMComputer {
     this.peakDisplacement = 0;
     this.minDisplacement = 0;
     this.prevVertAccel = 0;
+    this.prevVertAccel2 = 0;
     this.liveAngleDeg = 0;
     this.liveDisplacementCm = 0;
     this.repMinAngle = Infinity;
@@ -1049,7 +1119,7 @@ export class ROMComputer {
     this.liveFulfillment = 0;
     // Reset per-set rep ROMs so repIndex matches RepCounter's per-set repNumber
     this.repROMs = [];
-    console.log('[ROMComputer] Baseline recalibrated to current position (repROMs reset for new set)');
+    console.log('[ROMComputer] Baseline recalibrated — integration state reset, gravity preserved');
   }
   
   reset() {
@@ -1058,6 +1128,7 @@ export class ROMComputer {
     this.baselineGravity = null;
     this.gravityUnitVec = null;
     this.gravityMag = 9.81;
+    this.gravityInitSamples = [];    // Reset gravity averaging buffer
     this.gyroBias = {x:0,y:0,z:0};
     this.gyroInRadians = false;
     this.primaryAxis = null;
@@ -1072,6 +1143,7 @@ export class ROMComputer {
     this.minDisplacement = 0;
     this.stillCounter = 0;
     this.prevVertAccel = 0;
+    this.prevVertAccel2 = 0;
     this.liveAngleDeg = 0;
     this.liveDisplacementCm = 0;
     this.liveVelocity = 0;

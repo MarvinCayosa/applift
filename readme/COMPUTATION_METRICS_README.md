@@ -231,32 +231,38 @@ Top position ──────   ▲
 Bottom position ────   ▼
 ```
 
-**Calculation (5-step process):**
+**Calculation (6-step process):**
 
 1. **Gravity-Axis Projection (Vertical Only):** The sensor always measures gravity (~9.81 m/s²) plus any actual movement acceleration. We isolate just the **vertical** component by:
-   - During calibration, capturing the gravity vector at rest and computing its **unit vector** (the vertical reference axis).
+   - At rest, the first **10 accelerometer samples** are averaged to compute a stable gravity vector and its **unit vector** (the vertical reference axis). Using 10 samples instead of 1 reduces angular error from ~1° to ~0.35°, which prevents horizontal acceleration from leaking into the vertical measurement.
    - Each sample: projecting the raw acceleration onto this gravity unit vector → only the vertical component remains.
    - Subtracting the calibrated gravity magnitude from this projection.
    - **Horizontal and diagonal acceleration is completely ignored** — only vertical motion counts.
-   - This is more robust than quaternion-based rotation, which can leak horizontal acceleration through orientation drift.
+   - The gravity vector is **preserved across sets** (not re-initialized per set) because it represents the physical sensor orientation, which doesn't change.
 
-2. **Noise Filtering:**
-   - Apply EMA (Exponential Moving Average) smoothing: 25% previous value + 75% current value.
-   - Dead-zone: ignore acceleration below 0.06 m/s² (sensor noise floor).
+2. **Noise Filtering (Cascaded 2-stage EMA):**
+   - Two-stage EMA: Stage 1 = 40% previous + 60% current. Stage 2 = 40% of Stage 1 previous + 60% of Stage 1 output.
+   - This gives ~12dB/octave noise rolloff (vs ~6dB with single-stage), crucial because double integration amplifies noise quadratically.
+   - Dead-zone: ignore acceleration below 0.15 m/s² (MEMS sensor noise floor — raised from 0.06 which was below actual sensor noise).
 
 3. **Zero-Velocity Update (ZUPT):**
    - When the equipment is still (not accelerating AND not rotating), force velocity to zero.
    - This prevents "integration drift" — a common problem where small errors accumulate over time.
-   - Stillness is detected by checking BOTH:
-     - Accelerometer: deviation from gravity < 0.12 m/s²
-     - Gyroscope: rotation rate < 0.06 rad/s (~3.4°/s)
+   - Stillness is detected by checking BOTH for 3+ consecutive samples:
+     - Accelerometer: deviation from gravity < 0.20 m/s²
+     - Gyroscope: rotation rate < 0.08 rad/s (~4.6°/s)
 
 4. **Double Integration:**
    - Integrate acceleration → velocity → displacement using the **trapezoidal rule** (more accurate than simple summation).
-   - Clamp velocity at ±2.0 m/s and displacement at ±2.0 meters for safety.
+   - Clamp velocity at ±1.5 m/s and displacement at ±1.0 meters. No exercise exceeds these limits.
 
-5. **Retrospective Correction (RetroCorrect):**
+5. **Exercise-Specific ROM Clamping:**
+   - Bench Press: max 80 cm, Back Squats: max 100 cm, Lateral Pulldown: max 80 cm, Seated Leg Extension: max 60 cm.
+   - Any value above these limits is guaranteed sensor drift, not real movement.
+
+6. **Retrospective Correction (RetroCorrect):**
    After the rep ends, we re-process all samples using a **forward-backward integration** technique:
+   - Two-pass triangle smoothing on acceleration for stronger noise rejection.
    - Integrate forward (start to end): get one velocity estimate.
    - Integrate backward (end to start): get another velocity estimate.
    - Average both: drift errors cancel out (they go in opposite directions).
