@@ -81,12 +81,14 @@ function computeLocalSmoothnessScore(samples) {
 }
 
 /**
- * Compute peak velocity from rep samples using accelerometer integration
+ * Compute velocity metrics from rep samples using accelerometer integration
  * Physics: integrate (acceleration - gravity) to get velocity
- * Returns velocity in m/s
+ * Returns { peak, mean } in m/s
+ *   peak = maximum absolute velocity (instantaneous peak)
+ *   mean = mean concentric velocity (MCV) — primary metric
  */
-function computeLocalPeakVelocity(samples) {
-  if (!samples || samples.length < 3) return 0;
+function computeLocalVelocity(samples) {
+  if (!samples || samples.length < 3) return { peak: 0, mean: 0 };
   
   const accelMag = samples.map(s => s.accelMag || s.filteredMagnitude || 0);
   const timestamps = samples.map(s => s.relativeTime ?? s.timestamp ?? 0);
@@ -105,7 +107,7 @@ function computeLocalPeakVelocity(samples) {
     ? (timestamps[timestamps.length - 1] - timestamps[0]) / 1000
     : samples.length * 0.05;
   
-  if (duration <= 0) return 0;
+  if (duration <= 0) return { peak: 0, mean: 0 };
   
   const dt = duration / (netAccel.length - 1);
   
@@ -126,10 +128,18 @@ function computeLocalPeakVelocity(samples) {
     }
   }
   
-  // Peak velocity = max absolute velocity
-  const peakVelocity = Math.max(...velocityProfile.map(v => Math.abs(v)));
+  const absVelocities = velocityProfile.map(v => Math.abs(v));
   
-  return Math.round(peakVelocity * 100) / 100; // Round to 2 decimals
+  // Peak velocity = max absolute velocity (instantaneous)
+  const peakVelocity = Math.max(...absVelocities);
+  
+  // Mean concentric velocity (MCV) = average of absolute velocity profile
+  const meanVelocity = absVelocities.reduce((a, b) => a + b, 0) / absVelocities.length;
+  
+  return {
+    peak: Math.round(peakVelocity * 100) / 100,
+    mean: Math.round(meanVelocity * 100) / 100
+  };
 }
 
 /**
@@ -548,7 +558,7 @@ export function useWorkoutSession({
           
           // Compute local smoothness and velocity metrics immediately
           const localSmoothnessScore = computeLocalSmoothnessScore(repSamples);
-          const localPeakVelocity = computeLocalPeakVelocity(repSamples);
+          const localVelocity = computeLocalVelocity(repSamples);
           
           return {
             repNumber: rep.repNumber,
@@ -558,7 +568,8 @@ export function useWorkoutSession({
             rom: (romComputerRef.current ? romComputerRef.current.getROMForRep(rep.repNumber) : 0) || rep.peakAcceleration * 10,
             romFulfillment: romComputerRef.current?.repROMs?.find(r => r.repIndex === rep.repNumber)?.fulfillment || null,
             romUnit: romComputerRef.current?.getUnit() || '°',
-            peakVelocity: localPeakVelocity || rep.peakVelocity || rep.peakAcceleration / 2,
+            peakVelocity: localVelocity.peak || rep.peakVelocity || rep.peakAcceleration / 2,
+            meanVelocity: localVelocity.mean || rep.meanVelocity || 0,
             smoothnessScore: localSmoothnessScore, // NEW: Local computation
             isClean: rep.duration >= 2.0 && rep.duration <= 4.0,
             chartData: repChartData,
@@ -916,7 +927,7 @@ export function useWorkoutSession({
       
       // Compute local smoothness and velocity metrics immediately
       const localSmoothnessScore = computeLocalSmoothnessScore(repSamples);
-      const localPeakVelocity = computeLocalPeakVelocity(repSamples);
+      const localVelocity = computeLocalVelocity(repSamples);
 
       return {
         repNumber: rep.repNumber,
@@ -926,7 +937,8 @@ export function useWorkoutSession({
         rom: (romComputerRef.current ? romComputerRef.current.getROMForRep(rep.repNumber) : 0) || rep.peakAcceleration * 10,
         romFulfillment: romComputerRef.current?.repROMs?.find(r => r.repIndex === rep.repNumber)?.fulfillment || null,
         romUnit: romComputerRef.current?.getUnit() || '°',
-        peakVelocity: localPeakVelocity || rep.peakVelocity || rep.peakAcceleration / 2,
+        peakVelocity: localVelocity.peak || rep.peakVelocity || rep.peakAcceleration / 2,
+        meanVelocity: localVelocity.mean || rep.meanVelocity || 0,
         smoothnessScore: localSmoothnessScore, // NEW: Local computation
         isClean: rep.duration >= 2.0 && rep.duration <= 4.0,
         chartData: repChartData,

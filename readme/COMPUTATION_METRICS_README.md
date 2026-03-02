@@ -281,11 +281,18 @@ A score of 90%+ means the user maintained very consistent range of motion across
 
 ---
 
-## 7. Peak Velocity
+## 7. Velocity Metrics
 
-### What is Peak Velocity?
+### What Do We Measure?
 
-Peak velocity is the **fastest speed** the equipment reaches during a rep. In velocity-based training (VBT), it's a gold-standard metric used by commercial devices like PUSH Band, GymAware, and Tendo Unit.
+AppLift computes two velocity metrics for each rep from accelerometer integration:
+
+| Metric | What It Is | Role |
+|--------|-----------|------|
+| **Mean Concentric Velocity (MCV)** | Average speed sustained throughout the rep | **Primary metric** — more stable, less noise-sensitive |
+| **Peak Velocity (PV)** | Fastest instantaneous speed during the rep | **Secondary / fallback** — used when MCV is unavailable |
+
+The system prefers MCV when available (from API analysis). During live workout tracking, the local computation provides both metrics. If only peak velocity is available (legacy data), it is used as fallback.
 
 ### How We Calculate It
 
@@ -295,7 +302,8 @@ Step 2: Establish gravity baseline (~9.81 m/s²) from first few samples
 Step 3: Subtract gravity → net acceleration
 Step 4: Integrate net acceleration over time → velocity curve
 Step 5: Remove drift (subtract linear trend from start to end)
-Step 6: Peak velocity = maximum absolute value on the velocity curve
+Step 6: MCV = mean of absolute velocity curve
+Step 7: PV = maximum absolute value on the velocity curve
 ```
 
 **In detail:**
@@ -315,21 +323,46 @@ Step 6: Peak velocity = maximum absolute value on the velocity curve
    - The velocity at the end of a rep should be ~0.
    - Any remaining velocity is assumed to be drift and is subtracted linearly.
 
-4. **Peak Velocity** = the maximum |velocity| during the rep.
+4. **MCV** = mean(|velocity|) across all samples in the profile — captures the average sustained effort.
+5. **PV** = max(|velocity|) during the rep — captures the single fastest moment.
+
+### Why MCV Over Peak Velocity?
+
+| Concern | Peak Velocity | Mean Concentric Velocity |
+|---------|--------------|--------------------------|
+| Noise sensitivity | A single noisy sample can inflate PV | Averaged over entire profile — noise cancels out |
+| Representativeness | Only captures one instant | Represents the sustained effort of the whole rep |
+| Fatigue tracking | Erratic — may not decrease linearly | Declines more predictably with fatigue |
+| Research support | Used by Tendo, PUSH Band | Recommended by González-Badillo, Weakley et al. |
 
 ### What the Numbers Mean
 
-| Peak Velocity | Training Zone | Typical Exercise |
+| Velocity (m/s) | Training Zone | Typical Exercise |
 |--------------|---------------|-----------------|
-| > 1.3 m/s | Speed-Strength | Light squats, power cleans |
-| 0.75 – 1.3 m/s | Strength-Speed | Moderate bench press |
-| 0.5 – 0.75 m/s | Strength | Heavy squats |
-| < 0.5 m/s | Maximum Strength | Near-max deadlifts |
+| > 1.3 | Speed-Strength | Light squats, power cleans |
+| 0.75 – 1.3 | Strength-Speed | Moderate bench press |
+| 0.5 – 0.75 | Strength | Heavy squats |
+| < 0.5 | Maximum Strength | Near-max deadlifts |
 
 ### Effective Reps
-A rep is "effective" for strength/power gains if its velocity is within 20% of the best rep's velocity (based on Bryan Mann's research). The app counts how many reps in a set meet this threshold.
+A rep is "effective" for strength/power gains if its velocity hasn't dropped more than **10%** from the baseline.
 
-> **For the physical therapist:** Peak velocity is directly related to power output (Power = Force × Velocity). A declining peak velocity across reps is one of the earliest and most reliable signs of neuromuscular fatigue — muscles that are tiring produce force more slowly, reducing movement speed even before the patient notices difficulty.
+**Baseline determination**: The fastest (maximum) of the first 3 valid reps' velocity — not the average of the first 2. This is more robust: averaging can be skewed by a single slow warm-up rep or sensor glitch, while taking the best of 3 captures the lifter's true initial capability.
+
+**Data quality**: Reps with velocity ≤ 0.02 m/s are excluded as sensor noise before baseline calculation.
+
+**Code logic:**
+```
+validReps = reps where velocity > 0.02 m/s
+baseline = max(first 3 validReps' velocity)
+dropPercent = ((baseline - repVelocity) / baseline) × 100
+if dropPercent < 10% → ✅ Effective (cyan bar)
+if dropPercent ≥ 10% → ❌ Ineffective (dimmed bar)
+```
+
+This 10% VBT cutoff is based on research by Mann (2016), González-Badillo et al. (2017), and Pérez-Castilla et al. (2019) — reps within <10% velocity loss maintain high neural drive and mechanical efficiency.
+
+> **For the physical therapist:** Mean concentric velocity reflects the average force production across the entire rep (Power = Force × Velocity). A declining MCV across reps is one of the earliest and most reliable signs of neuromuscular fatigue — muscles that are tiring produce force more slowly, reducing movement speed even before the patient notices difficulty. Because MCV averages over the whole movement, it is less affected by momentary sensor noise than peak velocity, making it a more trustworthy clinical indicator.
 
 ---
 
@@ -396,8 +429,23 @@ Fatigue Score = (0.25 × Velocity Drop) + (0.18 × Duration Increase)
 | 70–100 | Severe | High risk of form breakdown and injury. Stop the set. |
 
 ### Safety Caps
-- If 70%+ reps are classified as "Clean," fatigue is capped at moderate (the body is clearly still performing well).
+- If 70%+ reps are classified as "Clean," fatigue is capped: `maxFatigue = (50 - (cleanPct - 70) × 0.43) / 100` (70% clean → max ~50, 80% → ~43, 90% → ~37).
 - If all kinematic indicators are mild (<15% change each), fatigue is capped at 45%.
+
+### Key Finding Triggers (from code)
+| Condition | Finding |
+|---|---|
+| Fatigue < 15 | ✅ Excellent fatigue resistance |
+| Fatigue > 60 | ⚠️ Significant fatigue detected |
+| Clean rep % < 30% | ⚠️ Very low clean rep % |
+| Clean rep % < 50% | ⚠️ Less than half of reps are clean |
+| Abrupt initiation > 40% | ⚠️ High momentum use |
+| Uncontrolled > 30% | ⚠️ Loss of control |
+| D_ω > 15% | ⚠️ Peak angular velocity dropped/surged |
+| I_S > 20% | ⚠️ Within-rep shakiness increased |
+| I_T > 15% | ⚠️ Rep duration increased |
+| Consistency > 85 | ✅ Highly consistent, controlled movements |
+| Consistency < 60 | ⚠️ High variability — erratic rep execution |
 
 > **For the physical therapist:** This multi-indicator approach mirrors how a therapist clinically assesses fatigue: looking at speed of movement, time to complete tasks, smoothness of motion, presence of tremor, and form breakdown. The weighted formula combines these into a single actionable number. The thresholds are grounded in velocity-based training research (González-Badillo & Sánchez-Medina, 2010; Pareja-Blanco et al., 2017).
 
@@ -443,10 +491,26 @@ Consistency Score = Average of:
 
 Each sub-score is calculated as:
 ```
-Sub-score = 100 - (CV × 333)
+Sub-score = max(0, min(100, 100 - (CV × 333)))
 ```
 
 Where CV is the coefficient of variation for that metric. A CV of 0 (perfectly consistent) gives a score of 100. A CV of 0.30 (30% variation) gives a score of 0.
+
+### Consistency Rating (from code)
+| Score | Rating |
+|---|---|
+| ≥ 70 | **Good** |
+| 50 – 69 | **Fair** |
+| < 50 | **Poor** |
+
+### Session Quality (based on fatigue score)
+| Fatigue Score | Session Quality |
+|---|---|
+| < 15 | **Excellent** |
+| 15 – 29 | **Good** |
+| 30 – 49 | **Fair** |
+| 50 – 69 | **Poor** |
+| ≥ 70 | **Very Poor** |
 
 ### Trend Analysis
 
@@ -473,16 +537,21 @@ We use a **three-component approach** inspired by the SPARC metric (Spectral Arc
 - **Jerk** = the rate of change of acceleration (how quickly force changes).
 - We compute the jerk at every sample, calculate the mean, and normalize by the ROM.
 - **Lower jerk = smoother movement.**
-- Threshold: normalized jerk > 0.5 → choppy movement.
+- Threshold: normalized jerk > 1.5 starts contributing to irregularity score.
+- **Code formula:** `jerkContrib = min(40, max(0, normalizedJerk - 1.5) × 13.3)` (max 40 points)
 
 #### Component 2: Excess Peaks (25% weight) — "How many 'bumps' are there?"
 - A perfect rep has ~2 peaks: one at the top (concentric) and one at the bottom (eccentric).
 - Extra peaks indicate hesitation, corrections, or compensations.
 - **Fewer excess peaks = smoother movement.**
+- Peak detection uses prominence-based filtering with 5% of signal range as minimum prominence.
+- **Code formula:** `peaksContrib = min(25, excessPeaks × 3.3)` where `excessPeaks = max(0, totalPeaks - 2)` (max 25 points)
 
 #### Component 3: Direction Changes (20% weight) — "How often does the movement reverse?"
 - Count how many times the acceleration changes from positive to negative (or vice versa).
 - Controlled movement has smooth transitions; jerky movement has many rapid reversals.
+- Threshold: > 0.5 direction changes per second starts contributing to irregularity score.
+- **Code formula:** `dirContrib = min(35, max(0, directionRate - 0.5) × 10)` (max 35 points)
 
 #### Component 4: Jerk Variability (20% weight) — "How inconsistent is the choppiness?"
 - Coefficient of variation of jerk values within a single rep.
@@ -490,9 +559,10 @@ We use a **three-component approach** inspired by the SPARC metric (Spectral Arc
 
 ### Smoothness Score (0–100)
 
+The smoothness score is computed as the inverse of the total irregularity:
 ```
-Smoothness = (Jerk Component × 0.35 + Peaks Component × 0.25
-            + Direction Component × 0.20 + Variability Component × 0.20) × 100
+Irregularity = jerkContrib + dirContrib + peaksContrib
+Smoothness = max(0, min(100, 100 - Irregularity))
 ```
 
 | Score | Rating | Clinical Interpretation |
@@ -728,7 +798,7 @@ After the workout, all the per-rep metrics are aggregated into a comprehensive r
 | **Peak Velocity** (m/s) | Best single-rep peak velocity | "What was your best explosive effort?" |
 | **Mean Velocity** (m/s) | Average peak velocity across reps | "What was your typical speed?" |
 | **Velocity Loss** (%) | (Best rep velocity − Worst rep velocity) / Best × 100 | "How much did you slow down?" |
-| **Effective Reps** | Count of reps within 20% of best velocity | "How many reps were truly productive?" |
+| **Effective Reps** | Count of reps with < 10% velocity drop from baseline (first 2 reps avg) | "How many reps were truly productive?" |
 | **Average ROM** | Mean ROM across all reps (° or cm) | "What was your typical range of motion?" |
 | **ROM Consistency** (%) | (1 − StdDev/Mean) × 100 | "How consistent was your range?" |
 | **ROM Fulfillment** (%) | Actual ROM / Target ROM × 100 | "Did you achieve full range of motion?" |

@@ -35,9 +35,10 @@ export default function VelocityLossChart({
     filteredSets.forEach(set => {
       if (set.repsData && Array.isArray(set.repsData)) {
         set.repsData.forEach((rep, idx) => {
-          // Real peak velocity in m/s from accelerometer integration
-          // Values are already in correct m/s from workoutAnalysisService.js
-          let velocity = parseFloat(rep.peakVelocity) || 0;
+          // Prefer MCV (meanVelocity) as primary; fall back to peakVelocity
+          const mcv = parseFloat(rep.meanVelocity) || 0;
+          const pv = parseFloat(rep.peakVelocity) || 0;
+          let velocity = mcv > 0 ? mcv : pv;
           
           velocities.push({
             repNumber: rep.repNumber || idx + 1,
@@ -62,11 +63,15 @@ export default function VelocityLossChart({
       };
     }
 
-    // Baseline from first rep (or avg of first 2)
-    const baselineSampleSize = Math.min(2, velocities.length);
-    const baselineVelocity = velocities
-      .slice(0, baselineSampleSize)
-      .reduce((sum, v) => sum + v.velocity, 0) / baselineSampleSize;
+    // Data quality: filter valid reps (velocity > 0.02 m/s noise floor)
+    const MIN_VELOCITY = 0.02;
+    const validVelocities = velocities.filter(v => v.velocity > MIN_VELOCITY);
+
+    // Baseline: fastest (max) of first 3 valid reps — more robust than avg-of-2
+    const baselineSampleSize = Math.min(3, validVelocities.length);
+    const baselineVelocity = baselineSampleSize > 0
+      ? Math.max(...validVelocities.slice(0, baselineSampleSize).map(v => v.velocity))
+      : 0;
 
     const thresholdVelocity = baselineVelocity * (1 - thresholdPercent / 100);
 

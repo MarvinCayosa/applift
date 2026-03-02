@@ -11,6 +11,7 @@
  */
 
 import { useMemo, useState, useRef, useEffect } from 'react';
+import ReactDOM from 'react-dom';
 
 export default function FatigueVelocityCarousel({
   setsData,
@@ -22,6 +23,8 @@ export default function FatigueVelocityCarousel({
   thresholdPercent = 10
 }) {
   const [activeSlide, setActiveSlide] = useState(0);
+  const [showFatigueInfo, setShowFatigueInfo] = useState(false);
+  const [showVelocityInfo, setShowVelocityInfo] = useState(false);
   const carouselRef = useRef(null);
   const totalSlides = 2;
 
@@ -164,7 +167,10 @@ export default function FatigueVelocityCarousel({
     filteredSets.forEach(set => {
       if (set.repsData && Array.isArray(set.repsData)) {
         set.repsData.forEach((rep, idx) => {
-          const velocity = parseFloat(rep.peakVelocity) || 0;
+          // Prefer MCV (meanVelocity) as primary; fall back to peakVelocity
+          const mcv = parseFloat(rep.meanVelocity) || 0;
+          const pv = parseFloat(rep.peakVelocity) || 0;
+          const velocity = mcv > 0 ? mcv : pv;
           velocities.push({
             repNumber: rep.repNumber || idx + 1,
             setNumber: set.setNumber,
@@ -178,8 +184,9 @@ export default function FatigueVelocityCarousel({
       return { velocities: [], baselineVelocity: 0, velocityDrop: 0, maxVelocity: 0, effectiveReps: 0, totalReps: 0 };
     }
 
-    // Get all velocity values for statistical analysis
-    const allVels = velocities.map(v => v.velocity).filter(v => v > 0);
+    // Data quality: noise floor filter
+    const MIN_VELOCITY = 0.02;
+    const allVels = velocities.map(v => v.velocity).filter(v => v > MIN_VELOCITY);
     
     // Calculate median and IQR for outlier detection
     const sorted = [...allVels].sort((a, b) => a - b);
@@ -198,8 +205,8 @@ export default function FatigueVelocityCarousel({
     // Filter out extreme outliers for baseline calculation
     const nonExtremeVels = allVels.filter(v => v <= extremeUpperThreshold && v >= extremeLowerThreshold);
     
-    // Baseline: average of first 2-3 non-extreme reps
-    const baselineSampleSize = Math.min(2, nonExtremeVels.length);
+    // Baseline: fastest (max) of first 3 non-extreme reps — more robust than avg-of-2
+    const baselineSampleSize = Math.min(3, nonExtremeVels.length);
     const firstNonExtreme = [];
     for (const v of velocities) {
       if (v.velocity <= extremeUpperThreshold && v.velocity >= extremeLowerThreshold) {
@@ -208,7 +215,7 @@ export default function FatigueVelocityCarousel({
       }
     }
     const baselineVelocity = firstNonExtreme.length > 0 
-      ? firstNonExtreme.reduce((s, v) => s + v, 0) / firstNonExtreme.length 
+      ? Math.max(...firstNonExtreme)
       : (allVels[0] || 0);
     
     // For velocity variability: use Coefficient of Variation (CV%)
@@ -287,10 +294,19 @@ export default function FatigueVelocityCarousel({
   return (
     <div className="rounded-3xl bg-white/5 backdrop-blur-sm overflow-hidden content-fade-up-2">
       {/* Header */}
-      <div className="px-5 pt-5 pb-3">
+      <div className="px-5 pt-5 pb-3 flex items-center justify-between">
         <h3 className="text-base font-semibold text-white">
           {activeSlide === 0 ? 'Fatigue Analysis' : 'Velocity Analysis'}
         </h3>
+        <button
+          onClick={() => activeSlide === 0 ? setShowFatigueInfo(true) : setShowVelocityInfo(true)}
+          className="w-7 h-7 rounded-full bg-white/[0.08] flex items-center justify-center text-white/40 active:text-white/70 active:bg-white/[0.15] transition-colors"
+          aria-label={activeSlide === 0 ? 'What is fatigue analysis?' : 'What is velocity analysis?'}
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 100 20 10 10 0 000-20z" />
+          </svg>
+        </button>
       </div>
 
       {/* Carousel */}
@@ -337,7 +353,7 @@ export default function FatigueVelocityCarousel({
                   <div key={idx} className={`flex-1 rounded-xl ${sc.bg} px-3 py-2 flex items-center justify-between`}>
                     <div className="flex items-center gap-2">
                       <div className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />
-                      <span className="text-[11px] text-gray-300 font-medium">{ind.label}</span>
+                      <span className="text-[12px] text-gray-300 font-medium">{ind.label}</span>
                     </div>
                     <div className="flex items-baseline gap-0.5">
                       <span className={`text-sm font-bold ${sc.text}`}>{ind.value}</span>
@@ -351,7 +367,7 @@ export default function FatigueVelocityCarousel({
 
           {/* Insight */}
           <div className="mt-3 px-3 py-2 bg-white/[0.03] rounded-xl">
-            <p className="text-[11px] text-gray-400 text-center leading-relaxed">
+            <p className="text-[12px] text-gray-400 text-center leading-relaxed">
               {fatigueMetrics.fatigueLevel === 'Severe' || fatigueMetrics.fatigueLevel === 'High'
                 ? 'High fatigue — great for hypertrophy, watch form on final reps.'
                 : fatigueMetrics.fatigueLevel === 'Moderate'
@@ -372,17 +388,17 @@ export default function FatigueVelocityCarousel({
               {/* Stats row */}
               <div className="flex gap-2 mb-3">
                 <div className="flex-1 rounded-xl bg-white/[0.04] px-3 py-2.5 text-center">
-                  <p className="text-[10px] text-gray-500 mb-0.5">Peak</p>
+                  <p className="text-[11px] text-gray-500 mb-0.5">Peak</p>
                   <p className="text-lg font-bold text-cyan-400">{velocityMetrics.baselineVelocity}<span className="text-[10px] text-gray-500 ml-0.5">m/s</span></p>
                 </div>
                 <div className="flex-1 rounded-xl bg-white/[0.04] px-3 py-2.5 text-center">
-                  <p className="text-[10px] text-gray-500 mb-0.5">Variability</p>
+                  <p className="text-[11px] text-gray-500 mb-0.5">Variability</p>
                   <p className={`text-lg font-bold ${velocityMetrics.velocityCV < 8 ? 'text-green-400' : velocityMetrics.velocityCV < 15 ? 'text-yellow-400' : 'text-red-400'}`}>
                     {velocityMetrics.velocityCV}<span className="text-[10px] text-gray-500 ml-0.5">%</span>
                   </p>
                 </div>
                 <div className="flex-1 rounded-xl bg-white/[0.04] px-3 py-2.5 text-center">
-                  <p className="text-[10px] text-gray-500 mb-0.5">Effective</p>
+                  <p className="text-[11px] text-gray-500 mb-0.5">Effective</p>
                   <p className="text-lg font-bold text-white">{velocityMetrics.effectiveReps}<span className="text-[10px] text-gray-500 ml-0.5">/{velocityMetrics.totalReps}</span></p>
                 </div>
               </div>
@@ -474,6 +490,107 @@ export default function FatigueVelocityCarousel({
           />
         ))}
       </div>
+      {/* ── Info Overlay: Fatigue ── */}
+      {showFatigueInfo && typeof document !== 'undefined' && ReactDOM.createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-end justify-center" onClick={() => setShowFatigueInfo(false)}>
+          <div className="absolute inset-0 bg-black/60" />
+          <div className="relative w-full max-w-lg rounded-t-2xl bg-[#1e1e1e] border-t border-white/10 p-5 pb-8 animate-slideUp" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-center mb-4"><div className="w-10 h-1 rounded-full bg-white/20" /></div>
+            <h4 className="text-[16px] font-bold text-white mb-3">Understanding Fatigue</h4>
+            <p className="text-[13px] text-white/60 leading-relaxed mb-4">
+              This score shows how tired your muscles got during your set. It compares your speed, timing, and control in your first few reps versus your last few to measure how much your performance changed.
+            </p>
+            <div className="space-y-2 mb-4">
+              <p className="text-[13px] font-semibold text-white/70 mb-1">What the indicators mean:</p>
+              {[
+                { color: 'bg-cyan-400', title: 'Velocity Drop', desc: 'How much your speed dropped from your first reps to your last. A small drop means you maintained power well.' },
+                { color: 'bg-purple-400', title: 'Rep Slowdown', desc: 'How much longer your later reps took. When reps slow down noticeably, your muscles are running low on energy.' },
+                { color: 'bg-orange-400', title: 'Control Loss', desc: 'How much your movement quality decreased. A bigger drop means your muscles are struggling to stay smooth.' },
+              ].map((item, i) => (
+                <div key={i} className="flex items-start gap-2.5">
+                  <div className={`w-2 h-2 rounded-full ${item.color} mt-1.5 shrink-0`} />
+                  <div>
+                    <span className="text-[13px] font-semibold text-white/80">{item.title}</span>
+                    <p className="text-[12px] text-white/40 leading-relaxed">{item.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="pt-3 border-t border-white/[0.08]">
+              <p className="text-[12px] font-semibold text-white/50 mb-2">Fatigue Levels</p>
+              <div className="space-y-1.5">
+                {[
+                  { color: 'bg-green-400', label: 'Minimal (0\u201310)', desc: 'Muscles stayed fresh' },
+                  { color: 'bg-green-400', label: 'Low (10\u201320)', desc: 'Slight fatigue toward the end' },
+                  { color: 'bg-yellow-400', label: 'Moderate (20\u201335)', desc: 'Normal fatigue, good effort' },
+                  { color: 'bg-orange-400', label: 'High (35\u201355)', desc: 'Great for muscle growth' },
+                  { color: 'bg-red-400', label: 'Severe (55+)', desc: 'Very fatigued \u2014 watch your form' },
+                ].map((lv, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${lv.color} shrink-0`} />
+                    <span className="text-[12px] text-white/50"><span className="text-white/70 font-medium">{lv.label}</span> \u2014 {lv.desc}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ── Info Overlay: Velocity ── */}
+      {showVelocityInfo && typeof document !== 'undefined' && ReactDOM.createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-end justify-center" onClick={() => setShowVelocityInfo(false)}>
+          <div className="absolute inset-0 bg-black/60" />
+          <div className="relative w-full max-w-lg rounded-t-2xl bg-[#1e1e1e] border-t border-white/10 p-5 pb-8 animate-slideUp" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-center mb-4"><div className="w-10 h-1 rounded-full bg-white/20" /></div>
+            <h4 className="text-[16px] font-bold text-white mb-3">Understanding Velocity</h4>
+            <p className="text-[13px] text-white/60 leading-relaxed mb-4">
+              This chart tracks how fast you moved the weight on each rep. Faster movement means more power. As your muscles tire, your speed naturally drops.
+            </p>
+            <div className="space-y-2 mb-4">
+              <p className="text-[13px] font-semibold text-white/70 mb-1">What the stats mean:</p>
+              {[
+                { color: 'bg-cyan-400', title: 'Peak', desc: 'Your fastest speed from the first few reps \u2014 your baseline when you\'re freshest.' },
+                { color: 'bg-emerald-400', title: 'Variability', desc: 'How much your speed changed rep to rep. Under 8% is very consistent; over 15% means big swings.' },
+                { color: 'bg-white/60', title: 'Effective Reps', desc: 'Reps where your speed stayed within 10% of your best. These are your highest-quality reps.' },
+              ].map((item, i) => (
+                <div key={i} className="flex items-start gap-2.5">
+                  <div className={`w-2 h-2 rounded-full ${item.color} mt-1.5 shrink-0`} />
+                  <div>
+                    <span className="text-[13px] font-semibold text-white/80">{item.title}</span>
+                    <p className="text-[12px] text-white/40 leading-relaxed">{item.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="pt-3 border-t border-white/[0.08]">
+              <p className="text-[12px] font-semibold text-white/50 mb-2">Bar Colors</p>
+              <div className="flex flex-wrap gap-x-5 gap-y-1.5">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-2 rounded-sm bg-cyan-400 opacity-90" />
+                  <span className="text-[12px] text-white/50">Effective \u2014 strong output</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-2 rounded-sm bg-slate-600 opacity-50" />
+                  <span className="text-[12px] text-white/50">Fatigued \u2014 speed dropped</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      <style jsx>{`
+        @keyframes slideUp {
+          from { opacity: 0; transform: translateY(100%); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-slideUp {
+          animation: slideUp 0.3s ease-out;
+        }
+      `}</style>
     </div>
   );
 }

@@ -12,48 +12,89 @@ This document explains the calculation methods, scientific rationale, and implem
 Quantifies neuromuscular fatigue accumulation during a set by analyzing multiple kinematic indicators.
 
 ### Calculation Method
+
+**Without ML classification (kinematic indicators only — 4 components):**
 ```
-Fatigue Score = (0.35 × Velocity Drop%) + (0.25 × Duration Increase%) + (0.40 × Smoothness Drop%)
+Fatigue Score = (0.35 × Velocity Drop) + (0.25 × Duration Increase)
+              + (0.20 × Jerk Increase) + (0.20 × Shakiness Increase)
+```
+
+**With ML classification (adds execution quality — 5 components):**
+```
+Fatigue Score = (0.25 × Velocity Drop) + (0.18 × Duration Increase)
+              + (0.14 × Jerk Increase) + (0.14 × Shakiness Increase)
+              + (0.29 × Execution Quality Penalty)
 ```
 
 ### Component Metrics
 
-#### 1.1 Velocity Drop
-**Formula**: `((First Third Avg - Last Third Avg) / First Third Avg) × 100`
+All indicators compare the **first third** of reps vs the **last third** of reps. Values are clamped to ≥ 0 (only degradation counts, not improvement).
 
-**Rationale**: Based on González-Badillo et al. velocity-based training research. Peak velocity decreases as motor units fatigue and force production declines.
+#### 1.1 Velocity Drop (D_ω) — Weight: 35% (kinematic) / 25% (with ML)
+**Formula**: `max(0, (avgGyroFirst - avgGyroLast) / avgGyroFirst)`
 
-**Thresholds**:
-- `< 10%` → **Good** (minimal fatigue)
-- `10-20%` → **Warning** (moderate fatigue)  
-- `> 20%` → **Bad** (high fatigue)
+**Rationale**: Based on González-Badillo et al. velocity-based training research. Peak angular velocity decreases as motor units fatigue and force production declines.
 
-#### 1.2 Duration Increase  
-**Formula**: `((Last Third Avg - First Third Avg) / First Third Avg) × 100`
+**Key Finding Trigger**: > 15% drop triggers warning in report
+
+#### 1.2 Duration Increase (I_T) — Weight: 25% (kinematic) / 18% (with ML)
+**Formula**: `(avgDurLast - avgDurFirst) / avgDurFirst`
 
 **Rationale**: Fatigued muscles produce force more slowly, increasing time-to-completion. Based on Sanchez-Medina & González-Badillo research on velocity loss metrics.
 
-**Thresholds**:
-- `< 15%` → **Good** (stable tempo)
-- `15-30%` → **Warning** (slowing down)
-- `> 30%` → **Bad** (significant slowdown)
+**Key Finding Trigger**: > 15% increase triggers warning in report
 
-#### 1.3 Smoothness Drop
-**Formula**: `((First Third Avg - Last Third Avg) / First Third Avg) × 100`
+#### 1.3 Jerk Increase (I_J) — Weight: 20% (kinematic) / 14% (with ML)
+**Formula**: `(avgJerkLast - avgJerkFirst) / avgJerkFirst`
 
-**Rationale**: Motor control degrades with fatigue as the CNS struggles to coordinate movement. Measured via accelerometer smoothness scoring.
+**Rationale**: "Jerk" is the rate of change of acceleration. As the CNS fatigues, it struggles to coordinate smooth muscle contractions, resulting in choppy, jerky movements.
 
-**Thresholds**:
-- `< 10%` → **Good** (maintained control)
-- `10-25%` → **Warning** (some degradation)
-- `> 25%` → **Bad** (poor control)
+#### 1.4 Shakiness Increase (I_S) — Weight: 20% (kinematic) / 14% (with ML)
+**Formula**: `(avgShakyLast - avgShakyFirst) / avgShakyFirst`
+
+**Rationale**: Muscle tremor, instability, and loss of motor control — directly related to motor unit fatigue.
+
+**Key Finding Trigger**: > 20% increase triggers warning in report
+
+#### 1.5 Execution Quality Penalty (Q_exec) — Weight: 29% (ML only)
+**Formula**: `(100 - cleanPercentage) / 100`
+
+**Additional penalties:**
+- **Abrupt Initiation > 25%** of reps → `Q_exec += (abruptPct - 0.25) × 0.4` (momentum compensation)
+- **Uncontrolled Movement > 20%** of reps → `Q_exec += (uncontrolledPct - 0.20) × 0.5` (loss of motor control)
+- Q_exec clamped to [0, 1]
+
+**Key Finding Triggers:**
+- Clean rep % < 30% → "Very low clean rep %" warning
+- Clean rep % < 50% → "Less than half of reps are clean" warning
+- Abrupt initiation > 40% → "High momentum use" warning
+- Uncontrolled > 30% → "Loss of control" warning
+
+### Boost & Safety Caps
+
+**Boost for severe indicators:**
+```
+if worstKinematicIndicator > 0.50 → fatigueRaw += (worst - 0.50) × 0.25
+if Q_exec > 0.60               → fatigueRaw += (Q_exec - 0.60) × 0.2
+```
+
+**Safety caps:**
+```
+if cleanPercentage ≥ 70% → fatigue capped at (50 - (cleanPct - 70) × 0.43) / 100
+   (70% clean → max ~50, 80% → ~43, 90% → ~37)
+
+if ALL kinematic indicators < 15% → fatigue capped at 45
+```
 
 ### Fatigue Levels
-- **Minimal** (0-10): Very low fatigue, optimal for power training
-- **Low** (10-20): Light fatigue, good for strength training  
-- **Moderate** (20-35): Moderate fatigue, suitable for hypertrophy
-- **High** (35-55): High fatigue, approaching failure
-- **Severe** (55+): Very high fatigue, form breakdown risk
+
+| Score Range | Level | Session Quality | Meaning |
+|---|---|---|---|
+| 0 – 14 | **Minimal** | Excellent | Very low fatigue, optimal for power training |
+| 15 – 29 | **Low** | Good | Light fatigue, good for strength training |
+| 30 – 49 | **Moderate** | Fair | Moderate fatigue, suitable for hypertrophy |
+| 50 – 69 | **High** | Poor | High fatigue, approaching failure |
+| 70 – 100 | **Severe** | Very Poor | Very high fatigue, form breakdown risk |
 
 ### Scientific Basis
 - González-Badillo & Sánchez-Medina (2010) - velocity loss methodology
@@ -65,25 +106,53 @@ Fatigue Score = (0.35 × Velocity Drop%) + (0.25 × Duration Increase%) + (0.40 
 ## 2. Velocity Analysis  
 
 ### Purpose
-Analyzes movement velocity patterns to assess power output, fatigue, and training effectiveness using industry-standard VBT metrics.
+Analyzes movement velocity patterns to assess power output, fatigue, and training effectiveness using velocity-based training (VBT) principles derived from accelerometer-integrated IMU data.
 
 ### Key Metrics
 
-#### 2.1 Peak Velocity
-**Calculation**: Real peak velocity (m/s) from accelerometer integration during concentric phase.
+#### 2.1 Mean Concentric Velocity (MCV) — Primary Metric
+**Calculation**: Mean of the absolute velocity profile (m/s) from accelerometer integration during the rep.
 
-**Rationale**: Peak velocity directly correlates with power output and neuromuscular readiness. Used by commercial VBT devices (PUSH, Gymaware, Tendo).
+**Formula**:
+```
+MCV = mean(|v(t)|)   for all samples in the velocity profile
+```
 
-#### 2.2 Velocity Variability (Coefficient of Variation)
-**Formula**: `(Standard Deviation / Mean Velocity) × 100`
+**Rationale**: MCV represents the average speed sustained throughout the concentric phase, smoothing out instantaneous noise inherent in single-point peak measurements. It is less susceptible to sensor noise spikes than peak velocity (PV) and provides a more representative measure of the effort across the entire movement. When MCV is unavailable (e.g., during live local computation fallback), the system falls back to peak velocity.
+
+**References**:
+- Gonzalez-Badillo & Sanchez-Medina (2010) — MCV as a reliable load-velocity profiling metric
+- Weakley et al. (2021) — MCV recommended over PV for within-session fatigue monitoring
+
+#### 2.2 Peak Velocity (PV) — Secondary / Fallback Metric
+**Calculation**: Maximum absolute velocity (m/s) from the integrated velocity profile.
+
+**Formula**: `PV = max(|v(t)|)` across all samples in the rep.
+
+**Rationale**: Peak velocity captures the single fastest instantaneous speed and correlates with power output and neuromuscular readiness. Used by commercial VBT devices (PUSH, Gymaware, Tendo). Retained as fallback when MCV is not available and as a supplementary metric.
+
+#### 2.3 Baseline Determination
+**Method**: Fastest (maximum) of the first 3 valid reps' velocity.
+
+**Code logic**:
+```
+validReps = reps where velocity > 0.02 m/s (noise floor)
+baseline = max(validReps[0..2].velocity)
+```
+
+**Rationale**: Using the fastest of 3 (rather than the average of 2) provides a more robust reference that is less sensitive to a single slow warm-up rep or sensor glitch. Averaging the first 2 reps can artificially deflate the baseline if either one is anomalous, biasing all subsequent drop calculations. Taking the maximum of a 3-rep window captures the lifter's true initial capability.
+
+#### 2.4 Velocity Variability (Coefficient of Variation)
+**Formula**: `CV% = (Standard Deviation / Mean Velocity) × 100`
 
 **Rationale**: CV% captures velocity consistency regardless of rep order, superior to simple "drop" calculations. Accounts for non-sequential fatigue patterns (momentum compensation, mid-set recovery).
 
-**Thresholds**:
-- `< 8%` → **Very Consistent** (stable motor pattern)
-- `8-15%` → **Moderate Variability** (normal fluctuation)  
-- `15-25%` → **High Variability** (fatigue compensation)
-- `> 25%` → **Very Inconsistent** (form breakdown)
+**Diagnostic thresholds** (used for visual indicators):
+| CV% | Status | Interpretation |
+|-----|--------|----------------|
+| < 10% | Good | Stable motor pattern |
+| 10–20% | Warning | Moderate fluctuation, possible fatigue compensation |
+| > 20% | Bad | High variability, form breakdown likely |
 
 **Why CV% > First-to-Last Drop?**
 Traditional "velocity drop" (first vs last rep) fails when velocity patterns are non-sequential:
@@ -93,17 +162,36 @@ Traditional "velocity drop" (first vs last rep) fails when velocity patterns are
 
 CV% captures the total spread, providing a more accurate fatigue assessment.
 
-#### 2.3 Effective Reps
-**Formula**: Count of reps with `< 20%` velocity loss from baseline
+#### 2.5 Effective Reps
+**Formula**: Count of reps with `< 10%` velocity loss from baseline (fastest of first 3 valid reps)
 
-**Rationale**: Based on Bryan Mann's research - reps with <20% velocity loss from best rep are "effective" for strength/power gains.
+**Code logic**:
+```
+validReps = reps where velocity > 0.02 m/s
+baseline = max(first 3 validReps' velocity)
+dropPercent = ((baseline - repVelocity) / baseline) × 100
+if dropPercent < 10% → Effective
+if dropPercent >= 10% → Ineffective
+```
 
-**Threshold**: Industry standard 10-20% velocity loss threshold (adjustable per training goal).
+**Rationale**: Based on Bryan Mann's research and VBT literature — reps within <10% velocity loss maintain high neural drive and mechanical efficiency. Beyond 10%, the muscle is compensating and rep quality declines.
+
+**Threshold**: 10% velocity loss cutoff (González-Badillo et al., 2017; Pérez-Castilla et al., 2019).
+
+#### 2.6 Data Quality Controls
+The system applies several data quality measures before velocity analysis:
+
+1. **Noise floor filter**: Reps with velocity ≤ 0.02 m/s are excluded as sensor noise or stationary readings.
+2. **Outlier detection** (workout-finished view): IQR-based filtering removes extreme spikes (`> Q3 + 1.5×IQR` or `> 2× median`) and anomalously low values (`< Q1 - 1.5×IQR`, floor 0.1 m/s).
+3. **Drift removal**: Linear detrend applied to the velocity profile to correct for accelerometer integration drift (velocity should be ~0 at rep start and end).
+4. **Minimum rep count**: Velocity analysis requires ≥ 2 reps; fatigue metrics require ≥ 3 reps.
 
 ### Scientific Basis
-- Mann et al. (2010) - effective rep concept
-- Dorrell et al. (2020) - velocity-based training review
-- Orange et al. (2019) - coefficient of variation in resistance training
+- González-Badillo & Sánchez-Medina (2010) — MCV-based load-velocity profiling
+- Mann et al. (2016) — effective rep concept, 10–20% velocity loss zone
+- Dorrell et al. (2020) — velocity-based training review
+- Weakley et al. (2021) — MCV recommended over PV for fatigue monitoring
+- Pérez-Castilla et al. (2019) — velocity loss thresholds for training optimization
 
 ---
 
@@ -124,17 +212,36 @@ Consistency Score = 100 - (Average Deviation from Pattern × Penalty Factor)
 4. **Deviation Scoring**: Calculate pattern deviation percentage
 5. **Outlier Detection**: Flag reps with >2 standard deviations from mean
 
+### Scoring Formula (from code)
+
+Each sub-metric's consistency is computed via CV (Coefficient of Variation):
+
+```
+Sub-score = max(0, min(100, 100 - CV × 333))
+```
+
+Where CV = standard deviation / mean. A CV of 0 (perfectly consistent) → score of 100. A CV of 0.30 (30% variation) → score of 0.
+
+**Overall Consistency** = Average of 4 sub-scores:
+1. ROM Consistency
+2. Smoothness Consistency
+3. Duration Consistency
+4. Peak Acceleration Consistency
+
 ### Scoring Bands
-- **90-100**: Excellent consistency (motor learning complete)
-- **80-89**: Good consistency (stable technique)
-- **70-79**: Moderate consistency (some variation)
-- **60-69**: Poor consistency (technique issues)  
-- **<60**: Very poor consistency (form breakdown)
+
+| Score | Rating | Meaning |
+|---|---|---|
+| ≥ 85 | **Excellent** | "Highly consistent, controlled movements" (key finding) |
+| 70 – 84 | **Good** | Stable technique |
+| 50 – 69 | **Fair** | Some variation, room for improvement |
+| < 50 | **Poor** | High variability, technique issues |
+| < 60 | — | Triggers "High variability — erratic rep execution" warning |
 
 ### Technical Implementation
-- Uses dynamic time warping (DTW) for pattern alignment
+- Uses CV-based scoring (100 - CV × 333) per metric
 - Handles variable rep durations via normalization
-- Filters extreme outliers before pattern analysis
+- Linear regression slope computed for trend analysis per metric
 
 ### Scientific Basis
 - Newell & Corcos (1993) - motor variability theory
@@ -149,14 +256,33 @@ Consistency Score = 100 - (Average Deviation from Pattern × Penalty Factor)
 Quantifies movement quality and motor control via acceleration profile smoothness.
 
 ### Calculation Method  
-**Spectral Arc Length (SPARC)**: `∫|d²ᵥ/dω²| dω` where v = velocity magnitude, ω = frequency
+**LDLJ-inspired Irregularity Scoring** — combines normalized jerk, direction changes, and excess peaks:
+
+```
+SmoothnessScore = max(0, min(100, 100 - IrregularityScore))
+```
+
+### Irregularity Components (calibrated from real IMU data)
+
+| Component | Weight Cap | Formula | Threshold |
+|---|---|---|---|
+| **Jerk Contribution** | max 40 pts | `min(40, max(0, normalizedJerk - 1.5) × 13.3)` | normalizedJerk > 1.5 starts penalizing |
+| **Direction Changes** | max 35 pts | `min(35, max(0, directionRate - 0.5) × 10)` | > 0.5 changes/sec starts penalizing |
+| **Excess Peaks** | max 25 pts | `min(25, excessPeaks × 3.3)` | > 2 peaks/valleys (expected: 1 peak + 1 valley) |
+
+Where:
+- `normalizedJerk` = meanJerk / ROM (normalized by range of motion)
+- `directionRate` = number of velocity sign changes / rep duration in seconds
+- `excessPeaks` = max(0, totalPeaks - 2) using prominence-based detection (threshold: 5% of signal range)
 
 ### Process
-1. **Signal Processing**: Apply 8Hz low-pass filter to raw accelerometer data
-2. **Velocity Calculation**: Integrate filtered acceleration to velocity
-3. **Frequency Analysis**: Compute Fourier spectrum of velocity profile  
-4. **Arc Length**: Calculate spectral arc length (SPARC metric)
-5. **Normalization**: Convert to 0-100 scale (higher = smoother)
+1. **Signal Selection**: Use filtered magnitude if available, else compute magnitude from 3-axis accel
+2. **Velocity Calculation**: First derivative of signal (signal[i] - signal[i-1]) / dt
+3. **Jerk Calculation**: First derivative of velocity (absolute values)
+4. **Direction Changes**: Count velocity sign reversals
+5. **Peak Detection**: Prominence-based peak/valley detection with 5% range threshold
+6. **Irregularity Summing**: Sum of 3 capped contributions
+7. **Score Inversion**: 100 - irregularity = smoothness (higher = smoother)
 
 ### Thresholds
 - **80-100**: Excellent smoothness (expert-level control)
@@ -226,10 +352,27 @@ Analyzes concentric (lifting) and eccentric (lowering) phases to assess lifting 
 Uses machine learning to classify each rep into quality categories based on kinematic patterns.
 
 ### Classification Categories
-- **Perfect** (90-100%): Textbook execution, optimal pattern
-- **Good** (75-89%): Minor deviations, acceptable form
-- **Suboptimal** (60-74%): Noticeable issues, technique coaching needed
-- **Poor** (<60%): Significant form breakdown, injury risk
+
+**Dumbbell Exercises** (Concentration Curls, Overhead Extensions):
+| Class | Label | What It Means |
+|---|---|---|
+| 0 | **Clean** | Textbook execution — controlled throughout |
+| 1 | **Uncontrolled Movement** | Excessive wobbling, inconsistent path, loss of control |
+| 2 | **Abrupt Initiation** | Sudden, jerky start — using momentum instead of controlled muscle activation |
+
+**Barbell Exercises** (Bench Press, Back Squats):
+| Class | Label | What It Means |
+|---|---|---|
+| 0 | **Clean** | Balanced, controlled lift |
+| 1 | **Uncontrolled Movement** | Unstable bar path, wobbling |
+| 2 | **Inclination Asymmetry** | One side moving faster/higher than the other (uneven loading) |
+
+**Weight Stack Exercises** (Lateral Pulldown, Seated Leg Extension):
+| Class | Label | What It Means |
+|---|---|---|
+| 0 | **Clean** | Smooth, controlled pull and release |
+| 1 | **Pulling Too Fast** | Yanking the weight with momentum |
+| 2 | **Releasing Too Fast** | Letting the weight drop back instead of controlling the return |
 
 ### Feature Extraction
 The ML model analyzes 50+ kinematic features:

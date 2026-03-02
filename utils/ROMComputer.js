@@ -92,6 +92,7 @@ export class ROMComputer {
     this.liveVelocity = 0;
     this.liveFulfillment = 0;       // current rep ROM / targetROM * 100
     this.liveRepROM = 0;            // current rep ROM (max-min so far)
+    this.liveAdjustedROM = 0;       // retro-corrected live ROM for stroke exercises
     this.sampleHistory = [];        // last N samples for live chart
     
     // Pre-rep buffer: keep last N samples BEFORE rep starts so retroCorrect has rest data
@@ -340,9 +341,10 @@ export class ROMComputer {
     this.repMaxAngle = Math.max(this.repMaxAngle, this.liveDisplacementCm);
     this.liveRepROM = this.repMaxAngle - this.repMinAngle;
     
-    // Update fulfillment %
+    // Update fulfillment % (use retro-corrected ROM when available for accuracy)
     if (this.targetROM && this.targetROM > 0) {
-      this.liveFulfillment = Math.min(150, (this.liveRepROM / this.targetROM) * 100);
+      const displayROM = this.liveAdjustedROM > 0 ? this.liveAdjustedROM : this.liveRepROM;
+      this.liveFulfillment = Math.min(150, (displayROM / this.targetROM) * 100);
     }
     
     // Store RAW sensor data for retrospective correction (retroCorrect)
@@ -368,6 +370,20 @@ export class ROMComputer {
     
     this.sampleHistory.push({ t: timestamp, v: this.liveRepROM });
     if (this.sampleHistory.length > this.maxHistorySize) this.sampleHistory.shift();
+    
+    // Periodic retro-correction for accurate live display (stroke exercises)
+    // Run retroCorrect every ~15 samples to get drift-corrected ROM
+    if (this.currentRepData.length > 10 && this.currentRepData.length % 15 === 0) {
+      try {
+        const retroResult = this.retroCorrect(this.currentRepData, false);
+        if (retroResult && retroResult.rom > 0) {
+          // Use max to prevent jitter (ROM only grows during a rep)
+          this.liveAdjustedROM = Math.max(this.liveAdjustedROM, retroResult.rom);
+        }
+      } catch (e) {
+        // Silently ignore — fall back to raw liveRepROM
+      }
+    }
     
     // Maintain pre-rep rolling buffer (for stroke exercises, so retroCorrect has rest segments)
     const romType = this.getROMType(this.exerciseType);
@@ -400,6 +416,7 @@ export class ROMComputer {
     this.repMinAngle = Infinity;
     this.repMaxAngle = -Infinity;
     this.liveRepROM = 0;
+    this.liveAdjustedROM = 0;
     this.liveFulfillment = 0;
     // Reset stroke state for clean integration
     this.velocity = 0;
@@ -443,6 +460,7 @@ export class ROMComputer {
     this.repMinAngle = Infinity;
     this.repMaxAngle = -Infinity;
     this.liveRepROM = 0;
+    this.liveAdjustedROM = 0;
     
     // Reset stroke state
     if (romType === 'stroke') {
@@ -536,6 +554,7 @@ export class ROMComputer {
     this.repMinAngle = Infinity;
     this.repMaxAngle = -Infinity;
     this.liveRepROM = 0;
+    this.liveAdjustedROM = 0;
     this.liveFulfillment = 0;
     
     return repROM;
@@ -592,7 +611,7 @@ export class ROMComputer {
   // 5. Rest-segment velocity zeroing (gyro-assisted)
   // 6. Position integration with linear detrending
   // This approach is speed-invariant and eliminates accumulated drift.
-  retroCorrect(samples) {
+  retroCorrect(samples, isComplete = true) {
     const g = this.gravityMag;
     const n = samples.length;
     if (n < 5) return null;
@@ -614,8 +633,8 @@ export class ROMComputer {
     }
     
     // ====== STEP 2: Detect rest/still segments (accel + gyro) ======
-    const STILL_ACCEL = 0.20;  // m/s² magnitude deviation from gravity
-    const STILL_GYRO = 0.08;   // rad/s combined gyro magnitude
+    const STILL_ACCEL = 0.25;  // m/s² (relaxed for better rest detection with hand vibration)
+    const STILL_GYRO = 0.10;   // rad/s (relaxed to catch more rest samples)
     const isStill = new Uint8Array(n);
     
     for (let i = 0; i < n; i++) {
@@ -645,7 +664,15 @@ export class ROMComputer {
     restSegs.forEach(([s, e]) => {
       for (let i = s; i <= e; i++) { biasSum += rawAcc[i]; biasN++; }
     });
-    const accBias = biasN > 3 ? biasSum / biasN : 0;
+    // Fallback: for a complete rep (returns to start), mean acceleration ≈ 0
+    let accBias;
+    if (biasN > 5) {
+      accBias = biasSum / biasN;
+    } else {
+      let fullSum = 0;
+      for (let i = 0; i < n; i++) fullSum += rawAcc[i];
+      accBias = fullSum / n;
+    }
     
     // ====== STEP 4: Bias removal + light smoothing + noise floor ======
     const acc = new Float64Array(n);
@@ -683,6 +710,23 @@ export class ROMComputer {
       vel[i] = (vFwd[i] + vBwd[i]) / 2;
     }
     
+    // ====== STEP 5b: Velocity detrending (complete reps only) ======
+    // The averaged fwd/bwd velocity still carries residual linear drift: b*(t - T/2).
+    // For a complete rep (start and end at rest), velocity at both boundaries ≈ 0.
+    // Linear detrend removes this residual without affecting mid-rep velocity shape.
+    if (isComplete && n > 10) {
+      const edgeSamples = Math.min(5, Math.floor(n / 4));
+      let vStartSum = 0, vEndSum = 0;
+      for (let i = 0; i < edgeSamples; i++) vStartSum += vel[i];
+      for (let i = n - edgeSamples; i < n; i++) vEndSum += vel[i];
+      const vStart = vStartSum / edgeSamples;
+      const vEnd = vEndSum / edgeSamples;
+      const vSlope = (vEnd - vStart) / (n - 1);
+      for (let i = 0; i < n; i++) {
+        vel[i] -= (vStart + vSlope * i);
+      }
+    }
+    
     // Force velocity to 0 in all detected rest segments
     restSegs.forEach(([s, e]) => {
       for (let i = s; i <= e; i++) vel[i] = 0;
@@ -707,10 +751,26 @@ export class ROMComputer {
         }
       }
     } else if (restSegs.length === 1) {
-      // Only one rest segment found — zero position at its midpoint
       const mid = Math.round((restSegs[0][0] + restSegs[0][1]) / 2);
-      const offset = pos[mid];
-      for (let i = 0; i < n; i++) pos[i] -= offset;
+      if (isComplete) {
+        // Linear detrend: rest anchor (pos=0) ↔ opposite signal boundary (pos≈0)
+        // A complete rep returns to the starting position, so both ends should be ~0.
+        const restIsNearStart = mid < n / 2;
+        const anchor1 = restIsNearStart ? mid : 0;
+        const anchor2 = restIsNearStart ? n - 1 : mid;
+        const p0 = pos[anchor1], p1 = pos[anchor2];
+        const span = anchor2 - anchor1;
+        if (span > 0) {
+          const slope = (p1 - p0) / span;
+          for (let i = 0; i < n; i++) {
+            pos[i] -= (p0 + slope * (i - anchor1));
+          }
+        }
+      } else {
+        // In-progress: just shift so rest point = 0 (no linear detrend — rep isn't done)
+        const offset = pos[mid];
+        for (let i = 0; i < n; i++) pos[i] -= offset;
+      }
     } else {
       // NO REST SEGMENTS DETECTED — fallback to linear detrending from start to end.
       // Assumes user started at rest (pos=0) and ended at rest (pos=0).
@@ -734,7 +794,7 @@ export class ROMComputer {
     const rom = maxD - minD;
     
     if (this.DEBUG_MODE) {
-      console.log(`📏 [RetroCorrect] bias=${(accBias).toFixed(4)}m/s² restSegs=${restSegs.length} peak=${(peakAbs*100).toFixed(1)}cm rom=${(rom*100).toFixed(1)}cm`);
+      console.log(`📏 [RetroCorrect] bias=${(accBias).toFixed(4)}m/s² restSegs=${restSegs.length} peak=${(peakAbs*100).toFixed(1)}cm rom=${(rom*100).toFixed(1)}cm complete=${isComplete}`);
     }
     
     return {
@@ -771,6 +831,19 @@ export class ROMComputer {
   getROMForRep(repNumber) {
     const rom = this.repROMs.find(r => r.repIndex === repNumber);
     return rom ? rom.romValue : 0;
+  }
+  
+  /**
+   * Get the best available live ROM value.
+   * For stroke exercises, returns retro-corrected value (drift-free).
+   * For angle exercises, returns the raw live rep ROM.
+   */
+  getLiveROM() {
+    const romType = this.getROMType(this.exerciseType);
+    if (romType === 'stroke' && this.liveAdjustedROM > 0) {
+      return this.liveAdjustedROM;
+    }
+    return this.liveRepROM;
   }
   
   getROMLabel() {
@@ -897,6 +970,7 @@ export class ROMComputer {
     this.repMinAngle = Infinity;
     this.repMaxAngle = -Infinity;
     this.liveRepROM = 0;
+    this.liveAdjustedROM = 0;
     this.liveFulfillment = 0;
     
     console.log(`[ROMComputer] Baseline set from ${n} samples. Q: [${avgQ.w.toFixed(3)}, ${avgQ.x.toFixed(3)}, ${avgQ.y.toFixed(3)}, ${avgQ.z.toFixed(3)}]`);
@@ -925,6 +999,7 @@ export class ROMComputer {
     this.repMinAngle = Infinity;
     this.repMaxAngle = -Infinity;
     this.liveRepROM = 0;
+    this.liveAdjustedROM = 0;
     this.liveFulfillment = 0;
     // Reset per-set rep ROMs so repIndex matches RepCounter's per-set repNumber
     this.repROMs = [];
@@ -961,6 +1036,7 @@ export class ROMComputer {
     this.repMinAngle = Infinity;
     this.repMaxAngle = -Infinity;
     this.liveRepROM = 0;
+    this.liveAdjustedROM = 0;
     this.liveFulfillment = 0;
     this.DEBUG_MODE = false;
   }

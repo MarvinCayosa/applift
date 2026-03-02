@@ -277,39 +277,62 @@ export default function CalibrationModal({ isOpen, onClose, onCalibrate, equipme
       if (currentStep === 4) {
         rc.addSample(imuData);
         
-        // Update live ROM display
-        setLiveROM(rc.liveRepROM || 0);
+        // Update live ROM display (use retro-corrected value for stroke exercises)
+        setLiveROM(rc.getLiveROM());
         
-        // Auto-detect rep completion using magnitude peak detection
-        // Simple approach: when ROM rises then falls significantly, count as rep boundary
+        // Auto-detect rep completion
         const now = Date.now();
         const timeSinceLastRep = now - lastRepTimeRef.current;
+        const romType = rc.getROMType(rc.exerciseType);
+        const isStroke = romType === 'stroke';
         
         if (!repInProgressRef.current && rc.liveRepROM > 5) {
           // Rep motion started
           repInProgressRef.current = true;
           rc.startCalibrationRep();
+          // Clear sampleHistory so each rep has clean detection data
+          rc.sampleHistory = [];
         }
         
-        // Rep completes when: motion has been going, ROM is significant, and motion slows
-        // We use a simple heuristic: if rep ROM > 10° (or 5cm) and has enough data
-        const minROM = rc.getROMType(rc.exerciseType) === 'angle' ? 10 : 3;
+        const minROM = isStroke ? 3 : 10;
         
         if (repInProgressRef.current && rc.currentRepData.length > 15 && timeSinceLastRep > 1500) {
-          // Check if we've passed the peak and are returning (ROM started decreasing or leveled)
-          const recent = rc.sampleHistory.slice(-5);
-          const older = rc.sampleHistory.slice(-15, -5);
+          let repComplete = false;
           
-          if (recent.length >= 5 && older.length >= 5) {
-            const recentAvg = recent.reduce((s, p) => s + p.v, 0) / recent.length;
-            const olderAvg = older.reduce((s, p) => s + p.v, 0) / older.length;
+          if (isStroke) {
+            // STROKE exercises: detect return-to-start via displacement
+            // The rep is done when displacement returns near 0 after reaching a significant peak.
+            // This is far more reliable than plateau detection on the monotonically-increasing liveRepROM.
+            const peakReached = rc.liveRepROM > minROM;
+            const currentDisp = Math.abs(rc.liveDisplacementCm);
+            const peakDisp = Math.max(Math.abs(rc.repMaxAngle), Math.abs(rc.repMinAngle));
+            // Returned to within 30% of peak displacement from starting position
+            const returnedToStart = peakReached && peakDisp > 3 && currentDisp < peakDisp * 0.30;
+            // Need enough samples (at least ~0.5s of data at 50-60Hz)
+            const enoughData = rc.currentRepData.length > 30;
             
-            // ROM is dropping or stable after being significant
-            if (rc.liveRepROM > minROM && (recentAvg < olderAvg * 0.8 || (recentAvg < olderAvg * 1.05 && rc.currentRepData.length > 30))) {
+            if (returnedToStart && enoughData) {
+              repComplete = true;
+            }
+          } else {
+            // ANGLE exercises: use the existing plateau detection on sampleHistory
+            const recent = rc.sampleHistory.slice(-5);
+            const older = rc.sampleHistory.slice(-15, -5);
+            
+            if (recent.length >= 5 && older.length >= 5) {
+              const recentAvg = recent.reduce((s, p) => s + p.v, 0) / recent.length;
+              const olderAvg = older.reduce((s, p) => s + p.v, 0) / older.length;
+              
+              if (rc.liveRepROM > minROM && (recentAvg < olderAvg * 0.8 || (recentAvg < olderAvg * 1.05 && rc.currentRepData.length > 30))) {
+                repComplete = true;
+              }
+            }
+          }
+          
+          if (repComplete) {
               // For stroke exercises, delay completion by 500ms to capture post-motion rest samples
               // This ensures retroCorrect has rest data at the END of the rep for better accuracy
-              const romType = rc.getROMType(rc.exerciseType);
-              const POST_MOTION_DELAY = romType === 'stroke' ? 500 : 0;
+              const POST_MOTION_DELAY = isStroke ? 500 : 0;
               
               if (!pendingRepCompletionRef.current) {
                 pendingRepCompletionRef.current = now;
@@ -341,12 +364,11 @@ export default function CalibrationModal({ isOpen, onClose, onCalibrate, equipme
                 rc.startCalibrationRep();
               }
               } // end delayed completion
-            } else {
-              // Motion resumed - cancel pending completion
+          } else {
+              // Motion resumed or not yet returned - cancel pending completion
               if (pendingRepCompletionRef.current) {
                 pendingRepCompletionRef.current = null;
               }
-            }
           }
         }
       }
