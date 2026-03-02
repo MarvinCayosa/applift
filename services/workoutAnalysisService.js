@@ -188,10 +188,30 @@ export const computeROMFromOrientation = (roll, pitch, yaw) => {
     return { romDegrees: 0, primaryAxis: 'unknown', rollRange: 0, pitchRange: 0, yawRange: 0 };
   }
   
-  // Calculate range on each axis
-  const rollRange = Math.max(...roll) - Math.min(...roll);
-  const pitchRange = Math.max(...pitch) - Math.min(...pitch);
-  const yawRange = Math.max(...yaw) - Math.min(...yaw);
+  // Wrap-correct each axis to avoid inflated ranges when Euler angles
+  // cross the ±180° atan2 boundary (e.g. 170° → -170° = raw range 340°,
+  // but actual rotation is only 20°).
+  // Approach: unwrap relative to first sample, then compute range on unwrapped values.
+  const unwrap = (arr) => {
+    if (arr.length === 0) return arr;
+    const out = [arr[0]];
+    for (let i = 1; i < arr.length; i++) {
+      let d = arr[i] - arr[i - 1];
+      if (d > 180) d -= 360;
+      if (d < -180) d += 360;
+      out.push(out[i - 1] + d);
+    }
+    return out;
+  };
+  
+  const uRoll = unwrap(roll);
+  const uPitch = unwrap(pitch);
+  const uYaw = unwrap(yaw);
+  
+  // Calculate range on each unwrapped axis
+  const rollRange = Math.max(...uRoll) - Math.min(...uRoll);
+  const pitchRange = Math.max(...uPitch) - Math.min(...uPitch);
+  const yawRange = Math.max(...uYaw) - Math.min(...uYaw);
   
   // Primary axis is the one with most movement (highest range)
   let primaryAxis = 'roll';
@@ -206,18 +226,21 @@ export const computeROMFromOrientation = (roll, pitch, yaw) => {
     romDegrees = yawRange;
   }
   
+  // Cap at 180° — no single-joint movement exceeds this
+  romDegrees = Math.min(romDegrees, 180);
+  
   return {
     romDegrees,
     primaryAxis,
-    rollRange,
-    pitchRange,
-    yawRange,
-    rollMin: Math.min(...roll),
-    rollMax: Math.max(...roll),
-    pitchMin: Math.min(...pitch),
-    pitchMax: Math.max(...pitch),
-    yawMin: Math.min(...yaw),
-    yawMax: Math.max(...yaw)
+    rollRange: Math.min(rollRange, 180),
+    pitchRange: Math.min(pitchRange, 180),
+    yawRange: Math.min(yawRange, 180),
+    rollMin: Math.min(...uRoll),
+    rollMax: Math.max(...uRoll),
+    pitchMin: Math.min(...uPitch),
+    pitchMax: Math.max(...uPitch),
+    yawMin: Math.min(...uYaw),
+    yawMax: Math.max(...uYaw)
   };
 };
 

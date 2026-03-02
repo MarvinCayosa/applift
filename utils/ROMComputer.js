@@ -209,19 +209,20 @@ export class ROMComputer {
     }
     
     // Total angular displacement from baseline (single scalar, degrees)
+    // This is the TRUE rotation angle — immune to Euler wrapping/gimbal lock
     this.liveAngleDeg = this.quatAngleDeg(this.baselineQuat, q);
     
-    // Per-axis delta for auto-axis detection
-    const deltaRoll = roll - this.baselineAngle.roll;
-    const deltaPitch = pitch - this.baselineAngle.pitch;
-    const deltaYaw = yaw - this.baselineAngle.yaw;
+    // Per-axis delta, wrap-corrected to [-180, 180] to avoid discontinuities
+    // when Euler angles cross the ±180° atan2 boundary
+    const wrapDelta = (a) => { let d = a % 360; if (d > 180) d -= 360; if (d < -180) d += 360; return d; };
+    const deltaRoll = wrapDelta(roll - this.baselineAngle.roll);
+    const deltaPitch = wrapDelta(pitch - this.baselineAngle.pitch);
+    const deltaYaw = wrapDelta(yaw - this.baselineAngle.yaw);
     
-    // Track within-rep range using primary axis if known
-    let trackValue = this.liveAngleDeg;
-    if (this.primaryAxis) {
-      const axisMap = { roll: deltaRoll, pitch: deltaPitch, yaw: deltaYaw };
-      trackValue = axisMap[this.primaryAxis];
-    }
+    // Always use quaternion angular displacement for ROM tracking.
+    // Euler decomposition suffers from wrapping artifacts at ±180° boundaries
+    // that inflate ROM values (e.g. 350° instead of 130° for concentration curls).
+    const trackValue = this.liveAngleDeg;
     this.repMinAngle = Math.min(this.repMinAngle, trackValue);
     this.repMaxAngle = Math.max(this.repMaxAngle, trackValue);
     this.liveRepROM = this.repMaxAngle - this.repMinAngle;
@@ -450,8 +451,8 @@ export class ROMComputer {
       romValue = this.computeStrokeROM();
     }
     
-    // Clamp
-    romValue = romType === 'angle' ? Math.min(romValue, 360) : Math.min(romValue, 300);
+    // Clamp — 180° is the physical maximum for any single-joint rotation
+    romValue = romType === 'angle' ? Math.min(romValue, 180) : Math.min(romValue, 300);
     
     this.isCalibrationRep = false;
     
@@ -529,8 +530,8 @@ export class ROMComputer {
       this.savedPreRepBuffer = [...this.preRepBuffer];
     }
     
-    // Clamp unrealistic values
-    romValue = romType === 'angle' ? Math.min(romValue, 360) : Math.min(romValue, 200);
+    // Clamp unrealistic values — 180° is the physical max for single-joint rotation
+    romValue = romType === 'angle' ? Math.min(romValue, 180) : Math.min(romValue, 200);
     
     const repROM = {
       repIndex: this.repROMs.length + 1,
@@ -563,11 +564,13 @@ export class ROMComputer {
   computeAngleROM() {
     if (this.currentRepData.length < 3) return 0;
     
-    // Option 1: Use total quaternion angular displacement
+    // Quaternion angular displacement: immune to Euler wrapping & gimbal lock.
+    // Each sample's totalAngle = quatAngleDeg(baseline, current), range 0–180°.
+    // ROM = peak angle – trough angle within the rep.
     const totalAngles = this.currentRepData.map(d => d.totalAngle);
     const quatROM = Math.max(...totalAngles) - Math.min(...totalAngles);
     
-    // Option 2: Auto-detect primary Euler axis
+    // Auto-detect primary Euler axis for diagnostics/logging only
     if (this.primaryAxis === null) {
       const ranges = {
         roll: Math.max(...this.currentRepData.map(d => d.roll)) - Math.min(...this.currentRepData.map(d => d.roll)),
@@ -575,13 +578,12 @@ export class ROMComputer {
         yaw: Math.max(...this.currentRepData.map(d => d.yaw)) - Math.min(...this.currentRepData.map(d => d.yaw))
       };
       this.primaryAxis = Object.entries(ranges).sort((a, b) => b[1] - a[1])[0][0];
-      console.log(`[ROMComputer] Auto-detected primary axis: ${this.primaryAxis} (range: ${ranges[this.primaryAxis].toFixed(1)}°)`);
+      console.log(`[ROMComputer] Primary axis (info): ${this.primaryAxis} (range: ${ranges[this.primaryAxis].toFixed(1)}°)`);
     }
     
-    const axisValues = this.currentRepData.map(d => d[this.primaryAxis]);
-    const axisROM = Math.max(...axisValues) - Math.min(...axisValues);
-    
-    return Math.max(quatROM, axisROM);
+    // Use ONLY quaternion-based ROM — Euler axis ranges can inflate due to
+    // atan2 wrapping (e.g. 350° instead of 130° for curls crossing ±180° boundary)
+    return quatROM;
   }
   
   computeStrokeROM() {
