@@ -24,7 +24,6 @@ import ExecutionConsistencyCard from '../../components/sessionDetails/ExecutionC
 import FatigueCarousel from '../../components/sessionDetails/FatigueCarousel';
 import MovementPhasesSection from '../../components/sessionDetails/MovementPhasesSection';
 import SessionDetailsSkeleton from '../../components/sessionDetails/SessionDetailsSkeleton';
-import ShareModal from '../../components/ShareModal';
 import BottomNav from '../../components/BottomNav';
 import { equipmentConfig } from '../../components/equipment';
 
@@ -34,9 +33,9 @@ export default function SessionDetailsPage() {
   const { user } = useAuth();
 
   // Share state
-  const [showShareModal, setShowShareModal] = useState(false);
   const [shareUrl, setShareUrl] = useState('');
   const [isSharing, setIsSharing] = useState(false);
+  const [linkCopiedToast, setLinkCopiedToast] = useState(false);
 
   // Resolve exercise image and equipment primary color from equipmentConfig
   const { exerciseImage, primaryColor } = useMemo(() => {
@@ -107,7 +106,33 @@ export default function SessionDetailsPage() {
       if (!res.ok) throw new Error('Failed to create share link');
       const { shareUrl: url } = await res.json();
       setShareUrl(url);
-      setShowShareModal(true);
+
+      // Mobile: use native share sheet
+      if (typeof navigator !== 'undefined' && navigator.share) {
+        try {
+          await navigator.share({
+            title: `${vm.exerciseName || 'Workout'} — AppLift`,
+            text: `Check out my ${vm.exerciseName || 'workout'} session on AppLift! 💪`,
+            url: url,
+          });
+        } catch (err) {
+          if (err.name !== 'AbortError') console.warn('[Share] Native share failed:', err);
+        }
+      } else {
+        // Desktop: copy link + show toast
+        try {
+          await navigator.clipboard.writeText(url);
+        } catch {
+          const ta = document.createElement('textarea');
+          ta.value = url;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+        }
+        setLinkCopiedToast(true);
+        setTimeout(() => setLinkCopiedToast(false), 2500);
+      }
     } catch (err) {
       console.error('[Share] Error:', err);
       alert('Failed to create share link. Please try again.');
@@ -255,13 +280,15 @@ export default function SessionDetailsPage() {
 
         <BottomNav />
 
-        {/* Share Modal */}
-        <ShareModal
-          isOpen={showShareModal}
-          onClose={() => setShowShareModal(false)}
-          shareUrl={shareUrl}
-          exerciseName={vm.exerciseName}
-        />
+        {/* Link Copied Toast */}
+        {linkCopiedToast && (
+          <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[9999] bg-green-600 text-white text-sm font-medium px-5 py-2.5 rounded-full shadow-lg animate-fade-in-up">
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+              Link Copied to Clipboard
+            </div>
+          </div>
+        )}
       </div>
     </>
   );

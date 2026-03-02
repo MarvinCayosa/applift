@@ -560,8 +560,9 @@ export default function WorkoutMonitor() {
     let phaseRepCount = 0;
     mergedSetData.forEach(set => {
       (set.repsData || []).forEach(rep => {
-        const lt = rep.loweringTime || 0;
-        const lo = rep.liftingTime || 0;
+        // liftingTime = concentric (lifting), loweringTime = eccentric (lowering)
+        const lt = rep.liftingTime || 0;
+        const lo = rep.loweringTime || 0;
         if (lt + lo > 0) {
           totalLiftingTime += lt;
           totalLoweringTime += lo;
@@ -626,6 +627,7 @@ export default function WorkoutMonitor() {
           quality: rep.quality ?? null,
           liftingTime: rep.liftingTime ?? 0,
           loweringTime: rep.loweringTime ?? 0,
+          peakTimePercent: rep.peakTimePercent ?? null,
           classification: rep.classification || null,
         })),
       }));

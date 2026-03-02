@@ -1,51 +1,46 @@
 # Movement Phase Labeling Fix
 
-## Issue
+## Issue (Original)
 The "Lifting" and "Lowering" labels in the movement phase analysis were swapped. When users performed longer lifting motions and shorter lowering motions, the display showed:
 - Lifting: 27.2% (should be ~72.8%)
 - Lowering: 72.8% (should be ~27.2%)
 
 ## Root Cause
-The phase timing algorithm in `workoutAnalysisService.js` calculates:
-- `liftingTime` = time BEFORE peak detection
-- `loweringTime` = time AFTER peak detection
+The acceleration-based phase timing algorithm (`computePhaseTimings`) finds the **acceleration peak** (maximum force spike), which occurs **early during the concentric phase** (not at the physical turning point). This meant:
+- `liftingTime` (before peak) = only the initial part of the lift → too short  
+- `loweringTime` (after peak) = rest of lift + all lowering → too long
 
-However, depending on the exercise and accelerometer signal interpretation, the "peak" detection may occur at the wrong transition point, causing the phase timings to be backwards.
+The **orientation-based** method (`computePhaseTimingsFromOrientation`) correctly finds the physical turning point (extremum in roll/pitch/yaw), so its labels are correct.
 
-## Files Fixed
+## Previous Fix (Display-Level Swap) — NOW REMOVED
+Previously, display-level swaps were applied in multiple files to compensate. This was fragile because:
+- With orientation data (primary path): algorithm correct + display swap = **WRONG**
+- Without orientation data (fallback): algorithm reversed + display swap = correct
 
-### 1. `components/workoutFinished/RepInsightCard.js`
-- **Fix**: Swapped display values for Lifting and Lowering labels
-- **Change**: 
-  - "Lifting" now shows `loweringPercent` value
-  - "Lowering" now shows `liftingPercent` value
-  - Updated progress bar visualization to match
-  - Fixed tempo balance calculation in rep quality score
+## Current Fix (Algorithm-Level)
+Instead of display swaps, the **acceleration-based fallback functions** now swap their return values to match the orientation convention:
 
-### 2. `components/workoutFinished/LiftPhases.js`
-- **Fix**: Swapped data source for concentric/eccentric calculations
-- **Change**: When computing from sets data, use `loweringTime` for lifting and `liftingTime` for lowering
+### Files Fixed
 
-### 3. `services/workoutAnalysisService.js`
-- **Fix**: Swapped average calculations
-- **Change**: 
-  - `avgConcentric` now uses `loweringTime` values
-  - `avgEccentric` now uses `liftingTime` values
+#### 1. `services/workoutAnalysisService.js` — `computePhaseTimings()`
+- **Fix**: Swap return values: `liftingTime: loweringTime, loweringTime: liftingTime`
+- **Fix**: `avgConcentric` now uses `m.liftingTime`, `avgEccentric` uses `m.loweringTime` (no swap)
 
-### 4. `pages/api/analyze-workout.js`
-- **Fix**: Same as workoutAnalysisService.js
-- **Change**: Swapped data sources for average calculations
+#### 2. `pages/api/analyze-workout.js` — `computePhaseTimingsFromPrimaryAxis()`
+- Same swap in return values
 
-### 5. `pages/workout-monitor.js`
-- **Fix**: Swapped real-time phase calculations
-- **Change**: When calculating averages during workout completion, use swapped values
+#### 3. `utils/useWorkoutSession.js` — `computeLocalPhaseTimings()`
+- Same swap in return values
+
+#### 4. Display Components — ALL SWAPS REMOVED
+- `components/workoutFinished/RepInsightCard.js` — shows `liftingPercent` as Lifting directly
+- `components/workoutFinished/LiftPhases.js` — uses `rep.liftingTime` for lifting directly
+- `components/sessionDetails/MovementPhasesSection.js` — uses `rep.liftingTime` for lifting directly
+- `pages/workout-monitor.js` (`computePhaseAverages`) — uses `rep.liftingTime` for lifting directly
 
 ## Result
-Now when you perform longer lifting and shorter lowering:
-- ✅ Lifting will show the higher percentage (from `loweringPercent` data)
-- ✅ Lowering will show the lower percentage (from `liftingPercent` data)
-- ✅ All movement phase displays are consistent across the app
-- ✅ Rep quality calculations use correct tempo balance
-
-## Technical Note
-This is a display-level fix rather than fixing the underlying algorithm. The algorithm's peak detection logic may still need refinement for different exercises, but the labels now correctly represent the actual lifting and lowering phases as users expect them.
+- Both acceleration-based and orientation-based methods now output consistent values
+- `liftingTime` = concentric (lifting) phase duration
+- `loweringTime` = eccentric (lowering) phase duration
+- No display swaps needed — values shown as-is
+- Phase transition marker and seconds display added to rep graph

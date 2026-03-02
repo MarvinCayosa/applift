@@ -221,9 +221,11 @@ function computeLocalPhaseTimings(samples) {
     loweringTime = ((primarySignal.length - bestIdx) / primarySignal.length) * totalDuration;
   }
 
+  // Swap: acceleration peak occurs early in the concentric phase, not at the physical turning point.
+  // Swap output to match orientation-based convention: liftingTime = concentric, loweringTime = eccentric.
   return {
-    liftingTime: Math.max(0, liftingTime),
-    loweringTime: Math.max(0, loweringTime)
+    liftingTime: Math.max(0, loweringTime),
+    loweringTime: Math.max(0, liftingTime)
   };
 }
 

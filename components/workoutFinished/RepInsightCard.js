@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 export default function RepInsightCard({ repData, repNumber, targetROM, romUnit: propRomUnit, romCalibrated }) {
-  const { time, rom, peakVelocity, chartData, liftingTime, loweringTime, classification, smoothnessScore, romFulfillment, romUnit } = repData;
+  const { time, rom, peakVelocity, chartData, liftingTime, loweringTime, classification, smoothnessScore, romFulfillment, romUnit, peakTimePercent } = repData;
   const [showConfidenceOverlay, setShowConfidenceOverlay] = useState(false);
 
   // Calculate lifting/lowering percentages from actual data
@@ -196,6 +196,17 @@ export default function RepInsightCard({ repData, repNumber, targetROM, romUnit:
               const range = maxVal - minVal || 1;
               const padding = 10;
               
+              // Phase transition position (where lifting ends and lowering begins)
+              const phaseTransitionX = peakTimePercent != null 
+                ? (peakTimePercent / 100) * 400 
+                : null;
+
+              // Compute start and end Y positions for markers
+              const startNorm = (chartData[0] - minVal) / range;
+              const startY = 140 - padding - (startNorm * (140 - 2 * padding));
+              const endNorm = (chartData[chartData.length - 1] - minVal) / range;
+              const endY = 140 - padding - (endNorm * (140 - 2 * padding));
+              
               return (
                 <svg className="w-full h-full" viewBox="0 0 400 140" preserveAspectRatio="none">
                   <defs>
@@ -203,8 +214,28 @@ export default function RepInsightCard({ repData, repNumber, targetROM, romUnit:
                       <stop offset="0%" style={{ stopColor: formColor.primary, stopOpacity: 0.5 }} />
                       <stop offset="100%" style={{ stopColor: formColor.primary, stopOpacity: 0.05 }} />
                     </linearGradient>
+                    {/* Lifting phase gradient (teal) */}
+                    <linearGradient id={`liftGrad${repNumber}`} x1="0%" y1="0%" x2="0%" y2="100%">
+                      <stop offset="0%" style={{ stopColor: '#14b8a6', stopOpacity: 0.15 }} />
+                      <stop offset="100%" style={{ stopColor: '#14b8a6', stopOpacity: 0.02 }} />
+                    </linearGradient>
+                    {/* Lowering phase gradient (orange) */}
+                    <linearGradient id={`lowerGrad${repNumber}`} x1="0%" y1="0%" x2="0%" y2="100%">
+                      <stop offset="0%" style={{ stopColor: '#f97316', stopOpacity: 0.15 }} />
+                      <stop offset="100%" style={{ stopColor: '#f97316', stopOpacity: 0.02 }} />
+                    </linearGradient>
                   </defs>
                   
+                  {/* Phase background shading */}
+                  {phaseTransitionX != null && (
+                    <>
+                      {/* Lifting phase background (left side) */}
+                      <rect x="0" y="0" width={phaseTransitionX} height="140" fill={`url(#liftGrad${repNumber})`} />
+                      {/* Lowering phase background (right side) */}
+                      <rect x={phaseTransitionX} y="0" width={400 - phaseTransitionX} height="140" fill={`url(#lowerGrad${repNumber})`} />
+                    </>
+                  )}
+
                   {/* Grid lines */}
                   <line x1="0" y1="35" x2="400" y2="35" stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
                   <line x1="0" y1="70" x2="400" y2="70" stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
@@ -236,7 +267,16 @@ export default function RepInsightCard({ repData, repNumber, targetROM, romUnit:
                     strokeLinecap="round"
                     strokeLinejoin="round"
                   />
-                  
+
+                  {/* Phase transition dashed line */}
+                  {phaseTransitionX != null && (
+                    <line 
+                      x1={phaseTransitionX} y1="4" x2={phaseTransitionX} y2="136" 
+                      stroke="rgba(255,255,255,0.35)" strokeWidth="1.5" strokeDasharray="4,3"
+                    />
+                  )}
+
+                  {/* Peak dot (max value in chart) */}
                   {(() => {
                     const maxIndex = chartData.reduce((maxI, val, i, arr) => val > arr[maxI] ? i : maxI, 0);
                     const maxValue = chartData[maxIndex];
@@ -254,6 +294,23 @@ export default function RepInsightCard({ repData, repNumber, targetROM, romUnit:
                       />
                     );
                   })()}
+
+                  {/* Start marker (green) */}
+                  <circle cx="0" cy={startY} r="3.5" fill="#22c55e" stroke="white" strokeWidth="1" />
+                  {/* End marker (red) */}
+                  <circle cx="400" cy={endY} r="3.5" fill="#ef4444" stroke="white" strokeWidth="1" />
+
+                  {/* Phase labels at top */}
+                  {phaseTransitionX != null && phaseTransitionX > 50 && (
+                    <text x={phaseTransitionX / 2} y="14" textAnchor="middle" fill="#5eead4" fontSize="10" fontWeight="600" style={{ letterSpacing: '0.5px' }}>
+                      Lifting
+                    </text>
+                  )}
+                  {phaseTransitionX != null && (400 - phaseTransitionX) > 50 && (
+                    <text x={phaseTransitionX + (400 - phaseTransitionX) / 2} y="14" textAnchor="middle" fill="#fb923c" fontSize="10" fontWeight="600" style={{ letterSpacing: '0.5px' }}>
+                      Lowering
+                    </text>
+                  )}
                 </svg>
               );
             })()
@@ -295,11 +352,11 @@ export default function RepInsightCard({ repData, repNumber, targetROM, romUnit:
               <div className="relative h-3 sm:h-4 lg:h-5 bg-white/10 rounded-full overflow-hidden">
                 <div 
                   className="absolute inset-y-0 left-0 bg-gradient-to-r from-teal-500 to-cyan-400 transition-all duration-500"
-                  style={{ width: `${loweringPercent}%` }}
+                  style={{ width: `${liftingPercent}%` }}
                 />
                 <div 
                   className="absolute inset-y-0 bg-gradient-to-r from-yellow-500 to-orange-400 transition-all duration-500"
-                  style={{ left: `${loweringPercent}%`, right: 0 }}
+                  style={{ left: `${liftingPercent}%`, right: 0 }}
                 />
               </div>
 
@@ -308,15 +365,17 @@ export default function RepInsightCard({ repData, repNumber, targetROM, romUnit:
                 <div className="flex items-center gap-2 sm:gap-2.5">
                   <div className="w-1 h-10 sm:h-12 lg:h-14 bg-gradient-to-b from-teal-500 to-cyan-400 rounded-full" />
                   <div className="flex flex-col">
-                    <span className="text-base sm:text-lg lg:text-xl font-bold text-white">{loweringPercent}%</span>
+                    <span className="text-base sm:text-lg lg:text-xl font-bold text-white">{liftingPercent}%</span>
                     <span className="text-[10px] sm:text-xs lg:text-sm text-gray-400">Lifting</span>
+                    <span className="text-[9px] sm:text-[10px] text-teal-400/70 font-medium">{(liftingTime || 0).toFixed(2)}s</span>
                   </div>
                 </div>
                 
                 <div className="flex items-center gap-2 sm:gap-2.5">
                   <div className="flex flex-col items-end">
-                    <span className="text-base sm:text-lg lg:text-xl font-bold text-white">{liftingPercent}%</span>
+                    <span className="text-base sm:text-lg lg:text-xl font-bold text-white">{loweringPercent}%</span>
                     <span className="text-[10px] sm:text-xs lg:text-sm text-gray-400">Lowering</span>
+                    <span className="text-[9px] sm:text-[10px] text-orange-400/70 font-medium">{(loweringTime || 0).toFixed(2)}s</span>
                   </div>
                   <div className="w-1 h-10 sm:h-12 lg:h-14 bg-gradient-to-b from-yellow-500 to-orange-400 rounded-full" />
                 </div>

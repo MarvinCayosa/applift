@@ -24,9 +24,9 @@ export default function MovementPhasesSection({
     let count = 0;
     setsData.forEach((set) =>
       (set.repsData || []).forEach((rep) => {
-        // Note: liftingTime and loweringTime are swapped in analysis
-        const lt = rep.loweringTime || 0;
-        const lo = rep.liftingTime || 0;
+        // liftingTime = concentric (lifting), loweringTime = eccentric (lowering)
+        const lt = rep.liftingTime || 0;
+        const lo = rep.loweringTime || 0;
         if (lt + lo > 0) {
           totalLift += lt;
           totalLow += lo;

@@ -331,6 +331,7 @@ export default function useSessionDetailsData({ logId, equipment, exercise }) {
               quality: ar?.quality || lr.quality,
               liftingTime: ar?.liftingTime ?? lr.liftingTime ?? 0,
               loweringTime: ar?.loweringTime ?? lr.loweringTime ?? 0,
+              peakTimePercent: ar?.peakTimePercent ?? lr.peakTimePercent ?? null,
               peakVelocity: ar?.peakVelocity ?? lr.peakVelocity,
               rom: ar?.rom ?? lr.rom,
               chartData: ar?.chartData?.length > 0 ? ar.chartData : lr.chartData,

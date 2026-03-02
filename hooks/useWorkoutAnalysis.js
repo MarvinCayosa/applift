@@ -166,6 +166,7 @@ export function transformAnalysisForUI(analysis) {
         chartData: rep.chartData || [],
         liftingTime: rep.liftingTime || 0,
         loweringTime: rep.loweringTime || 0,
+        peakTimePercent: rep.peakTimePercent ?? null,
         smoothnessScore: rep.smoothnessScore || 50,
         quality: rep.smoothnessScore >= 80 ? 'clean' : 'uncontrolled',
         // Include ML classification for each rep

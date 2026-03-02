@@ -18,7 +18,6 @@ import { doc, setDoc } from 'firebase/firestore';
 import { AIInsightsCard } from '../components/aiInsights';
 import { generateInsights, getCachedInsights } from '../services/aiInsightsService';
 import { bustRecommendationCache } from '../services/aiRecommendationService';
-import ShareModal from '../components/ShareModal';
 
 export default function WorkoutFinished() {
   const router = useRouter();
@@ -44,9 +43,9 @@ export default function WorkoutFinished() {
   const hasTriggeredInsights = useRef(false);
 
   // Share state
-  const [showShareModal, setShowShareModal] = useState(false);
   const [shareUrl, setShareUrl] = useState('');
   const [isSharing, setIsSharing] = useState(false);
+  const [linkCopiedToast, setLinkCopiedToast] = useState(false);
   const { 
     workoutName, 
     equipment, 
@@ -176,6 +175,7 @@ export default function WorkoutFinished() {
             // Merge phase timing data from analysis
             liftingTime: analysisRep?.liftingTime ?? localRep.liftingTime ?? 0,
             loweringTime: analysisRep?.loweringTime ?? localRep.loweringTime ?? 0,
+            peakTimePercent: analysisRep?.peakTimePercent ?? localRep.peakTimePercent ?? null,
             // Merge real velocity (m/s from accelerometer integration) and ROM from analysis
             peakVelocity: analysisRep?.peakVelocity ?? localRep.peakVelocity,
             // For ROM: prefer local ROMComputer value (retroCorrect) for stroke exercises.
@@ -243,6 +243,7 @@ export default function WorkoutFinished() {
         quality: rep.quality ?? null,
         liftingTime: rep.liftingTime ?? 0,
         loweringTime: rep.loweringTime ?? 0,
+        peakTimePercent: rep.peakTimePercent ?? null,
         classification: rep.classification || null,
       })),
     }));
@@ -707,7 +708,33 @@ export default function WorkoutFinished() {
       if (!res.ok) throw new Error('Failed to create share link');
       const { shareUrl: url } = await res.json();
       setShareUrl(url);
-      setShowShareModal(true);
+
+      // Mobile: use native share sheet
+      if (typeof navigator !== 'undefined' && navigator.share) {
+        try {
+          await navigator.share({
+            title: `${workoutName || 'Workout'} — AppLift`,
+            text: `Check out my ${workoutName || 'workout'} session on AppLift! 💪`,
+            url: url,
+          });
+        } catch (err) {
+          if (err.name !== 'AbortError') console.warn('[Share] Native share failed:', err);
+        }
+      } else {
+        // Desktop: copy link + show toast
+        try {
+          await navigator.clipboard.writeText(url);
+        } catch {
+          const ta = document.createElement('textarea');
+          ta.value = url;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+        }
+        setLinkCopiedToast(true);
+        setTimeout(() => setLinkCopiedToast(false), 2500);
+      }
     } catch (err) {
       console.error('[Share] Error:', err);
       alert('Failed to create share link. Please try again.');
@@ -841,13 +868,15 @@ export default function WorkoutFinished() {
         isSubmitting={isSubmittingFeedback}
       />
 
-      {/* Share Modal */}
-      <ShareModal
-        isOpen={showShareModal}
-        onClose={() => setShowShareModal(false)}
-        shareUrl={shareUrl}
-        exerciseName={workoutName}
-      />
+      {/* Link Copied Toast */}
+      {linkCopiedToast && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[9999] bg-green-600 text-white text-sm font-medium px-5 py-2.5 rounded-full shadow-lg animate-fade-in-up">
+          <div className="flex items-center gap-2">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+            Link Copied to Clipboard
+          </div>
+        </div>
+      )}
     </>
   );
 }

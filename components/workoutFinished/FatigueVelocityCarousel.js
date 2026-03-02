@@ -25,8 +25,41 @@ export default function FatigueVelocityCarousel({
   const [activeSlide, setActiveSlide] = useState(0);
   const [showFatigueInfo, setShowFatigueInfo] = useState(false);
   const [showVelocityInfo, setShowVelocityInfo] = useState(false);
+  const [infoSlide, setInfoSlide] = useState(0);
+  const [dragStartY, setDragStartY] = useState(0);
+  const [dragCurrentY, setDragCurrentY] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isClosingOverlay, setIsClosingOverlay] = useState(false);
   const carouselRef = useRef(null);
   const totalSlides = 2;
+
+  // Drag-to-dismiss handlers for info overlays
+  const handleOverlayTouchStart = (e) => {
+    setDragStartY(e.touches[0].clientY);
+    setIsDragging(true);
+  };
+  const handleOverlayTouchMove = (e) => {
+    if (!isDragging) return;
+    const diff = e.touches[0].clientY - dragStartY;
+    if (diff > 0) setDragCurrentY(diff);
+  };
+  const closeOverlay = (setter) => {
+    setIsClosingOverlay(true);
+    setTimeout(() => {
+      setter(false);
+      setIsClosingOverlay(false);
+      setDragCurrentY(0);
+      setInfoSlide(0);
+    }, 250);
+  };
+  const handleOverlayTouchEnd = (setter) => {
+    setIsDragging(false);
+    if (dragCurrentY > 100) {
+      closeOverlay(setter);
+    } else {
+      setDragCurrentY(0);
+    }
+  };
 
   // ── Scroll tracking (same pattern as ExerciseInfoPanel) ─────────────
   useEffect(() => {
@@ -490,90 +523,178 @@ export default function FatigueVelocityCarousel({
           />
         ))}
       </div>
-      {/* ── Info Overlay: Fatigue ── */}
+      {/* ── Info Overlay: Fatigue (draggable, 2-slide) ── */}
       {showFatigueInfo && typeof document !== 'undefined' && ReactDOM.createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-end justify-center" onClick={() => setShowFatigueInfo(false)}>
-          <div className="absolute inset-0 bg-black/60" />
-          <div className="relative w-full max-w-lg rounded-t-2xl bg-[#1e1e1e] border-t border-white/10 p-5 pb-8 animate-slideUp" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-center mb-4"><div className="w-10 h-1 rounded-full bg-white/20" /></div>
-            <h4 className="text-[16px] font-bold text-white mb-3">Understanding Fatigue</h4>
-            <p className="text-[13px] text-white/60 leading-relaxed mb-4">
-              This score shows how tired your muscles got during your set. It compares your speed, timing, and control in your first few reps versus your last few to measure how much your performance changed.
-            </p>
-            <div className="space-y-2 mb-4">
-              <p className="text-[13px] font-semibold text-white/70 mb-1">What the indicators mean:</p>
-              {[
-                { color: 'bg-cyan-400', title: 'Velocity Drop', desc: 'How much your speed dropped from your first reps to your last. A small drop means you maintained power well.' },
-                { color: 'bg-purple-400', title: 'Rep Slowdown', desc: 'How much longer your later reps took. When reps slow down noticeably, your muscles are running low on energy.' },
-                { color: 'bg-orange-400', title: 'Control Loss', desc: 'How much your movement quality decreased. A bigger drop means your muscles are struggling to stay smooth.' },
-              ].map((item, i) => (
-                <div key={i} className="flex items-start gap-2.5">
-                  <div className={`w-2 h-2 rounded-full ${item.color} mt-1.5 shrink-0`} />
-                  <div>
-                    <span className="text-[13px] font-semibold text-white/80">{item.title}</span>
-                    <p className="text-[12px] text-white/40 leading-relaxed">{item.desc}</p>
+        <div
+          className="fixed inset-0 z-[9999] flex items-end justify-center"
+          onClick={() => closeOverlay(setShowFatigueInfo)}
+        >
+          <div className={`absolute inset-0 bg-black/60 transition-opacity duration-250 ${isClosingOverlay ? 'opacity-0' : 'opacity-100'}`} />
+          <div
+            className={`relative w-full max-w-lg rounded-t-2xl bg-[#1e1e1e] border-t border-white/10 pb-8 ${isClosingOverlay ? 'animate-slideDown' : 'animate-slideUp'}`}
+            style={{ transform: isDragging ? `translateY(${dragCurrentY}px)` : undefined }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Drag handle */}
+            <div
+              className="flex justify-center pt-3 pb-2 cursor-grab active:cursor-grabbing"
+              onTouchStart={handleOverlayTouchStart}
+              onTouchMove={handleOverlayTouchMove}
+              onTouchEnd={() => handleOverlayTouchEnd(setShowFatigueInfo)}
+            >
+              <div className="w-10 h-1 rounded-full bg-white/20" />
+            </div>
+
+            {/* Slide content */}
+            <div className="overflow-hidden">
+              <div
+                className="flex transition-transform duration-300 ease-out"
+                style={{ transform: `translateX(-${infoSlide * 100}%)` }}
+              >
+                {/* Slide 1: Understanding Fatigue */}
+                <div className="w-full shrink-0 px-5 overflow-y-auto" style={{ maxHeight: '65vh' }}>
+                  <h4 className="text-[16px] font-bold text-white mb-3">Understanding Fatigue</h4>
+                  <p className="text-[13px] text-white/60 leading-relaxed mb-4">
+                    This score shows how tired your muscles got during your set. It compares your speed, timing, and control in your first few reps versus your last few to measure how much your performance changed.
+                  </p>
+                  <div className="space-y-2 mb-4">
+                    <p className="text-[13px] font-semibold text-white/70 mb-1">What the indicators mean:</p>
+                    {[
+                      { color: 'bg-cyan-400', title: 'Velocity Drop', desc: 'How much your speed dropped from your first reps to your last. A small drop means you maintained power well.' },
+                      { color: 'bg-purple-400', title: 'Rep Slowdown', desc: 'How much longer your later reps took compared to your first. When reps slow down, your muscles are running low on energy.' },
+                      { color: 'bg-orange-400', title: 'Control Loss', desc: 'How much your movement smoothness decreased. A bigger drop means your muscles are struggling to control the weight.' },
+                    ].map((item, i) => (
+                      <div key={i} className="flex items-start gap-2.5">
+                        <div className={`w-2 h-2 rounded-full ${item.color} mt-1.5 shrink-0`} />
+                        <div>
+                          <span className="text-[13px] font-semibold text-white/80">{item.title}</span>
+                          <p className="text-[12px] text-white/40 leading-relaxed">{item.desc}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="pt-3 border-t border-white/[0.08]">
+                    <p className="text-[12px] font-semibold text-white/50 mb-2">Fatigue Levels</p>
+                    <div className="space-y-1.5">
+                      {[
+                        { color: 'bg-green-400', label: 'Minimal (0–10)', desc: 'Muscles stayed fresh' },
+                        { color: 'bg-green-400', label: 'Low (10–20)', desc: 'Slight fatigue toward the end' },
+                        { color: 'bg-yellow-400', label: 'Moderate (20–35)', desc: 'Normal fatigue, good effort' },
+                        { color: 'bg-orange-400', label: 'High (35–55)', desc: 'Great for muscle growth' },
+                        { color: 'bg-red-400', label: 'Severe (55+)', desc: 'Very fatigued — watch your form' },
+                      ].map((lv, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <div className={`w-2 h-2 rounded-full ${lv.color} shrink-0`} />
+                          <span className="text-[12px] text-white/50"><span className="text-white/70 font-medium">{lv.label}</span> — {lv.desc}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
-              ))}
-            </div>
-            <div className="pt-3 border-t border-white/[0.08]">
-              <p className="text-[12px] font-semibold text-white/50 mb-2">Fatigue Levels</p>
-              <div className="space-y-1.5">
-                {[
-                  { color: 'bg-green-400', label: 'Minimal (0\u201310)', desc: 'Muscles stayed fresh' },
-                  { color: 'bg-green-400', label: 'Low (10\u201320)', desc: 'Slight fatigue toward the end' },
-                  { color: 'bg-yellow-400', label: 'Moderate (20\u201335)', desc: 'Normal fatigue, good effort' },
-                  { color: 'bg-orange-400', label: 'High (35\u201355)', desc: 'Great for muscle growth' },
-                  { color: 'bg-red-400', label: 'Severe (55+)', desc: 'Very fatigued \u2014 watch your form' },
-                ].map((lv, i) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${lv.color} shrink-0`} />
-                    <span className="text-[12px] text-white/50"><span className="text-white/70 font-medium">{lv.label}</span> \u2014 {lv.desc}</span>
+
+                {/* Slide 2: How It's Computed */}
+                <div className="w-full shrink-0 px-5 overflow-y-auto" style={{ maxHeight: '65vh' }}>
+                  <h4 className="text-[16px] font-bold text-white mb-3">How It{'\u2019'}s Computed</h4>
+                  <p className="text-[13px] text-white/60 leading-relaxed mb-4">
+                    Your reps are split into thirds. The first third (when you{'\u2019'}re freshest) is compared against the last third (when you{'\u2019'}re most fatigued).
+                  </p>
+                  <div className="space-y-3 mb-4">
+                    {[
+                      { label: 'Velocity Drop (D)', formula: '(Avg First ⅓ − Avg Last ⅓) ÷ Avg First ⅓', weight: '35%', color: 'text-cyan-400' },
+                      { label: 'Tempo Slowdown (T)', formula: '(Avg Last ⅓ − Avg First ⅓) ÷ Avg First ⅓', weight: '25%', color: 'text-purple-400' },
+                      { label: 'Control Loss (S)', formula: '(Smooth First ⅓ − Smooth Last ⅓) ÷ Smooth First ⅓', weight: '40%', color: 'text-orange-400' },
+                    ].map((item, i) => (
+                      <div key={i} className="rounded-xl bg-white/[0.04] p-3">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className={`text-[13px] font-semibold ${item.color}`}>{item.label}</span>
+                          <span className="text-[11px] text-white/30 font-mono">weight: {item.weight}</span>
+                        </div>
+                        <p className="text-[11px] text-white/40 font-mono">{item.formula}</p>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                  <div className="rounded-xl bg-white/[0.06] p-3 mb-4">
+                    <p className="text-[12px] font-semibold text-white/70 mb-1">Final Formula</p>
+                    <p className="text-[12px] text-white/50 font-mono leading-relaxed">
+                      Fatigue = 0.35 × D + 0.25 × T + 0.40 × S
+                    </p>
+                    <p className="text-[11px] text-white/30 mt-1">
+                      When an API score is available from full kinematic analysis, it takes priority over this local computation.
+                    </p>
+                  </div>
+                </div>
               </div>
+            </div>
+
+            {/* Slide dots */}
+            <div className="flex items-center justify-center gap-1.5 pt-3">
+              {[0, 1].map(i => (
+                <button
+                  key={i}
+                  onClick={() => setInfoSlide(i)}
+                  className={`rounded-full transition-all duration-300 ${infoSlide === i ? 'w-5 h-1.5 bg-white' : 'w-1.5 h-1.5 bg-white/25'}`}
+                />
+              ))}
             </div>
           </div>
         </div>,
         document.body
       )}
 
-      {/* ── Info Overlay: Velocity ── */}
+      {/* ── Info Overlay: Velocity (draggable) ── */}
       {showVelocityInfo && typeof document !== 'undefined' && ReactDOM.createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-end justify-center" onClick={() => setShowVelocityInfo(false)}>
-          <div className="absolute inset-0 bg-black/60" />
-          <div className="relative w-full max-w-lg rounded-t-2xl bg-[#1e1e1e] border-t border-white/10 p-5 pb-8 animate-slideUp" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-center mb-4"><div className="w-10 h-1 rounded-full bg-white/20" /></div>
-            <h4 className="text-[16px] font-bold text-white mb-3">Understanding Velocity</h4>
-            <p className="text-[13px] text-white/60 leading-relaxed mb-4">
-              This chart tracks how fast you moved the weight on each rep. Faster movement means more power. As your muscles tire, your speed naturally drops.
-            </p>
-            <div className="space-y-2 mb-4">
-              <p className="text-[13px] font-semibold text-white/70 mb-1">What the stats mean:</p>
-              {[
-                { color: 'bg-cyan-400', title: 'Peak', desc: 'Your fastest speed from the first few reps \u2014 your baseline when you\'re freshest.' },
-                { color: 'bg-emerald-400', title: 'Variability', desc: 'How much your speed changed rep to rep. Under 8% is very consistent; over 15% means big swings.' },
-                { color: 'bg-white/60', title: 'Effective Reps', desc: 'Reps where your speed stayed within 10% of your best. These are your highest-quality reps.' },
-              ].map((item, i) => (
-                <div key={i} className="flex items-start gap-2.5">
-                  <div className={`w-2 h-2 rounded-full ${item.color} mt-1.5 shrink-0`} />
-                  <div>
-                    <span className="text-[13px] font-semibold text-white/80">{item.title}</span>
-                    <p className="text-[12px] text-white/40 leading-relaxed">{item.desc}</p>
-                  </div>
-                </div>
-              ))}
+        <div
+          className="fixed inset-0 z-[9999] flex items-end justify-center"
+          onClick={() => closeOverlay(setShowVelocityInfo)}
+        >
+          <div className={`absolute inset-0 bg-black/60 transition-opacity duration-250 ${isClosingOverlay ? 'opacity-0' : 'opacity-100'}`} />
+          <div
+            className={`relative w-full max-w-lg rounded-t-2xl bg-[#1e1e1e] border-t border-white/10 pb-8 ${isClosingOverlay ? 'animate-slideDown' : 'animate-slideUp'}`}
+            style={{ transform: isDragging ? `translateY(${dragCurrentY}px)` : undefined }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Drag handle */}
+            <div
+              className="flex justify-center pt-3 pb-2 cursor-grab active:cursor-grabbing"
+              onTouchStart={handleOverlayTouchStart}
+              onTouchMove={handleOverlayTouchMove}
+              onTouchEnd={() => handleOverlayTouchEnd(setShowVelocityInfo)}
+            >
+              <div className="w-10 h-1 rounded-full bg-white/20" />
             </div>
-            <div className="pt-3 border-t border-white/[0.08]">
-              <p className="text-[12px] font-semibold text-white/50 mb-2">Bar Colors</p>
-              <div className="flex flex-wrap gap-x-5 gap-y-1.5">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-2 rounded-sm bg-cyan-400 opacity-90" />
-                  <span className="text-[12px] text-white/50">Effective \u2014 strong output</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-2 rounded-sm bg-slate-600 opacity-50" />
-                  <span className="text-[12px] text-white/50">Fatigued \u2014 speed dropped</span>
+
+            <div className="px-5 overflow-y-auto" style={{ maxHeight: '65vh' }}>
+              <h4 className="text-[16px] font-bold text-white mb-3">Understanding Velocity</h4>
+              <p className="text-[13px] text-white/60 leading-relaxed mb-4">
+                This chart tracks how fast you moved the weight on each rep. Faster movement means more power. As your muscles tire, your speed naturally drops.
+              </p>
+              <div className="space-y-2 mb-4">
+                <p className="text-[13px] font-semibold text-white/70 mb-1">What the stats mean:</p>
+                {[
+                  { color: 'bg-cyan-400', title: 'Peak', desc: 'Your fastest speed from the first few reps — your baseline when you\'re freshest.' },
+                  { color: 'bg-emerald-400', title: 'Variability', desc: 'How much your speed changed rep to rep. Under 8% is very consistent; over 15% means big swings.' },
+                  { color: 'bg-white/60', title: 'Effective Reps', desc: 'Reps where your speed stayed within 10% of your best. These are your highest-quality reps.' },
+                ].map((item, i) => (
+                  <div key={i} className="flex items-start gap-2.5">
+                    <div className={`w-2 h-2 rounded-full ${item.color} mt-1.5 shrink-0`} />
+                    <div>
+                      <span className="text-[13px] font-semibold text-white/80">{item.title}</span>
+                      <p className="text-[12px] text-white/40 leading-relaxed">{item.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="pt-3 border-t border-white/[0.08]">
+                <p className="text-[12px] font-semibold text-white/50 mb-2">Bar Colors</p>
+                <div className="flex flex-wrap gap-x-5 gap-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-2 rounded-sm bg-cyan-400 opacity-90" />
+                    <span className="text-[12px] text-white/50">Effective — strong output</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-2 rounded-sm bg-slate-600 opacity-50" />
+                    <span className="text-[12px] text-white/50">Fatigued — speed dropped</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -587,8 +708,15 @@ export default function FatigueVelocityCarousel({
           from { opacity: 0; transform: translateY(100%); }
           to { opacity: 1; transform: translateY(0); }
         }
+        @keyframes slideDown {
+          from { opacity: 1; transform: translateY(0); }
+          to { opacity: 0; transform: translateY(100%); }
+        }
         .animate-slideUp {
-          animation: slideUp 0.3s ease-out;
+          animation: slideUp 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+        }
+        .animate-slideDown {
+          animation: slideDown 0.25s cubic-bezier(0.32, 0.72, 0, 1) forwards;
         }
       `}</style>
     </div>

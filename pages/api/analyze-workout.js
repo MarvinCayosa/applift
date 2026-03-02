@@ -683,7 +683,9 @@ function computePhaseTimingsFromPrimaryAxis(accelX, accelY, accelZ, timestamps) 
 
   const peakTimePercent = (transitionIdx / primarySignal.length) * 100;
 
-  return { liftingTime, loweringTime, primaryAxis, peakTimePercent };
+  // Swap: acceleration peak occurs early in the concentric phase, not at the turning point.
+  // Swap output to match orientation-based convention: liftingTime = concentric, loweringTime = eccentric.
+  return { liftingTime: loweringTime, loweringTime: liftingTime, primaryAxis, peakTimePercent: 100 - peakTimePercent };
 }
 
 function computeRepMetrics(repData) {
@@ -1149,9 +1151,9 @@ function analyzeWorkout(workoutData) {
   const allChartData = allRepMetrics.map(m => m.chartData || []).filter(c => c.length > 0);
   const overallConsistency = computeRepConsistency(allChartData);
   
-  // Fixed: Swap liftingTime and loweringTime since they're backwards in the algorithm
-  const avgConcentric = mean(allRepMetrics.map(m => m.loweringTime || 0)); // Use loweringTime for concentric (actual lifting)
-  const avgEccentric = mean(allRepMetrics.map(m => m.liftingTime || 0));   // Use liftingTime for eccentric (actual lowering)
+  // Phase timings: liftingTime = concentric (lifting), loweringTime = eccentric (lowering)
+  const avgConcentric = mean(allRepMetrics.map(m => m.liftingTime || 0));
+  const avgEccentric = mean(allRepMetrics.map(m => m.loweringTime || 0));
   const avgROMDegrees = mean(allRepMetrics.map(m => m.romDegrees || 0));
   const avgSmoothness = mean(allRepMetrics.map(m => m.smoothnessScore || 50));
   const avgDuration = mean(allRepMetrics.map(m => m.durationMs || 0));
