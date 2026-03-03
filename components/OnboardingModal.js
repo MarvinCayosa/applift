@@ -198,7 +198,7 @@ export default function InstructionModal({
   const renderPairing = () => (
     <div className="px-1 mt-3">
       <div className="text-center mb-5">
-        <h2 className="text-2xl font-bold text-white mb-2">Pair your AppLift device</h2>
+        <h2 className="text-2xl font-bold text-white mb-2"><span style={{ color: '#FBBF24' }}>Pair</span> your AppLift device</h2>
         <p className="text-sm text-white/60">
           To start your workout, pair your AppLift device with the app.
         </p>
@@ -290,7 +290,7 @@ export default function InstructionModal({
   const renderNFC = () => (
     <div className="px-1 flex flex-col h-full mt-3">
       <div className="text-center mb-4">
-        <h2 className="text-2xl font-bold text-white mb-2">Scan the NFC sticker</h2>
+        <h2 className="text-2xl font-bold text-white mb-2"><span style={{ color: '#FBBF24' }}>Scan</span> the <span style={{ color: '#FBBF24' }}>NFC</span> sticker</h2>
         <p className="text-base text-white/60">
           Tap the AppLift device near the NFC sticker of your chosen equipment to select exercise.
         </p>
@@ -332,7 +332,7 @@ export default function InstructionModal({
   const renderAttach = () => (
     <div className="px-1 flex flex-col h-full mt-3">
       <div className="text-center mb-4">
-        <h2 className="text-2xl font-bold text-white mb-2">Attach AppLift to the equipment</h2>
+        <h2 className="text-2xl font-bold text-white mb-2"><span style={{ color: '#FBBF24' }}>Attach</span> AppLift to the <span style={{ color: '#FBBF24' }}>equipment</span></h2>
         <p className="text-base text-white/60">
           Mount the device securely so it stays stable during your workout.
         </p>
@@ -361,7 +361,7 @@ export default function InstructionModal({
         <p className="text-xs text-white/50 leading-relaxed">
           {attachTab === 0
             ? 'Attach the device to the weight clamp. Use a standard clamp for dumbbells and an Olympic-size clamp for barbells. Ensure it is securely fastened before starting.'
-            : 'Place the device on top of the weight stack plate. Make sure the magnet side is facing down and firmly contacting the metal surface.'}
+            : 'Place the device on top of the weight stack plate. Position it parallel to the stack and make sure the magnet side is facing down on the plate.'}
         </p>
       </div>
 
@@ -405,7 +405,7 @@ export default function InstructionModal({
   const renderReady = () => (
     <div className="px-1 flex flex-col h-full mt-3">
       <div className="text-center mb-4">
-        <h2 className="text-2xl font-bold text-white mb-2">You&apos;re now ready to start your AppLift journey!</h2>
+        <h2 className="text-2xl font-bold text-white mb-2">You&apos;re now ready to start your <span style={{ color: '#FBBF24' }}>AppLift</span> journey!</h2>
       </div>
 
       <div className="flex justify-center flex-1 items-center my-2">
