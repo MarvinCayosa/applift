@@ -127,10 +127,18 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
       const score = hasApiScore ? propScore : 0;
 
       // Convert 0-1 fractional values to percentages for display
-      const velDrop = Math.max(0, D * 100);
-      const durIncrease = Math.max(0, T * 100);
-      const jerkIncrease = Math.max(0, J * 100);
-      const shakinessIncrease = Math.max(0, S * 100);
+      // Note: These are INCREASE ratios, so they can exceed 100% if the baseline was very low.
+      // Cap display at 100% to avoid confusing values like "2248%", but keep raw values for status.
+      const velDropRaw = Math.max(0, D * 100);
+      const durIncreaseRaw = Math.max(0, T * 100);
+      const jerkIncreaseRaw = Math.max(0, J * 100);
+      const shakinessIncreaseRaw = Math.max(0, S * 100);
+      
+      // Capped values for display (max 100%)
+      const velDrop = Math.min(velDropRaw, 100);
+      const durIncrease = Math.min(durIncreaseRaw, 100);
+      const jerkIncrease = Math.min(jerkIncreaseRaw, 100);
+      const shakinessIncrease = Math.min(shakinessIncreaseRaw, 100);
 
       // Determine fatigue level
       let level;
@@ -140,11 +148,11 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
       else if (score < 70) level = 'High';
       else                 level = 'Severe';
 
-      // Status thresholds for indicator cards
-      const velStatus = velDrop < 10 ? 'good' : velDrop < 20 ? 'warn' : 'bad';
-      const durStatus = durIncrease < 15 ? 'good' : durIncrease < 30 ? 'warn' : 'bad';
-      const jerkStatus = jerkIncrease < 15 ? 'good' : jerkIncrease < 30 ? 'warn' : 'bad';
-      const shakStatus = shakinessIncrease < 15 ? 'good' : shakinessIncrease < 25 ? 'warn' : 'bad';
+      // Status thresholds for indicator cards (use RAW values for accurate status)
+      const velStatus = velDropRaw < 10 ? 'good' : velDropRaw < 20 ? 'warn' : 'bad';
+      const durStatus = durIncreaseRaw < 15 ? 'good' : durIncreaseRaw < 30 ? 'warn' : 'bad';
+      const jerkStatus = jerkIncreaseRaw < 15 ? 'good' : jerkIncreaseRaw < 30 ? 'warn' : 'bad';
+      const shakStatus = shakinessIncreaseRaw < 15 ? 'good' : shakinessIncreaseRaw < 25 ? 'warn' : 'bad';
 
       const indicators = [
         {

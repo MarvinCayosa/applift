@@ -911,17 +911,21 @@ export const computeFatigueIndicators = (repMetricsList, mlClassification = null
   const I_T = avgDurFirst > 0 ? (avgDurLast - avgDurFirst) / avgDurFirst : 0;
   
   // === I_J: Jerk Increase (20%) ===
-  const avgJerkFirst = mean(jerkValues.slice(0, third));
+  // Use a minimum floor for baseline to prevent extreme ratios when first reps are "too clean"
+  const JERK_FLOOR = 2.0;  // Minimum baseline jerk (rad/s³) — typical clean rep is 2-5
+  const avgJerkFirst = Math.max(JERK_FLOOR, mean(jerkValues.slice(0, third)));
   const avgJerkLast = mean(jerkValues.slice(-third));
-  const I_J = avgJerkFirst > 0 ? (avgJerkLast - avgJerkFirst) / avgJerkFirst : 0;
+  const I_J = avgJerkFirst > 0 ? Math.max(0, (avgJerkLast - avgJerkFirst) / avgJerkFirst) : 0;
   
   // === I_S: Shakiness Increase (20%) ===
+  // Use a minimum floor for baseline to prevent extreme ratios when first reps are "too clean"
+  const SHAKINESS_FLOOR = 1.0;  // Minimum baseline shakiness (rad/s²) — typical clean rep is 1-3
   let I_S = 0;
   let avgShakyFirst = 0, avgShakyLast = 0;
   if (hasShakiness) {
-    avgShakyFirst = mean(shakiness.slice(0, third));
+    avgShakyFirst = Math.max(SHAKINESS_FLOOR, mean(shakiness.slice(0, third)));
     avgShakyLast = mean(shakiness.slice(-third));
-    I_S = avgShakyFirst > 0 ? (avgShakyLast - avgShakyFirst) / avgShakyFirst : 0;
+    I_S = avgShakyFirst > 0 ? Math.max(0, (avgShakyLast - avgShakyFirst) / avgShakyFirst) : 0;
   }
   
   // === Q_exec: Execution Quality Penalty from ML Classification ===

@@ -1,8 +1,10 @@
 import { useState } from 'react';
+import ReactDOM from 'react-dom';
 
 export default function RepInsightCard({ repData, repNumber, targetROM, romUnit: propRomUnit, romCalibrated }) {
   const { time, rom, peakVelocity, chartData, liftingTime, loweringTime, classification, smoothnessScore, romFulfillment, romUnit, peakTimePercent } = repData;
   const [showConfidenceOverlay, setShowConfidenceOverlay] = useState(false);
+  const [showPeakVelocityInfo, setShowPeakVelocityInfo] = useState(false);
 
   // Calculate lifting/lowering percentages from actual data
   const totalPhaseTime = (liftingTime || 0) + (loweringTime || 0);
@@ -527,8 +529,17 @@ export default function RepInsightCard({ repData, repNumber, targetROM, romUnit:
               </div>
             )}
             
-            <div className="relative z-10">
+            <div className="relative z-10 flex items-center justify-between">
               <span className="text-[10px] sm:text-xs lg:text-sm font-medium text-gray-300">Peak Velocity</span>
+              <button
+                onClick={(e) => { e.stopPropagation(); setShowPeakVelocityInfo(true); }}
+                className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-white/[0.08] flex items-center justify-center text-white/40 active:text-white/70 active:bg-white/[0.15] transition-colors"
+                aria-label="What is peak velocity?"
+              >
+                <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 100 20 10 10 0 000-20z" />
+                </svg>
+              </button>
             </div>
             <div className="relative z-10">
               {repPeakVelocity != null ? (
@@ -576,6 +587,65 @@ export default function RepInsightCard({ repData, repNumber, targetROM, romUnit:
           </p>
         </div>
       </div>
+
+      {/* ── Peak Velocity Info Overlay ── */}
+      {showPeakVelocityInfo && typeof document !== 'undefined' && ReactDOM.createPortal(
+        <div
+          className="fixed inset-0 z-[9999] flex items-end justify-center"
+          onClick={() => setShowPeakVelocityInfo(false)}
+        >
+          <div className="absolute inset-0 bg-black/60" />
+          <div
+            className="relative w-full max-w-lg rounded-t-2xl bg-[#1e1e1e] border-t border-white/10 pb-8 animate-slideUp"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Drag handle */}
+            <div className="flex justify-center pt-3 pb-2">
+              <div className="w-10 h-1 rounded-full bg-white/20" />
+            </div>
+
+            <div className="px-5 overflow-y-auto" style={{ maxHeight: '65vh' }}>
+              <h4 className="text-[16px] font-bold text-white mb-3">Understanding Peak Velocity</h4>
+              <p className="text-[13px] text-white/60 leading-relaxed mb-4">
+                Peak velocity measures the fastest speed you achieved during this rep, calculated from accelerometer integration. It reflects your power output and neuromuscular readiness.
+              </p>
+              
+              <div className="space-y-2 mb-4">
+                <p className="text-[13px] font-semibold text-white/70 mb-2">Velocity Zones (m/s):</p>
+                {[
+                  { color: 'bg-cyan-400', range: '> 1.3', label: 'Power Zone', desc: 'Explosive movements — great for athletic performance' },
+                  { color: 'bg-green-400', range: '0.75 – 1.3', label: 'Speed-Strength', desc: 'Balanced power and control — ideal for hypertrophy' },
+                  { color: 'bg-yellow-400', range: '0.5 – 0.75', label: 'Strength Zone', desc: 'Moderate load, controlled tempo — building strength' },
+                  { color: 'bg-orange-400', range: '0.3 – 0.5', label: 'Max Strength', desc: 'Heavy load, slow movement — peak force production' },
+                  { color: 'bg-red-400', range: '< 0.3', label: 'Grinding', desc: 'Very heavy or fatigued — watch your form' },
+                ].map((zone, i) => (
+                  <div key={i} className="flex items-start gap-2.5">
+                    <div className={`w-2 h-2 rounded-full ${zone.color} mt-1.5 shrink-0`} />
+                    <div>
+                      <span className="text-[13px] font-semibold text-white/80">{zone.range} — {zone.label}</span>
+                      <p className="text-[12px] text-white/40 leading-relaxed">{zone.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              
+              <div className="rounded-xl bg-white/[0.04] p-3 mb-4">
+                <p className="text-[12px] font-semibold text-white/50 mb-2">Why It Matters</p>
+                <p className="text-[12px] text-white/40 leading-relaxed">
+                  Tracking velocity helps you train at the right intensity. If your velocity drops significantly during a set, it may indicate fatigue or that the weight is too heavy for your training goal.
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-cyan-500/10 border border-cyan-500/20 p-3">
+                <p className="text-[12px] text-cyan-400 leading-relaxed">
+                  <span className="font-semibold">Pro Tip:</span> For muscle growth, aim to keep velocity above 0.5 m/s. When it drops below 0.3 m/s consistently, consider reducing weight or taking longer rest.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
