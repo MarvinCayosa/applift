@@ -20,7 +20,6 @@ import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { 
   extractMLFeatures, 
-  classifyWithRules, 
   getQualityLabels, 
   hasModel,
   getModelFilename,
@@ -271,30 +270,25 @@ async function getAnalysis(workoutId, userId, equipment, exercise) {
 // ============================================================================
 
 /**
- * Classify a single rep using Cloud Run ML API, with rule-based fallback.
- * Mirrors the approach in classify-rep.js but called server-side directly.
+ * Classify a single rep using Cloud Run ML API only (no rule-based fallback).
+ * Returns null if classification fails - caller must handle missing classifications.
  */
 async function classifyRep(repData, exercise) {
   const features = extractMLFeatures(repData.samples || repData);
   const qualityLabels = getQualityLabels(exercise);
 
   if (!features) {
-    return {
-      prediction: 0,
-      label: 'Clean',
-      confidence: 0.5,
-      method: 'no_features',
-      modelUsed: false
-    };
+    console.warn(`[Analyze API] No features extracted for rep - skipping classification`);
+    return null;
   }
 
   const modelType = getModelType(exercise);
   if (!modelType) {
-    const result = classifyWithRules(features, exercise);
-    return { ...result, modelUsed: false, qualityLabels };
+    console.warn(`[Analyze API] No ML model available for ${exercise} - skipping classification`);
+    return null;
   }
 
-  // ── Call Cloud Run ML API directly (same as classify-rep.js) ──────
+  // ── Call Cloud Run ML API directly (ML ONLY - no fallback) ──────
   try {
     const response = await fetch(`${ML_API_URL}/classify`, {
       method: 'POST',
@@ -322,9 +316,8 @@ async function classifyRep(repData, exercise) {
       qualityLabels
     };
   } catch (error) {
-    console.warn(`[Analyze API] Cloud Run ML failed for ${exercise}: ${error.message} — falling back to rules`);
-    const result = classifyWithRules(features, exercise);
-    return { ...result, modelUsed: false, mlError: error.message, qualityLabels };
+    console.error(`[Analyze API] Cloud Run ML failed for ${exercise}: ${error.message} — NO FALLBACK, skipping rep`);
+    return null;
   }
 }
 
@@ -365,8 +358,14 @@ async function classifyWorkoutReps(sets, exercise) {
         skippedFromBackground++;
         console.log(`[Analyze API] Using background classification for Set ${set.setNumber} Rep ${rep.repNumber}: ${classification.label}`);
       } else {
-        // No existing classification - run ML inference
+        // No existing classification - run ML inference (ML ONLY, no fallback)
         classification = await classifyRep(rep, exercise);
+        
+        // If ML classification failed, skip this rep (no rule-based fallback)
+        if (!classification) {
+          console.warn(`[Analyze API] Skipping Set ${set.setNumber} Rep ${rep.repNumber} - no ML classification available`);
+          continue;
+        }
       }
       
       classifications.push({

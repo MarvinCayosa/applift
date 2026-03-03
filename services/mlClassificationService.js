@@ -1,7 +1,8 @@
 /**
  * ML Classification Service
  * 
- * Handles rep quality classification using ML models or rule-based fallback.
+ * Handles rep quality classification using Cloud Run ML models ONLY.
+ * No rule-based fallback - if ML fails, classification is skipped.
  * 
  * Exercise Model Support (6 total):
  * - concentration_curls: CONCENTRATION_CURLS_RF.pkl ✓
@@ -269,119 +270,6 @@ export function extractMLFeatures(repData) {
 }
 
 /**
- * Rule-based classification when no ML model available
- */
-export function classifyWithRules(features, exercise) {
-  const qualityLabels = getQualityLabels(exercise);
-  
-  // Default to Clean with moderate confidence
-  let prediction = 0;
-  let confidence = 0.75;
-  let probabilities = [0.75, 0.15, 0.10];
-  
-  if (!features) {
-    return {
-      prediction,
-      label: qualityLabels[prediction],
-      confidence: 0.5,
-      probabilities: qualityLabels.map((l, i) => ({ 
-        class: i, 
-        label: l, 
-        probability: i === 0 ? 0.5 : 0.25 
-      })),
-      method: 'no_features'
-    };
-  }
-  
-  // Extract key metrics for rule-based classification
-  const accelRange = features['accelMag_range'] || features['filteredMag_range'] || 0;
-  const gyroStd = features['gyroMag_std'] || features['gyroX_std'] || features['gyroY_std'] || 0;
-  const gyroMax = features['gyroMag_max'] || features['gyroX_max'] || 0;
-  const diffMax = features['accelMag_diff_max'] || features['filteredMag_diff_max'] || 0;
-  const rms = features['accelMag_rms'] || features['filteredMag_rms'] || 0;
-  const peakPos = features['accelMag_peak_position'] || features['filteredMag_peak_position'] || 0.5;
-  
-  // Shakiness indicators: rate of change of gyro signal (angular jerk/acceleration)
-  // High values indicate shaky, uncontrolled movement even if overall variability seems low
-  const gyroDiffStd = features['gyroMag_diff_std'] || features['gyroX_diff_std'] || features['gyroY_diff_std'] || 0;
-  const gyroDiffMax = features['gyroMag_diff_max'] || features['gyroX_diff_max'] || features['gyroY_diff_max'] || 0;
-  const accelDiffStd = features['accelMag_diff_std'] || features['filteredMag_diff_std'] || 0;
-  
-  // Normalized exercise type for specific rules
-  const normalized = normalizeExerciseName(exercise);
-  
-  // Weight stack exercises (Lateral Pulldown, Seated Leg Extension)
-  if (normalized && (normalized.includes('pulldown') || normalized.includes('leg_extension'))) {
-    // Check for "Pulling Too Fast" (high gyro at start)
-    if (gyroMax > 4 && peakPos < 0.3) {
-      prediction = 1;
-      confidence = 0.70;
-      probabilities = [0.20, 0.70, 0.10];
-    }
-    // Check for "Releasing Too Fast" (high gyro at end)
-    else if (gyroMax > 3.5 && peakPos > 0.7) {
-      prediction = 2;
-      confidence = 0.65;
-      probabilities = [0.20, 0.15, 0.65];
-    }
-  }
-  // Barbell exercises (Bench Press, Back Squat)
-  else if (normalized && (normalized.includes('bench') || normalized.includes('squat'))) {
-    // Check for "Uncontrolled Movement" (high variability OR high shakiness)
-    // Shakiness thresholds: gyroDiffStd > 0.8 indicates rapid direction changes
-    // gyroDiffMax > 3.0 indicates sudden jerky movements
-    // accelDiffStd > 1.5 indicates unstable acceleration pattern
-    // Lowered base thresholds: gyroStd > 1.2, accelRange > 8
-    if (gyroStd > 1.2 || accelRange > 8 || gyroDiffStd > 0.8 || gyroDiffMax > 3.0 || accelDiffStd > 1.5) {
-      prediction = 1;
-      // Higher confidence when multiple shakiness indicators fire
-      const shakinessScore = (gyroStd > 1.2 ? 1 : 0) + (accelRange > 8 ? 1 : 0) + 
-                            (gyroDiffStd > 0.8 ? 1 : 0) + (gyroDiffMax > 3.0 ? 1 : 0) + 
-                            (accelDiffStd > 1.5 ? 1 : 0);
-      confidence = Math.min(0.85, 0.55 + shakinessScore * 0.08);
-      probabilities = [1 - confidence - 0.08, confidence, 0.08];
-    }
-    // Check for "Inclination Asymmetry" (uneven acceleration pattern)
-    else if (Math.abs(features['accelX_mean'] - features['accelZ_mean']) > 2.5) {
-      prediction = 2;
-      confidence = 0.62;
-      probabilities = [0.23, 0.15, 0.62];
-    }
-  }
-  // Dumbbell exercises (Concentration Curls, Overhead Extension)
-  else {
-    // Check for "Uncontrolled Movement" (high variability OR high shakiness)
-    // Slightly higher thresholds for dumbbell (more inherent movement)
-    if (gyroStd > 1.8 || accelRange > 10 || gyroDiffStd > 1.0 || gyroDiffMax > 4.0 || accelDiffStd > 2.0) {
-      prediction = 1;
-      const shakinessScore = (gyroStd > 1.8 ? 1 : 0) + (accelRange > 10 ? 1 : 0) + 
-                            (gyroDiffStd > 1.0 ? 1 : 0) + (gyroDiffMax > 4.0 ? 1 : 0) + 
-                            (accelDiffStd > 2.0 ? 1 : 0);
-      confidence = Math.min(0.85, 0.55 + shakinessScore * 0.08);
-      probabilities = [1 - confidence - 0.08, confidence, 0.08];
-    }
-    // Check for "Abrupt Initiation" (high rate of change at start)
-    else if (diffMax > 8 && peakPos < 0.25) {
-      prediction = 2;
-      confidence = 0.65;
-      probabilities = [0.20, 0.15, 0.65];
-    }
-  }
-  
-  return {
-    prediction,
-    label: qualityLabels[prediction],
-    confidence,
-    probabilities: qualityLabels.map((l, i) => ({ 
-      class: i, 
-      label: l, 
-      probability: probabilities[i] || 0 
-    })),
-    method: 'rule_based'
-  };
-}
-
-/**
  * Classify reps using the classification API
  * @param {string} exercise - Exercise name
  * @param {Array} reps - Array of rep data with samples
@@ -494,6 +382,5 @@ export default {
   hasModel,
   getModelFilename,
   extractMLFeatures,
-  classifyWithRules,
   classifyReps
 };

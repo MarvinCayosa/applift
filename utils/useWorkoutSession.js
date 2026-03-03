@@ -291,6 +291,12 @@ export function useWorkoutSession({
   const [elapsedTime, setElapsedTime] = useState(0);
   const timerIntervalRef = useRef(null);
   
+  // Final rep lowering phase delay (for valley-to-peak exercises like bench press)
+  // When target reps are reached at the peak, we delay completion to capture lowering phase
+  const finalRepDelayRef = useRef(null);
+  const awaitingFinalLoweringRef = useRef(false);
+  const FINAL_LOWERING_DELAY_MS = 2000; // 2 seconds to capture lowering phase
+  
   // Rep counter
   const repCounterRef = useRef(new RepCounter());
   const [repStats, setRepStats] = useState(repCounterRef.current.getStats());
@@ -548,7 +554,44 @@ export function useWorkoutSession({
         console.log('[WorkoutSession] Skipping set completion check - post-rollback state');
         return;
       }
+      
+      // Skip if we're already waiting for the final lowering phase
+      if (awaitingFinalLoweringRef.current) {
+        return;
+      }
+      
       if (repStats.repCount >= recommendedReps && repStats.repCount > 0) {
+        // Check if this is a valley-to-peak exercise (bench press, squats, leg extension)
+        // For these exercises, the rep is counted at the PEAK (top of push), so we need
+        // to wait for the lowering phase before finalizing the set
+        const countDirection = repCounterRef.current?.countDirection || 'both';
+        const needsLoweringDelay = countDirection === 'valley-to-peak';
+        
+        if (needsLoweringDelay && !finalRepDelayRef.current) {
+          // Start waiting for the lowering phase
+          console.log('[WorkoutSession] 🏋️ Final rep detected at peak - waiting 2s for lowering phase data...');
+          awaitingFinalLoweringRef.current = true;
+          
+          finalRepDelayRef.current = setTimeout(() => {
+            console.log('[WorkoutSession] ✅ Lowering phase capture complete - finalizing set');
+            awaitingFinalLoweringRef.current = false;
+            finalRepDelayRef.current = null;
+            
+            // Trigger a re-render to process set completion
+            // We do this by updating a state that the effect depends on
+            setRepStats(prev => ({ ...prev }));
+          }, FINAL_LOWERING_DELAY_MS);
+          
+          return; // Don't process set completion yet
+        }
+        
+        // Clear the delay states if they exist (either delay completed or not needed)
+        if (finalRepDelayRef.current) {
+          clearTimeout(finalRepDelayRef.current);
+          finalRepDelayRef.current = null;
+        }
+        awaitingFinalLoweringRef.current = false;
+        
         // Track stats for this completed set
         const currentRepData = repCounterRef.current.exportData();
         const repDurations = currentRepData.reps.map(rep => rep.duration);
@@ -721,6 +764,13 @@ export function useWorkoutSession({
     // because lastRepCountRef still holds Set 1's final count
     lastRepCountRef.current = 0;
     
+    // Clear any pending final rep delay from previous set
+    if (finalRepDelayRef.current) {
+      clearTimeout(finalRepDelayRef.current);
+      finalRepDelayRef.current = null;
+    }
+    awaitingFinalLoweringRef.current = false;
+    
     // Clear chart data for new set BEFORE countdown
     setTimeData([]);
     setRawAccelData([]);
@@ -834,6 +884,13 @@ export function useWorkoutSession({
     // Reset rep tracking for streaming
     lastRepCountRef.current = 0;
     
+    // Clear any pending final rep delay
+    if (finalRepDelayRef.current) {
+      clearTimeout(finalRepDelayRef.current);
+      finalRepDelayRef.current = null;
+    }
+    awaitingFinalLoweringRef.current = false;
+    
     console.log('[WorkoutSession] Starting recording...');
     
     // Run countdown
@@ -845,6 +902,13 @@ export function useWorkoutSession({
     setIsRecording(false);
     setIsPaused(false);
     setIsOnBreak(false);
+    
+    // Clear final rep delay if it's running
+    if (finalRepDelayRef.current) {
+      clearTimeout(finalRepDelayRef.current);
+      finalRepDelayRef.current = null;
+    }
+    awaitingFinalLoweringRef.current = false;
     
     // Reset for next session
     setCurrentSet(1);
