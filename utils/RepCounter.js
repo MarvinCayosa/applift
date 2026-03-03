@@ -63,12 +63,16 @@ export class RepCounter {
     this.currentRep = null;
     this.lastRepEndTime = 0;
     
-    // Peak detection for slow movements (VERY sensitive)
-    this.minPeakProminence = config.minPeakProminence || 0.15; // For m/s² units
-    this.minPeakDistance = config.minPeakDistance || 15; // Minimum 0.75s between peaks (20Hz * 0.75)
-    this.minRepDuration = config.minRepDuration || 0.5; // Minimum 0.5 seconds - filter false detections during rest
+    // Peak detection for slow movements (balanced sensitivity)
+    this.minPeakProminence = config.minPeakProminence || 0.25; // Increased from 0.15 - filters small tremors
+    this.minPeakDistance = config.minPeakDistance || 20; // Increased from 15 - minimum 1.0s between peaks (20Hz * 1.0)
+    this.minRepDuration = config.minRepDuration || 0.6; // Increased from 0.5 - filters quick tremor spikes
     this.maxRepDuration = config.maxRepDuration || 8.0; // Maximum 8 seconds per rep (controlled reps)
     this.adaptiveThreshold = true; // Use adaptive thresholding
+    
+    // Anti-tremor: Refractory period after counting a rep (prevents double-counting during shaking)
+    this.refractoryPeriod = config.refractoryPeriod || 800; // 800ms cooldown after rep
+    this.lastRepCountedTime = 0; // Timestamp of last counted rep
     
     // Dynamic threshold (in m/s² - gravity ≈ 9.81 m/s²)
     this.thresholdHigh = 10.5;
@@ -248,14 +252,22 @@ export class RepCounter {
     const n = window.length;
     const currentGlobalIndex = this.accelBuffer.length - 1;
     
-    // Find all peaks (local maxima) - 3-sample window for stable detection
+    // Anti-tremor: Check if we're in refractory period (skip detection entirely)
+    const now = Date.now();
+    if (this.lastRepCountedTime && (now - this.lastRepCountedTime) < this.refractoryPeriod) {
+      // Still in refractory period - skip peak/valley detection to prevent tremor-induced double counting
+      return;
+    }
+    
+    // Find all peaks (local maxima) - 5-sample window for stable detection (increased from 3)
+    // Wider window helps filter out high-frequency tremor/shaking
     const peaks = [];
-    for (let i = 3; i < n - 3; i++) {
+    for (let i = 5; i < n - 5; i++) {
       let isPeak = true;
       const centerValue = window[i];
       
-      // Check if it's higher than neighbors (3-sample window = stable detection)
-      for (let j = i - 3; j <= i + 3; j++) {
+      // Check if it's higher than neighbors (5-sample window = filters tremors better)
+      for (let j = i - 5; j <= i + 5; j++) {
         if (j !== i && window[j] >= centerValue) {
           isPeak = false;
           break;
@@ -276,14 +288,15 @@ export class RepCounter {
       }
     }
     
-    // Find all valleys (local minima) - 3-sample window for stable detection
+    // Find all valleys (local minima) - 5-sample window for stable detection (increased from 3)
+    // Wider window helps filter out high-frequency tremor/shaking
     const valleys = [];
-    for (let i = 3; i < n - 3; i++) {
+    for (let i = 5; i < n - 5; i++) {
       let isValley = true;
       const centerValue = window[i];
       
-      // Check if it's lower than neighbors (3-sample window = stable detection)
-      for (let j = i - 3; j <= i + 3; j++) {
+      // Check if it's lower than neighbors (5-sample window = filters tremors better)
+      for (let j = i - 5; j <= i + 5; j++) {
         if (j !== i && window[j] <= centerValue) {
           isValley = false;
           break;
@@ -421,13 +434,15 @@ export class RepCounter {
         // Log detection attempt for debugging
         console.log(`🔍 Rep candidate: duration=${repDuration.toFixed(2)}s, prominence=${prominence.toFixed(3)} m/s²`);
         
-        // Very relaxed validation - catch almost all movements
+        // Validation with anti-tremor checks
+        // Increased prominence threshold filters out small shaking movements
         if (repDuration >= this.minRepDuration && 
             repDuration <= this.maxRepDuration && 
             prominence >= this.minPeakProminence) {
           
-          // Count the rep
+          // Count the rep and start refractory period
           this.completeRep(startPoint, peakPoint, endPoint);
+          this.lastRepCountedTime = Date.now(); // Start refractory period
           
           // Mark these indices as used
           this.lastDetectedValleyIndex = lastValley.index;
