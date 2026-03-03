@@ -356,6 +356,15 @@ export default function InstructionModal({
         ))}
       </div>
 
+      {/* Dynamic instruction based on selected tab */}
+      <div className="mb-3 px-1">
+        <p className="text-xs text-white/50 leading-relaxed">
+          {attachTab === 0
+            ? 'Attach the device to the weight clamp. Use a standard clamp for dumbbells and an Olympic-size clamp for barbells. Ensure it is securely fastened before starting.'
+            : 'Place the device on top of the weight stack plate. Make sure the magnet side is facing down and firmly contacting the metal surface.'}
+        </p>
+      </div>
+
       <div className="flex justify-center flex-1 items-center my-2">
         <div className="w-72 h-72 rounded-2xl overflow-hidden">
           <img
@@ -396,10 +405,7 @@ export default function InstructionModal({
   const renderReady = () => (
     <div className="px-1 flex flex-col h-full mt-3">
       <div className="text-center mb-4">
-        <h2 className="text-2xl font-bold text-white mb-2">You got it!</h2>
-        <p className="text-base text-white/50 max-w-[280px] mx-auto leading-relaxed">
-          You&apos;re now ready to start your AppLift journey!
-        </p>
+        <h2 className="text-2xl font-bold text-white mb-2">You&apos;re now ready to start your AppLift journey!</h2>
       </div>
 
       <div className="flex justify-center flex-1 items-center my-2">
@@ -413,7 +419,7 @@ export default function InstructionModal({
       </div>
 
       {/* Don't show this again + Nav buttons */}
-      <div className="mt-auto space-y-4">
+      <div className="mt-auto pt-6 space-y-4">
         {/* Don't show this again toggle */}
         <label className="flex items-center justify-center gap-2 cursor-pointer select-none">
           <span

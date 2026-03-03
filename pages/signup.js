@@ -1045,66 +1045,161 @@ export default function Signup() {
 
   const termsContent = `TERMS & CONDITIONS
 
-Accepting these Terms & Conditions enables your AppLift account and describes permitted uses, user responsibilities, intellectual property, limitation of liability, and termination.
+By creating an AppLift account, you agree to the following Terms & Conditions and our Data Privacy Notice. If you do not agree, please do not register.
 
-ACCEPTANCE
-By registering for an AppLift account, you agree to these Terms & Conditions and to AppLift's Data Privacy Notice. If you do not agree, do not register.
+1. Eligibility
 
-ELIGIBILITY
-You must be an adult (18+) to create an AppLift account. AppLift is not intended for children.
+You must be 18 years old or older to create an account. AppLift is not intended for children.
 
-ACCOUNT RESPONSIBILITIES
-You are responsible for the accuracy and completeness of the information you provide at sign-up (profile, anthropometrics, injury history). You agree not to provide false or misleading information.
+2. Your Account
 
-SERVICE DESCRIPTION AND LIMITATIONS
-AppLift provides workout monitoring, rep counting, mistake classification, and AI-generated recommendations. The system is assistive only — not a medical professional. Models are probabilistic and may misclassify repetitions or produce suboptimal recommendations; AppLift does not guarantee injury prevention.
+You agree to:
+• Provide accurate and complete information (profile details, body measurements, injury history).
+• Keep your login credentials secure.
+• Not provide false or misleading information.
 
-USER CONDUCT
-You will not tamper with devices, alter sensor attachments, or intentionally provide data that manipulates the system. You will follow device mounting and safety instructions supplied in the PWA.
+You are responsible for all activity under your account.
 
-INTELLECTUAL PROPERTY
-AppLift software, documentation, UI designs, and model implementations are the property of the project proponents. Users receive a limited, non-exclusive license to use the PWA.
+3. Service Description
 
-DATA, RESEARCH & MODEL IMPROVEMENT
-With your consent, AppLift may use anonymized workout and profile data to improve models, conduct research, and refine recommendations. You will be informed about anonymization practices and have the right to opt out of non-essential research uses.
+AppLift is a fitness tracking and assistance tool that provides:
+• Workout monitoring
+• Rep counting
+• Movement classification
+• Fatigue and performance analysis
+• AI-generated training recommendations
 
-SECURITY & STORAGE
-AppLift uses Google Cloud Platform services (Cloud Run, Cloud Storage, Cloud Firestore, Firebase Authentication). Data in transit is encrypted (TLS) and stored securely; access is limited to authorized project personnel bound by confidentiality agreements.
+AppLift is assistive technology only and does not replace professional medical or coaching advice.
 
-LIABILITY & DISCLAIMER
-To the extent permitted by law, AppLift disclaims liability for injuries, losses, or damages resulting from use of the service, including but not limited to reliance on AI recommendations. You should seek professional medical advice for health concerns.
+AI models are probabilistic. This means:
+• Repetitions may be misclassified.
+• Recommendations may not always be optimal.
+• Injury prevention is not guaranteed.
 
-TERMINATION
-AppLift may suspend or terminate accounts that violate these Terms. You may request account deletion anytime; see the Data Privacy section for deletion details.
+4. Health & Safety Disclaimer
 
-GOVERNING LAW & COMPLIANCE
-The service will comply with applicable laws, including the Philippines Data Privacy Act (RA 10173). These Terms are governed by the laws applicable to your deployment.
+You use AppLift at your own risk.
+
+Before beginning any exercise program, especially if you have injuries or medical conditions, consult a qualified medical professional.
+
+To the extent permitted by law, AppLift is not liable for injuries, losses, or damages resulting from:
+• Use of the device
+• Reliance on AI-generated recommendations
+• Improper mounting or unsafe equipment use
+
+5. Proper Use
+
+You agree to:
+• Mount the device correctly according to in-app instructions.
+• Not tamper with hardware or sensor components.
+• Not intentionally manipulate workout data.
+• Use the system responsibly and safely.
+
+6. Intellectual Property
+
+All AppLift software, designs, algorithms, and documentation are the property of the project developers.
+
+You are granted a limited, non-exclusive license to use the app for personal purposes only.
+
+7. Data & Model Improvement
+
+With your consent, anonymized workout and profile data may be used to:
+• Improve AI models
+• Enhance recommendations
+• Support research and system refinement
+
+You may opt out of non-essential research uses.
+
+8. Security & Storage
+
+AppLift uses secure cloud services including:
+• Google Cloud Platform
+• Cloud Run
+• Cloud Storage
+• Cloud Firestore
+• Firebase Authentication
+
+Data is encrypted in transit and securely stored. Access is limited to authorized personnel.
+
+9. Termination
+
+AppLift may suspend or terminate accounts that violate these Terms.
+
+You may request account deletion at any time.
+
+10. Governing Law
+
+AppLift complies with applicable laws, including the Philippines Data Privacy Act of 2012 (RA 10173).
 
 ---
 
 INFORMED USER CONSENT
 
-Before creating your account, please read this consent form carefully. By proceeding with account creation, you acknowledge that AppLift is an assistive training device and will collect and process your profile and motion data to produce workout insights and recommendations.
+By continuing with account creation, you acknowledge that AppLift is an assistive training system and that it will collect and process certain data to provide workout insights and recommendations.
 
-I confirm that I have read and understood the information below and voluntarily consent to the collection and processing of my data by AppLift for the purposes described.
+By checking the consent box, you confirm that you understand and voluntarily agree to the following:
 
-WHAT APPLIFT DOES
-AppLift is an assistive system that collects equipment-mounted motion data and user profile information to analyze repetitions, detect likely execution mistakes, and generate progressive-overload recommendations for exercises. It is intended as a decision-support tool and is not a medical device or replacement for a trained professional.
+1. What AppLift Does
 
-DATA COLLECTED AT SIGN-UP
-During registration, AppLift will collect basic profile and anthropometric information such as username, birthday/age, height, weight (BMI), activity/skill level, and any current illnesses or injuries that you disclose. This information is used to create initial recommendations and to personalize the service.
+AppLift is an assistive fitness system that:
+• Collects equipment-mounted motion data
+• Uses your profile information
+• Analyzes repetitions
+• Detects likely execution mistakes
+• Generates progressive overload recommendations
 
-SENSOR DATA COLLECTED DURING USE
-During workouts, the equipment-mounted IMU and device components (RFID/RC522) will capture motion and equipment identification data. Raw IMU logs and aggregated workout results may be transmitted to the cloud for processing.
+AppLift is a decision-support tool only.
+It is not a medical device and does not replace a qualified trainer or healthcare professional.
 
-AI AND ANALYTICS
-AppLift uses machine learning (Random Forest) to classify repetitions and Vertex AI (GenAI) to create exercise/load suggestions. These models have limitations and may not always be correct; recommendations should be validated by you and human experts where appropriate.
+2. Data Collected at Sign-Up
 
-VOLUNTARY PARTICIPATION & WITHDRAWAL
-Participation is voluntary. You may withdraw consent and request account and data deletion at any time; withdrawal will not affect data already processed while consent was active, except where removal is feasible under retention rules.
+During registration, AppLift collects profile and anthropometric information such as:
+• Username
+• Birthday / Age
+• Height
+• Weight (BMI calculation)
+• Activity or skill level
+• Any disclosed illnesses or injuries
 
-RISKS & RESPONSIBILITIES
-You acknowledge the system's limits (e.g., single IMU, equipment-based sensing) and accept responsibility to consult a qualified professional for medical concerns. Use the recommendations at your own risk and stop any exercise that causes pain.`
+This information is used to personalize recommendations and improve safety.
+
+3. Sensor Data Collected During Workouts
+
+While using the device:
+• The equipment-mounted IMU captures motion data.
+• RFID/NFC components identify equipment.
+• Raw IMU logs and workout summaries may be transmitted to secure cloud services for processing and analysis.
+
+4. AI & Analytics
+
+AppLift uses:
+• Machine Learning (e.g., Random Forest) to classify repetitions.
+• Generative AI to suggest loads and exercise progression.
+
+These systems are probabilistic and may:
+• Misclassify repetitions
+• Provide suboptimal recommendations
+
+You are responsible for reviewing and validating recommendations before applying them.
+
+5. Voluntary Participation & Withdrawal
+
+Your participation is voluntary.
+
+You may withdraw consent and request account deletion at any time.
+
+Withdrawal will not affect data already processed while consent was active, except where deletion is technically and legally feasible.
+
+6. Risks & User Responsibility
+
+You acknowledge:
+• The system has technical limitations (e.g., single IMU, equipment-based sensing).
+• Exercise carries inherent physical risks.
+
+You agree to:
+• Consult a qualified professional for medical concerns.
+• Stop any exercise that causes pain or discomfort.
+• Use the system responsibly and at your own risk.`
 
   const StepTerms = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'clamp(0.75rem, 2vh, 1rem)' }}>
@@ -1119,7 +1214,7 @@ You acknowledge the system's limits (e.g., single IMU, equipment-based sensing) 
             <div 
               ref={termsContentRef}
               className="h-full overflow-y-auto leading-relaxed" 
-              style={{ padding: 'clamp(0.75rem, 2vh, 1rem)', fontSize: 'clamp(0.65rem, 2.25vw, 0.7rem)', color: 'rgba(255,255,255,0.7)' }}
+              style={{ padding: 'clamp(0.75rem, 2vh, 1rem)', fontSize: 'clamp(0.65rem, 2.25vw, 0.7rem)', color: 'rgba(255,255,255,0.7)', whiteSpace: 'pre-wrap' }}
               onScroll={handleTermsScroll}
             >
               {termsContent.split('---')[0].trim()}
@@ -1153,7 +1248,7 @@ You acknowledge the system's limits (e.g., single IMU, equipment-based sensing) 
             <div 
               ref={consentContentRef}
               className="h-full overflow-y-auto leading-relaxed" 
-              style={{ padding: 'clamp(0.75rem, 2vh, 1rem)', fontSize: 'clamp(0.65rem, 2.25vw, 0.7rem)', color: 'rgba(255,255,255,0.7)' }}
+              style={{ padding: 'clamp(0.75rem, 2vh, 1rem)', fontSize: 'clamp(0.65rem, 2.25vw, 0.7rem)', color: 'rgba(255,255,255,0.7)', whiteSpace: 'pre-wrap' }}
               onScroll={handleConsentScroll}
             >
               {termsContent.split('---')[1].trim()}
@@ -2104,13 +2199,10 @@ You acknowledge the system's limits (e.g., single IMU, equipment-based sensing) 
             {/* Google Sign Up Option - Show on step 2 only */}
             {step === 2 && (
               <>
-                <div className="relative" style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem', marginTop: '1rem' }}>
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-white/10"></div>
-                  </div>
-                  <div className="relative flex justify-center text-xs">
-                    <span style={{ paddingX: '0.75rem', backgroundColor: 'rgb(15, 15, 19)', color: 'rgba(238,235,217,0.6)' }}>Or continue with</span>
-                  </div>
+                <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem', marginTop: '1rem' }}>
+                  <div className="flex-1 border-t border-white/10"></div>
+                  <span style={{ padding: '0 0.75rem', color: 'rgba(238,235,217,0.6)', fontSize: 'clamp(0.7rem, 2.5vw, 0.75rem)', whiteSpace: 'nowrap' }}>continue with</span>
+                  <div className="flex-1 border-t border-white/10"></div>
                 </div>
 
                 <button

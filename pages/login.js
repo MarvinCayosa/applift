@@ -301,6 +301,13 @@ export default function Login() {
               <span>Sign in</span>
             </button>
 
+            {/* Divider */}
+            <div className="relative" style={{ display: 'flex', alignItems: 'center', marginTop: '0.25rem', marginBottom: '0.25rem' }}>
+              <div className="flex-1 border-t border-white/10"></div>
+              <span style={{ padding: '0 0.75rem', color: 'rgba(238,235,217,0.6)', fontSize: 'clamp(0.7rem, 2.5vw, 0.75rem)', whiteSpace: 'nowrap' }}>continue with</span>
+              <div className="flex-1 border-t border-white/10"></div>
+            </div>
+
             {/* Google Sign In */}
             <button
               type="button"
