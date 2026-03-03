@@ -680,7 +680,55 @@ export class RepCounter {
     this.repStartTime = 0;
   }
   
+  /**
+   * Finalize any pending reps that are waiting for their return phase.
+   * This is called automatically by exportData() to ensure complete rep cycles.
+   * For valley-to-peak exercises (squats, bench), this extends the last rep
+   * to include all samples up to the current point (the lowering phase).
+   */
+  finalizePendingReps() {
+    if (!this.pendingRep) return;
+    
+    // For pending reps waiting for their return phase, extend to current samples
+    if (this.pendingRep.waitingFor === 'valley' || this.pendingRep.waitingFor === 'peak') {
+      if (this.reps.length === 0) {
+        this.pendingRep = null;
+        return;
+      }
+      
+      const lastRep = this.reps[this.reps.length - 1];
+      const oldEndIndex = lastRep.actualEndIndex || lastRep.endIndex;
+      const newEndIndex = this.allSamples.length - 1;
+      
+      // Only extend if we have more samples
+      if (newEndIndex > oldEndIndex) {
+        console.log(`📦 [RepCounter] Finalizing pending rep ${lastRep.repNumber}: extending from sample ${oldEndIndex} to ${newEndIndex} (+${newEndIndex - oldEndIndex} samples)`);
+        
+        // Update rep metadata
+        lastRep.endIndex = newEndIndex;
+        lastRep.actualEndIndex = newEndIndex;
+        lastRep.actualEndTime = this.allSamples[newEndIndex]?.timestamp || lastRep.actualEndTime;
+        lastRep.duration = (lastRep.actualEndTime - lastRep.actualStartTime) / 1000;
+        
+        // Tag the extended samples with this rep number
+        for (let i = oldEndIndex + 1; i <= newEndIndex; i++) {
+          if (this.allSamples[i]) {
+            this.allSamples[i].repNumber = lastRep.repNumber;
+          }
+        }
+        
+        // Update tracking
+        this.previousRepEndIndex = newEndIndex;
+      }
+    }
+    
+    this.pendingRep = null;
+  }
+  
   exportData() {
+    // Finalize any pending reps before export to ensure complete cycles
+    this.finalizePendingReps();
+    
     return {
       samples: this.allSamples,
       reps: this.reps,

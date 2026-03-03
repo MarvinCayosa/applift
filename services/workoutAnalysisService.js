@@ -1041,7 +1041,31 @@ export const computeFatigueIndicators = (repMetricsList, mlClassification = null
   const smoothnessConsistency = getConsistency(smoothnessValues);
   const durationConsistency = getConsistency(durations);
   const peakConsistency = getConsistency(peaks);
-  const consistencyScore = mean([romConsistency, smoothnessConsistency, durationConsistency, peakConsistency]);
+  let consistencyScore = mean([romConsistency, smoothnessConsistency, durationConsistency, peakConsistency]);
+  
+  // === Shakiness Penalty for Consistency ===
+  // High average shakiness indicates poor movement quality regardless of pattern consistency
+  // A user with consistently shaky movements should NOT score high on consistency
+  if (hasShakiness) {
+    const avgShakiness = mean(shakiness);
+    // Normalize shakiness: typical range 0-50 rad/s², values above 20 are concerning
+    // Apply penalty: reduce consistency score based on absolute shakiness level
+    // Shakiness 10 = minor penalty (~5%), 20 = moderate (~15%), 30+ = significant (~25%+)
+    const shakinessPenalty = Math.min(30, avgShakiness * 1.0); // Max 30% penalty
+    if (avgShakiness > 8) {
+      // Only penalize if shakiness is notably above baseline
+      consistencyScore = Math.max(0, consistencyScore - shakinessPenalty);
+    }
+  }
+  
+  // === Also penalize if jerk is consistently high ===
+  // High jerk = jerky movements, even if consistent pattern
+  const avgJerk = mean(jerkValues);
+  if (avgJerk > 5) {
+    // Jerk above 5 indicates jerky movement - apply smaller penalty
+    const jerkPenalty = Math.min(15, (avgJerk - 5) * 2);
+    consistencyScore = Math.max(0, consistencyScore - jerkPenalty);
+  }
   
   // === Trend Analysis ===
   const getTrend = (values) => {

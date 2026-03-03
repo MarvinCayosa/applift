@@ -59,11 +59,14 @@ export async function getCachedInsights(userId, equipment, exercise, workoutId) 
  * @param {string} params.exerciseName - Exercise name
  * @param {string} params.workoutId - Workout ID
  * @param {Object} params.metrics - All workout metrics to send to the AI
- * @returns {{ summary: string, bullets: string[], generatedAt: string } | null}
+ * @returns {{ summary: string, bullets: string[], generatedAt: string, error?: string } | null}
  */
 export async function generateInsights({ user, equipment, exerciseName, workoutId, metrics }) {
   try {
     const token = await user.getIdToken();
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
     const res = await fetch('/api/ai-insights', {
       method: 'POST',
@@ -72,11 +75,17 @@ export async function generateInsights({ user, equipment, exerciseName, workoutI
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({ metrics }),
+      signal: controller.signal,
     });
+
+    clearTimeout(timeoutId);
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      throw new Error(body.error || `HTTP ${res.status}`);
+      const errorMsg = body.error || `HTTP ${res.status}`;
+      console.error('[AIInsights] API error:', errorMsg);
+      // Return error info so UI can display it
+      return { summary: '', bullets: [], generatedAt: '', error: errorMsg };
     }
 
     const { summary, bullets } = await res.json();
@@ -97,6 +106,10 @@ export async function generateInsights({ user, equipment, exerciseName, workoutI
     return insights;
   } catch (err) {
     console.error('[AIInsights] Generation failed:', err.message);
-    return null;
+    // Return error info for timeout and network errors
+    if (err.name === 'AbortError') {
+      return { summary: '', bullets: [], generatedAt: '', error: 'Request timed out. Try again later.' };
+    }
+    return { summary: '', bullets: [], generatedAt: '', error: err.message || 'Failed to generate insights.' };
   }
 }

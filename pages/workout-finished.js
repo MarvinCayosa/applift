@@ -303,8 +303,10 @@ export default function WorkoutFinished() {
         metrics,
       });
 
-      if (result) {
+      if (result?.summary) {
         setAiInsights(result);
+      } else if (result?.error) {
+        setAiInsightsError(result.error);
       } else {
         setAiInsightsError('Could not generate insights.');
       }

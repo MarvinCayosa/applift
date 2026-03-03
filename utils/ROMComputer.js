@@ -1141,7 +1141,44 @@ export class ROMComputer {
     this.sampleHistory = [];
     this.preRepBuffer = [];           // Clear rolling buffer
     this.savedPreRepBuffer = null;    // Will be populated after first samples come in
-    this.strokeRollingBuffer = [];    // Clear stroke rolling buffer for new set
+    
+    // === FIX FOR FIRST REP ROM ISSUE ===
+    // Problem: When strokeRollingBuffer is cleared, the first rep has no "rest" samples
+    // at the beginning. retroCorrect needs rest segments to anchor position detrending.
+    // Without rest anchoring, it falls back to linear detrending which is inaccurate,
+    // causing the first rep of every set to show low/incorrect ROM.
+    //
+    // Solution: Inject synthetic "at rest" samples using the calibrated gravity values.
+    // These synthetic samples have zero velocity/acceleration (at rest), giving
+    // retroCorrect the rest anchoring it needs for accurate first-rep ROM.
+    const SYNTHETIC_REST_SAMPLES = 20; // ~0.5-1s of synthetic rest at typical sample rates
+    const now = Date.now();
+    this.strokeRollingBuffer = [];
+    
+    if (this.baselineGravity && this.gravityMag > 0) {
+      // Create synthetic rest samples with calibrated gravity values
+      // At rest: accel = gravity only, gyro = bias only (near zero), velocity = 0
+      for (let i = 0; i < SYNTHETIC_REST_SAMPLES; i++) {
+        const syntheticSample = {
+          ax: this.baselineGravity.x,
+          ay: this.baselineGravity.y,
+          az: this.baselineGravity.z,
+          gx: this.gyroBias.x,
+          gy: this.gyroBias.y,
+          gz: this.gyroBias.z,
+          qw: 1, qx: 0, qy: 0, qz: 0,  // Identity quaternion (will be overwritten by real data)
+          ts: now - (SYNTHETIC_REST_SAMPLES - i) * 40, // ~40ms apart (25Hz)
+          displacement: 0,
+          velocity: 0,
+          vertAccel: 0,
+          isSynthetic: true  // Mark for debugging
+        };
+        this.strokeRollingBuffer.push(syntheticSample);
+        this.preRepBuffer.push(syntheticSample);
+      }
+      console.log(`[ROMComputer] Injected ${SYNTHETIC_REST_SAMPLES} synthetic rest samples for first-rep anchoring`);
+    }
+    
     this.emaInitialized = false;      // Re-prime EMA from first sample of new set
     this.velocity = 0;
     this.displacement = 0;

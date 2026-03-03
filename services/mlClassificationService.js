@@ -301,6 +301,12 @@ export function classifyWithRules(features, exercise) {
   const rms = features['accelMag_rms'] || features['filteredMag_rms'] || 0;
   const peakPos = features['accelMag_peak_position'] || features['filteredMag_peak_position'] || 0.5;
   
+  // Shakiness indicators: rate of change of gyro signal (angular jerk/acceleration)
+  // High values indicate shaky, uncontrolled movement even if overall variability seems low
+  const gyroDiffStd = features['gyroMag_diff_std'] || features['gyroX_diff_std'] || features['gyroY_diff_std'] || 0;
+  const gyroDiffMax = features['gyroMag_diff_max'] || features['gyroX_diff_max'] || features['gyroY_diff_max'] || 0;
+  const accelDiffStd = features['accelMag_diff_std'] || features['filteredMag_diff_std'] || 0;
+  
   // Normalized exercise type for specific rules
   const normalized = normalizeExerciseName(exercise);
   
@@ -321,29 +327,41 @@ export function classifyWithRules(features, exercise) {
   }
   // Barbell exercises (Bench Press, Back Squat)
   else if (normalized && (normalized.includes('bench') || normalized.includes('squat'))) {
-    // Check for "Uncontrolled Movement" (high variability)
-    if (gyroStd > 2.0 || accelRange > 12) {
+    // Check for "Uncontrolled Movement" (high variability OR high shakiness)
+    // Shakiness thresholds: gyroDiffStd > 0.8 indicates rapid direction changes
+    // gyroDiffMax > 3.0 indicates sudden jerky movements
+    // accelDiffStd > 1.5 indicates unstable acceleration pattern
+    // Lowered base thresholds: gyroStd > 1.2, accelRange > 8
+    if (gyroStd > 1.2 || accelRange > 8 || gyroDiffStd > 0.8 || gyroDiffMax > 3.0 || accelDiffStd > 1.5) {
       prediction = 1;
-      confidence = 0.68;
-      probabilities = [0.22, 0.68, 0.10];
+      // Higher confidence when multiple shakiness indicators fire
+      const shakinessScore = (gyroStd > 1.2 ? 1 : 0) + (accelRange > 8 ? 1 : 0) + 
+                            (gyroDiffStd > 0.8 ? 1 : 0) + (gyroDiffMax > 3.0 ? 1 : 0) + 
+                            (accelDiffStd > 1.5 ? 1 : 0);
+      confidence = Math.min(0.85, 0.55 + shakinessScore * 0.08);
+      probabilities = [1 - confidence - 0.08, confidence, 0.08];
     }
     // Check for "Inclination Asymmetry" (uneven acceleration pattern)
-    else if (Math.abs(features['accelX_mean'] - features['accelZ_mean']) > 3) {
+    else if (Math.abs(features['accelX_mean'] - features['accelZ_mean']) > 2.5) {
       prediction = 2;
-      confidence = 0.60;
-      probabilities = [0.25, 0.15, 0.60];
+      confidence = 0.62;
+      probabilities = [0.23, 0.15, 0.62];
     }
   }
   // Dumbbell exercises (Concentration Curls, Overhead Extension)
   else {
-    // Check for "Uncontrolled Movement" (high variability)
-    if (gyroStd > 2.5 || accelRange > 15) {
+    // Check for "Uncontrolled Movement" (high variability OR high shakiness)
+    // Slightly higher thresholds for dumbbell (more inherent movement)
+    if (gyroStd > 1.8 || accelRange > 10 || gyroDiffStd > 1.0 || gyroDiffMax > 4.0 || accelDiffStd > 2.0) {
       prediction = 1;
-      confidence = 0.70;
-      probabilities = [0.20, 0.70, 0.10];
+      const shakinessScore = (gyroStd > 1.8 ? 1 : 0) + (accelRange > 10 ? 1 : 0) + 
+                            (gyroDiffStd > 1.0 ? 1 : 0) + (gyroDiffMax > 4.0 ? 1 : 0) + 
+                            (accelDiffStd > 2.0 ? 1 : 0);
+      confidence = Math.min(0.85, 0.55 + shakinessScore * 0.08);
+      probabilities = [1 - confidence - 0.08, confidence, 0.08];
     }
     // Check for "Abrupt Initiation" (high rate of change at start)
-    else if (diffMax > 10 && peakPos < 0.25) {
+    else if (diffMax > 8 && peakPos < 0.25) {
       prediction = 2;
       confidence = 0.65;
       probabilities = [0.20, 0.15, 0.65];
