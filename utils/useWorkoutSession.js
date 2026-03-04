@@ -549,9 +549,9 @@ export function useWorkoutSession({
         const lastRep = repData.reps[repData.reps.length - 1];
         const countDirection = repCounterRef.current?.countDirection || 'both';
 
-        // For BOTH and FULL-CYCLE modes (dumbbell): Rep is already counted at end of eccentric (full cycle)
+        // For BOTH, FULL-CYCLE, and PEAK-TO-VALLEY modes: Rep is already counted at end of eccentric
         // The samples are complete - fire callback immediately
-        if (countDirection === 'both' || countDirection === 'full-cycle') {
+        if (countDirection === 'both' || countDirection === 'full-cycle' || countDirection === 'peak-to-valley') {
           const repSamples = repData.samples.filter(s => s.repNumber === newStats.repCount);
           console.log(`[WorkoutSession] Rep ${newStats.repCount} complete (${countDirection}), ${repSamples.length} samples`);
           
