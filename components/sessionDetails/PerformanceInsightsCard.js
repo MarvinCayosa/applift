@@ -56,7 +56,10 @@ function extractRepKinematics(setsData, selectedSet) {
   sets.forEach((set) =>
     (set.repsData || []).forEach((rep, i) => {
       const duration = parseFloat(rep.time) || (rep.durationMs ? rep.durationMs / 1000 : 0);
-      const velocity = parseFloat(rep.peakVelocity) || 0;
+      // Prefer Mean Propulsive Velocity (MPV) - more stable than instantaneous peak
+      const mcv = parseFloat(rep.meanVelocity) || 0;
+      const pv = parseFloat(rep.peakVelocity) || 0;
+      const velocity = mcv > 0 ? mcv : pv;
       const smoothness = rep.smoothnessScore ?? 70;
       const chartData = rep.chartData || [];
 

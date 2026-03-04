@@ -15,20 +15,22 @@
 // Counting direction: which phase to count as a rep
 // 'valley-to-peak': Count when lifting up (Valley → Peak) - most exercises
 // 'peak-to-valley': Count when pulling down (Peak → Valley) - pulldown exercises
-// 'both': Count both directions (original behavior) - dumbbell exercises
+// 'both': Count both directions (original behavior) - legacy dumbbell mode
+// 'full-cycle': Count only when complete Valley→Peak→Valley cycle detected (NEW dumbbell mode)
 const COUNT_DIRECTION = {
   VALLEY_TO_PEAK: 'valley-to-peak',  // Lifting up = rep (bench press push, squats push)
   PEAK_TO_VALLEY: 'peak-to-valley',  // Pulling down = rep (lat pulldown)
-  BOTH: 'both',  // Count both directions (dumbbell exercises - original behavior)
+  BOTH: 'both',  // Count both directions (legacy dumbbell - has issues with shaky data)
+  FULL_CYCLE: 'full-cycle',  // Count only complete cycles - NEW dumbbell mode (fixes shaky data)
 };
 
 // Exercise-specific counting direction
-// Dumbbell exercises: count BOTH directions (original working behavior)
+// Dumbbell exercises: use FULL_CYCLE for robust detection (waits for complete cycle)
 // Barbell exercises: count valley-to-peak only (prevents double-counting)
 // Weight stack: direction depends on exercise type
 const EXERCISE_COUNT_DIRECTION = {
-  0: COUNT_DIRECTION.BOTH,            // Concentration Curls - ORIGINAL BEHAVIOR
-  1: COUNT_DIRECTION.BOTH,            // Overhead Extension - ORIGINAL BEHAVIOR
+  0: COUNT_DIRECTION.FULL_CYCLE,      // Concentration Curls - FULL CYCLE (fixes shaky/slow data)
+  1: COUNT_DIRECTION.FULL_CYCLE,      // Overhead Extension - FULL CYCLE (fixes shaky/slow data)
   2: COUNT_DIRECTION.VALLEY_TO_PEAK,  // Bench Press - push up from chest only
   3: COUNT_DIRECTION.VALLEY_TO_PEAK,  // Back Squats - stand up only
   4: COUNT_DIRECTION.PEAK_TO_VALLEY,  // Lateral Pulldown - pull down only
@@ -64,10 +66,10 @@ export class RepCounter {
     this.lastRepEndTime = 0;
     
     // Peak detection for slow movements (balanced sensitivity)
-    this.minPeakProminence = config.minPeakProminence || 0.25; // Increased from 0.15 - filters small tremors
-    this.minPeakDistance = config.minPeakDistance || 20; // Increased from 15 - minimum 1.0s between peaks (20Hz * 1.0)
-    this.minRepDuration = config.minRepDuration || 0.6; // Increased from 0.5 - filters quick tremor spikes
-    this.maxRepDuration = config.maxRepDuration || 8.0; // Maximum 8 seconds per rep (controlled reps)
+    this.minPeakProminence = config.minPeakProminence || 0.15; // Restored from 0.25 - full-cycle mode prevents false positives
+    this.minPeakDistance = config.minPeakDistance || 10; // Reduced from 20 - allow 0.5s between peaks/valleys for fast reps
+    this.minRepDuration = config.minRepDuration || 0.5; // Restored from 0.6 - allows faster reps
+    this.maxRepDuration = config.maxRepDuration || 10.0; // Increased from 8.0 - allows very slow controlled reps
     this.adaptiveThreshold = true; // Use adaptive thresholding
     
     // Anti-tremor: Refractory period after counting a rep (prevents double-counting during shaking)
@@ -92,6 +94,14 @@ export class RepCounter {
     // Pending rep for direction-specific modes (valley-to-peak, peak-to-valley)
     // We count at the turn point but wait for the return to capture full cycle
     this.pendingRep = null; // { startPoint, peakPoint, countedAt, waitingFor: 'valley' | 'peak' }
+    
+    // Full-cycle mode state (for dumbbell exercises)
+    // Tracks a complete Valley→Peak→Valley cycle before counting
+    // Simplified: just tracks startValley and peak, counts when end valley detected
+    this.fullCycleState = {
+      startValley: null,       // Valley where cycle started
+      peak: null,              // Peak reached during cycle
+    };
     
     // Statistics
     this.repTimes = [];
@@ -129,19 +139,38 @@ export class RepCounter {
     }
     
     this.exerciseCode = exerciseCode;
-    this.countDirection = EXERCISE_COUNT_DIRECTION[exerciseCode] || COUNT_DIRECTION.BOTH;
+    this.countDirection = EXERCISE_COUNT_DIRECTION[exerciseCode] || COUNT_DIRECTION.FULL_CYCLE;
     
     console.log(`[RepCounter] Exercise set: code=${exerciseCode}, countDirection=${this.countDirection} (${equipment}/${workout})${!foundMatch ? ' [NO MATCH FOUND, using defaults]' : ''}`);
+    
+    // Reset full-cycle state when setting exercise
+    if (this.countDirection === COUNT_DIRECTION.FULL_CYCLE) {
+      this.fullCycleState = {
+        startValley: null,
+        peak: null,
+      };
+    }
   }
   
   /**
    * Set counting direction directly
-   * @param {'valley-to-peak' | 'peak-to-valley' | 'both'} direction
+   * @param {'valley-to-peak' | 'peak-to-valley' | 'both' | 'full-cycle'} direction
    */
   setCountDirection(direction) {
-    if (direction === COUNT_DIRECTION.VALLEY_TO_PEAK || direction === COUNT_DIRECTION.PEAK_TO_VALLEY || direction === COUNT_DIRECTION.BOTH) {
+    if (direction === COUNT_DIRECTION.VALLEY_TO_PEAK || 
+        direction === COUNT_DIRECTION.PEAK_TO_VALLEY || 
+        direction === COUNT_DIRECTION.BOTH ||
+        direction === COUNT_DIRECTION.FULL_CYCLE) {
       this.countDirection = direction;
       console.log(`[RepCounter] Count direction set to: ${direction}`);
+      
+      // Reset full-cycle state when direction changes
+      if (direction === COUNT_DIRECTION.FULL_CYCLE) {
+        this.fullCycleState = {
+          startValley: null,
+          peak: null,
+        };
+      }
     }
   }
   
@@ -429,6 +458,57 @@ export class RepCounter {
           isValidRep = true;
         }
       }
+      // FULL-CYCLE mode: SAME detection as "both" mode, but counts at the END of the rep
+      // Valley→Peak detected: DON'T count yet, just remember the start valley + peak
+      // Peak→Valley detected: NOW count the full rep (startValley → peak → endValley)
+      // This gives identical sensitivity to "both" mode but increments after the rep completes
+      else if (this.countDirection === 'full-cycle') {
+        const fcs = this.fullCycleState;
+        
+        // Case 1: Valley → Peak (concentric phase detected)
+        // DON'T count — just store the start valley and peak for later
+        if (lastValley.index < lastPeak.index) {
+          // Only register if this is a NEW peak we haven't already stored
+          if (lastPeak.index > this.lastDetectedPeakIndex) {
+            fcs.startValley = lastValley;
+            fcs.peak = lastPeak;
+            this.lastDetectedPeakIndex = lastPeak.index;
+          }
+        }
+        // Case 2: Peak → Valley (eccentric/lowering phase detected)
+        // NOW count — we have all 3 points: startValley → peak → endValley
+        else if (lastPeak.index < lastValley.index && fcs.peak) {
+          // Only count if this end valley is new (not already used)
+          if (lastValley.index > this.lastDetectedValleyIndex) {
+            const startV = fcs.startValley;
+            const peak = fcs.peak;
+            const endV = lastValley;
+            
+            const prominence = Math.abs(peak.value - startV.value);
+            const duration = (endV.time - startV.time) / 1000;
+            
+            if (duration >= this.minRepDuration && 
+                duration <= this.maxRepDuration && 
+                prominence >= this.minPeakProminence) {
+              
+              console.log(`✅ [FullCycle] V→P→V complete! Duration=${duration.toFixed(2)}s, prominence=${prominence.toFixed(3)}`);
+              
+              this.completeRep(startV, peak, endV);
+              this.lastRepCountedTime = Date.now();
+              this.lastDetectedValleyIndex = endV.index;
+              this.lastRepEndTime = endV.time;
+              
+              // Clear — the end valley will naturally be picked up as lastValley
+              // in subsequent windows, becoming the start of the next cycle
+              fcs.startValley = null;
+              fcs.peak = null;
+            }
+          }
+        }
+        
+        // Full-cycle uses its own counting logic above
+        return;
+      }
       
       if (isValidRep) {
         // Log detection attempt for debugging
@@ -517,50 +597,50 @@ export class RepCounter {
     this.reps.push(repData);
     this.repTimes.push(duration);
     
-    // *** CRITICAL FIX: Continuous segmentation with NO GAPS ***
-    // Rep boundaries: each rep INCLUDES the valley sample at the end
-    // The next rep starts at the sample AFTER the valley
+    // *** Use actual detected valley indices for boundaries ***
+    // This is more accurate than timestamp-based search, especially for full-cycle mode
+    // where the rep may not start at sample 0
     
-    let repStartIndex = 0;
+    // Use the actual start valley's global index
+    let repStartIndex = startValley.index;
     
-    if (this.repCount === 1) {
-      // First rep: starts from sample 0 (beginning of recording)
-      repStartIndex = 0;
-    } else if (this.previousRepEndIndex !== null) {
-      // Subsequent reps: start at the sample AFTER previous rep's valley
-      // This ensures continuous coverage: Rep N ends at valley index X, Rep N+1 starts at X+1
+    // For continuous segmentation: if we have a previous rep end, start after it
+    // But don't go before the detected start valley (handles full-cycle mode better)
+    if (this.previousRepEndIndex !== null && this.previousRepEndIndex + 1 > repStartIndex) {
       repStartIndex = this.previousRepEndIndex + 1;
     }
     
-    // Find the end index: INCLUDE the end valley sample in this rep
-    // The next rep will start at the sample AFTER this valley
-    // This ensures continuous coverage with NO GAPS
-    let repEndIndex = this.allSamples.length - 1;
-    for (let i = 0; i < this.allSamples.length; i++) {
-      if (this.allSamples[i].timestamp >= endValley.time) {
-        // Include the valley sample in this rep (not i-1, but i)
-        repEndIndex = i;
-        break;
-      }
+    // Use the actual end valley's global index
+    let repEndIndex = endValley.index;
+    
+    // Validate the index is within bounds
+    if (repEndIndex >= this.allSamples.length) {
+      repEndIndex = this.allSamples.length - 1;
     }
     
-    // Ensure we don't overlap with previous rep
+    // Ensure we don't have negative range
     if (repStartIndex > repEndIndex) {
-      repEndIndex = repStartIndex;
+      console.warn(`⚠️ Rep ${this.repCount}: Invalid boundaries (start=${repStartIndex}, end=${repEndIndex}), using end valley only`);
+      repStartIndex = Math.max(0, repEndIndex - Math.floor(duration * this.samplingRate));
     }
     
     // *** VALIDATION: Reject reps with unreasonable sample counts ***
     // At 20Hz: 0.5s = 10 samples, 8s = 160 samples
-    // If we have way more, it means segmentation failed
+    // Allow more slack for slow controlled reps (some people do 10+ second reps)
     const sampleCount = repEndIndex - repStartIndex + 1;
-    const maxExpectedSamples = this.maxRepDuration * this.samplingRate * 1.2; // 20% buffer
+    const expectedSamples = duration * this.samplingRate;
+    const maxExpectedSamples = Math.max(expectedSamples * 1.5, this.maxRepDuration * this.samplingRate * 1.2);
     
     if (sampleCount > maxExpectedSamples) {
-      console.warn(`⚠️ Rep ${this.repCount} rejected: ${sampleCount} samples exceeds max ${maxExpectedSamples.toFixed(0)} (likely false detection)`);
+      console.warn(`⚠️ Rep ${this.repCount} rejected: ${sampleCount} samples exceeds max ${maxExpectedSamples.toFixed(0)} (expected ~${expectedSamples.toFixed(0)} for ${duration.toFixed(2)}s)`);
       this.repCount--; // Rollback rep count
       this.reps.pop(); // Remove rep metadata
       this.repTimes.pop(); // Remove rep time
-      return; // Don't assign samples to this rep
+      
+      // *** CRITICAL: Still update previousRepEndIndex to move past this segment ***
+      // Otherwise we'll keep trying to capture the same problematic segment
+      this.previousRepEndIndex = repEndIndex;
+      return;
     }
     
     console.log(`📍 Rep ${this.repCount} boundaries: sample ${repStartIndex} to ${repEndIndex} (${sampleCount} samples, valley at ${endValley.time.toFixed(0)}ms)`);
@@ -678,6 +758,13 @@ export class RepCounter {
     this.pendingRep = null;            // Reset pending rep for direction-specific modes
     this.inRepPhase = false;
     this.repStartTime = 0;
+    this.lastRepCountedTime = 0;       // Reset refractory timer
+    
+    // Reset full-cycle state (dumbbell mode)
+    this.fullCycleState = {
+      startValley: null,
+      peak: null,
+    };
   }
   
   /**
@@ -766,6 +853,13 @@ export class RepCounter {
     this.lastDetectedPeakIndex = -1;
     this.pendingRep = null;  // Clear pending rep for direction-specific modes
     this.repStartTime = 0;
+    this.lastRepCountedTime = 0;  // Clear refractory timer
+    
+    // Reset full-cycle state (dumbbell mode)
+    this.fullCycleState = {
+      startValley: null,
+      peak: null,
+    };
 
     // 5. Re-establish previous rep end references from last kept rep
     if (this.reps.length > 0) {

@@ -85,7 +85,8 @@ function computeLocalSmoothnessScore(samples) {
  * Physics: integrate (acceleration - gravity) to get velocity
  * Returns { peak, mean } in m/s
  *   peak = maximum absolute velocity (instantaneous peak)
- *   mean = mean concentric velocity (MCV) — primary metric
+ *   mean = Mean Propulsive Velocity (MPV) — primary metric for fatigue detection
+ *         MPV only includes the propulsive phase (net accel > 0), excluding deceleration
  */
 function computeLocalVelocity(samples) {
   if (!samples || samples.length < 3) return { peak: 0, mean: 0 };
@@ -133,8 +134,24 @@ function computeLocalVelocity(samples) {
   // Peak velocity = max absolute velocity (instantaneous)
   const peakVelocity = Math.max(...absVelocities);
   
-  // Mean concentric velocity (MCV) = average of absolute velocity profile
-  const meanVelocity = absVelocities.reduce((a, b) => a + b, 0) / absVelocities.length;
+  // ============================================================================
+  // MEAN PROPULSIVE VELOCITY (MPV) — Better for fatigue than MCV
+  // ============================================================================
+  // MPV = Mean velocity during propulsive phase only (net accel > threshold)
+  // Excludes deceleration/"braking" phase which isn't indicative of effort
+  const PROPULSIVE_THRESHOLD = 0.1; // m/s² noise floor
+  const propulsiveVelocities = [];
+  
+  for (let i = 0; i < netAccel.length; i++) {
+    if (netAccel[i] > PROPULSIVE_THRESHOLD) {
+      propulsiveVelocities.push(absVelocities[i]);
+    }
+  }
+  
+  // Calculate MPV, fallback to MCV if propulsive phase not detected
+  const meanVelocity = propulsiveVelocities.length > 2
+    ? propulsiveVelocities.reduce((a, b) => a + b, 0) / propulsiveVelocities.length
+    : absVelocities.reduce((a, b) => a + b, 0) / absVelocities.length;
   
   return {
     peak: Math.round(peakVelocity * 100) / 100,
@@ -532,11 +549,11 @@ export function useWorkoutSession({
         const lastRep = repData.reps[repData.reps.length - 1];
         const countDirection = repCounterRef.current?.countDirection || 'both';
 
-        // For BOTH mode (dumbbell): Rep is already counted at end of eccentric (full cycle)
+        // For BOTH and FULL-CYCLE modes (dumbbell): Rep is already counted at end of eccentric (full cycle)
         // The samples are complete - fire callback immediately
-        if (countDirection === 'both') {
+        if (countDirection === 'both' || countDirection === 'full-cycle') {
           const repSamples = repData.samples.filter(s => s.repNumber === newStats.repCount);
-          console.log(`[WorkoutSession] Rep ${newStats.repCount} complete (full cycle), ${repSamples.length} samples`);
+          console.log(`[WorkoutSession] Rep ${newStats.repCount} complete (${countDirection}), ${repSamples.length} samples`);
           
           if (onRepDetectedRef.current && repSamples.length > 0) {
             const startIndex = repSamples[0]?.sampleIndex ?? lastRep?.actualStartIndex;

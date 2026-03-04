@@ -126,28 +126,49 @@ Analyzes movement velocity patterns to assess power output, fatigue, and trainin
 
 ### Key Metrics
 
-#### 2.1 Mean Concentric Velocity (MCV) — Primary Metric
-**Calculation**: Mean of the absolute velocity profile (m/s) from accelerometer integration during the rep.
+#### 2.1 Mean Propulsive Velocity (MPV) — Primary Metric
+**Calculation**: Mean of the absolute velocity profile (m/s) during the **propulsive phase only** — the portion of the lift where net acceleration exceeds gravity (actively pushing/accelerating the weight).
 
 **Formula**:
 ```
-MCV = mean(|v(t)|)   for all samples in the velocity profile
+propulsive_samples = samples where netAccel > 0.1 m/s²
+MPV = mean(|v(t)|)   for propulsive_samples only
 ```
 
-**Rationale**: MCV represents the average speed sustained throughout the concentric phase, smoothing out instantaneous noise inherent in single-point peak measurements. It is less susceptible to sensor noise spikes than peak velocity (PV) and provides a more representative measure of the effort across the entire movement. When MCV is unavailable (e.g., during live local computation fallback), the system falls back to peak velocity.
+**Why MPV over MCV (Mean Concentric Velocity)?**
+- **MCV includes deceleration phase**: Near lockout, you naturally decelerate to stop the bar. This "braking" is physics, not effort — MCV includes it, diluting the fatigue signal.
+- **MPV captures true effort**: Only measures velocity while you're actively pushing. When fatigued, your propulsive ability drops first — MPV detects this immediately.
+- **More fatigue-sensitive**: Research shows MPV correlates better with %1RM and fatigue state than MCV.
 
 **References**:
-- Gonzalez-Badillo & Sanchez-Medina (2010) — MCV as a reliable load-velocity profiling metric
-- Weakley et al. (2021) — MCV recommended over PV for within-session fatigue monitoring
+- González-Badillo & Sánchez-Medina (2010) — MPV as superior load-velocity metric
+- Sánchez-Medina et al. (2017) — MPV recommended for fatigue monitoring and autoregulation
+- Weakley et al. (2021) — Propulsive-phase metrics preferred for within-session fatigue detection
 
-#### 2.2 Peak Velocity (PV) — Secondary / Fallback Metric
+#### 2.2 Mean Concentric Velocity (MCV) — Legacy Fallback
+**Calculation**: Mean of the absolute velocity profile across the entire concentric phase.
+
+**Formula**: `MCV = mean(|v(t)|)` for all samples.
+
+**Rationale**: MCV is retained as a fallback when the propulsive phase cannot be reliably detected (e.g., very short reps, noisy sensor data). However, it is less sensitive to fatigue because it includes the deceleration/"braking" phase.
+
+#### 2.3 Peak Velocity (PV) — Not Displayed
 **Calculation**: Maximum absolute velocity (m/s) from the integrated velocity profile.
 
 **Formula**: `PV = max(|v(t)|)` across all samples in the rep.
 
-**Rationale**: Peak velocity captures the single fastest instantaneous speed and correlates with power output and neuromuscular readiness. Used by commercial VBT devices (PUSH, Gymaware, Tendo). Retained as fallback when MCV is not available and as a supplementary metric.
+**Rationale**: Peak velocity is highly susceptible to sensor noise spikes from accelerometer integration drift, often producing unrealistically high values (e.g., 2+ m/s for slow exercises like bicep curls). **PV is only used as a last-resort fallback** — it is never displayed directly to users.
 
-#### 2.3 Baseline Determination
+#### 2.4 UI Display Labels
+
+| Component | Label Shown | Actual Metric | Notes |
+|-----------|-------------|---------------|-------|
+| **RepInsightCard** (Performance Details) | "Mean Velocity" | MPV (with MCV/PV fallback) | Per-rep card in workout finished |
+| **VelocityLossChart** | "Baseline" | Max of first 3 MPVs | Set-level analysis |
+| **FatigueVelocityCarousel** | "Baseline" | Max of first 3 MPVs | Set-level analysis |
+| **PerformanceInsightsCard** | (bar chart) | MPV (with MCV/PV fallback) | Session details velocity bars |
+
+#### 2.5 Baseline Determination
 **Method**: Fastest (maximum) of the first 3 valid reps' velocity.
 
 **Code logic**:
@@ -158,7 +179,7 @@ baseline = max(validReps[0..2].velocity)
 
 **Rationale**: Using the fastest of 3 (rather than the average of 2) provides a more robust reference that is less sensitive to a single slow warm-up rep or sensor glitch. Averaging the first 2 reps can artificially deflate the baseline if either one is anomalous, biasing all subsequent drop calculations. Taking the maximum of a 3-rep window captures the lifter's true initial capability.
 
-#### 2.4 Velocity Variability (Coefficient of Variation)
+#### 2.6 Velocity Variability (Coefficient of Variation)
 **Formula**: `CV% = (Standard Deviation / Mean Velocity) × 100`
 
 **Rationale**: CV% captures velocity consistency regardless of rep order, superior to simple "drop" calculations. Accounts for non-sequential fatigue patterns (momentum compensation, mid-set recovery).
@@ -178,7 +199,7 @@ Traditional "velocity drop" (first vs last rep) fails when velocity patterns are
 
 CV% captures the total spread, providing a more accurate fatigue assessment.
 
-#### 2.5 Effective Reps
+#### 2.7 Effective Reps
 **Formula**: Count of reps with `< 10%` velocity loss from baseline (fastest of first 3 valid reps)
 
 **Code logic**:
@@ -194,7 +215,7 @@ if dropPercent >= 10% → Ineffective
 
 **Threshold**: 10% velocity loss cutoff (González-Badillo et al., 2017; Pérez-Castilla et al., 2019).
 
-#### 2.6 Data Quality Controls
+#### 2.8 Data Quality Controls
 The system applies several data quality measures before velocity analysis:
 
 1. **Noise floor filter**: Reps with velocity ≤ 0.02 m/s are excluded as sensor noise or stationary readings.
@@ -203,10 +224,11 @@ The system applies several data quality measures before velocity analysis:
 4. **Minimum rep count**: Velocity analysis requires ≥ 2 reps; fatigue metrics require ≥ 3 reps.
 
 ### Scientific Basis
-- González-Badillo & Sánchez-Medina (2010) — MCV-based load-velocity profiling
+- González-Badillo & Sánchez-Medina (2010) — MPV/MCV-based load-velocity profiling
+- Sánchez-Medina et al. (2017) — MPV for fatigue monitoring and autoregulation
 - Mann et al. (2016) — effective rep concept, 10–20% velocity loss zone
 - Dorrell et al. (2020) — velocity-based training review
-- Weakley et al. (2021) — MCV recommended over PV for fatigue monitoring
+- Weakley et al. (2021) — Propulsive-phase metrics recommended for fatigue detection
 - Pérez-Castilla et al. (2019) — velocity loss thresholds for training optimization
 
 ---

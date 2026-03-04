@@ -5,7 +5,8 @@
  * Uses native CSS scroll-snap (same pattern as ExerciseInfoPanel carousel).
  * 
  * Slide 1: Fatigue — circular ring gauge + 3 indicator cards (2-column)
- * Slide 2: Velocity — bar chart showing peak velocity per rep with drop %
+ * Slide 2: Velocity — bar chart showing MPV (Mean Propulsive Velocity) per rep with drop %
+ *          Uses MPV as primary metric with MCV/peak velocity as fallback.
  * 
  * White dot indicators at bottom for navigation feedback.
  */
@@ -90,8 +91,10 @@ export default function FatigueVelocityCarousel({
     filteredSets.forEach(set => {
       if (set.repsData && Array.isArray(set.repsData)) {
         set.repsData.forEach(rep => {
-          // Handle multiple field names for velocity
-          const velocity = parseFloat(rep.peakVelocity) || parseFloat(rep.velocity) || 0;
+          // Prefer MPV (meanVelocity) as primary; fall back to peakVelocity
+          const mcv = parseFloat(rep.meanVelocity) || 0;
+          const pv = parseFloat(rep.peakVelocity) || parseFloat(rep.velocity) || 0;
+          const velocity = mcv > 0 ? mcv : pv;
           // Handle multiple field names for duration (time, duration, durationMs)
           const duration = parseFloat(rep.time) || parseFloat(rep.duration) || (rep.durationMs ? rep.durationMs / 1000 : 0);
           // Handle smoothnessScore with proper fallback
@@ -200,7 +203,7 @@ export default function FatigueVelocityCarousel({
     filteredSets.forEach(set => {
       if (set.repsData && Array.isArray(set.repsData)) {
         set.repsData.forEach((rep, idx) => {
-          // Prefer MCV (meanVelocity) as primary; fall back to peakVelocity
+          // Prefer MPV (meanVelocity) as primary; fall back to peakVelocity
           const mcv = parseFloat(rep.meanVelocity) || 0;
           const pv = parseFloat(rep.peakVelocity) || 0;
           const velocity = mcv > 0 ? mcv : pv;
@@ -421,7 +424,7 @@ export default function FatigueVelocityCarousel({
               {/* Stats row */}
               <div className="flex gap-2 mb-3">
                 <div className="flex-1 rounded-xl bg-white/[0.04] px-3 py-2.5 text-center">
-                  <p className="text-[11px] text-gray-500 mb-0.5">Peak</p>
+                  <p className="text-[11px] text-gray-500 mb-0.5">Baseline</p>
                   <p className="text-lg font-bold text-cyan-400">{velocityMetrics.baselineVelocity}<span className="text-[10px] text-gray-500 ml-0.5">m/s</span></p>
                 </div>
                 <div className="flex-1 rounded-xl bg-white/[0.04] px-3 py-2.5 text-center">
@@ -666,14 +669,29 @@ export default function FatigueVelocityCarousel({
             <div className="px-5 overflow-y-auto" style={{ maxHeight: '65vh' }}>
               <h4 className="text-[16px] font-bold text-white mb-3">Understanding Velocity</h4>
               <p className="text-[13px] text-white/60 leading-relaxed mb-4">
-                This chart tracks how fast you moved the weight on each rep. Faster movement means more power. As your muscles tire, your speed naturally drops.
+                Velocity tracking measures how fast you push or pull the weight. Think of it like a speedometer for your muscles — the faster you can move a given weight, the more power you’re generating.
               </p>
+              
+              {/* Visual: Speed vs Fatigue illustration */}
+              <div className="rounded-xl bg-gradient-to-r from-cyan-500/10 to-slate-500/10 p-4 mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] text-cyan-400 font-medium">Fresh</span>
+                  <span className="text-[11px] text-slate-400 font-medium">Fatigued</span>
+                </div>
+                <div className="flex items-end justify-between h-8 gap-1">
+                  {[100, 95, 92, 85, 78, 70, 62].map((h, i) => (
+                    <div key={i} className={`flex-1 rounded-t ${i < 3 ? 'bg-cyan-400' : 'bg-slate-500'}`} style={{ height: `${h}%`, opacity: i < 3 ? 0.9 : 0.5 }} />
+                  ))}
+                </div>
+                <p className="text-[11px] text-white/40 mt-2 text-center">Speed naturally drops as muscles tire — this is normal and expected.</p>
+              </div>
+
               <div className="space-y-2 mb-4">
-                <p className="text-[13px] font-semibold text-white/70 mb-1">What the stats mean:</p>
+                <p className="text-[13px] font-semibold text-white/70 mb-1">Reading the Stats:</p>
                 {[
-                  { color: 'bg-cyan-400', title: 'Peak', desc: 'Your fastest speed from the first few reps — your baseline when you\'re freshest.' },
-                  { color: 'bg-emerald-400', title: 'Variability', desc: 'How much your speed changed rep to rep. Under 8% is very consistent; over 15% means big swings.' },
-                  { color: 'bg-white/60', title: 'Effective Reps', desc: 'Reps where your speed stayed within 10% of your best. These are your highest-quality reps.' },
+                  { color: 'bg-cyan-400', title: 'Baseline', desc: 'Your starting speed from the first few reps when you\'re freshest. This becomes your reference point.' },
+                  { color: 'bg-emerald-400', title: 'Variability', desc: 'How consistent your speed is. Low (< 8%) = steady technique. High (> 15%) = inconsistent effort or form.' },
+                  { color: 'bg-white/60', title: 'Effective Reps', desc: 'Reps where speed stayed within 10% of baseline. These deliver the best training stimulus for strength gains.' },
                 ].map((item, i) => (
                   <div key={i} className="flex items-start gap-2.5">
                     <div className={`w-2 h-2 rounded-full ${item.color} mt-1.5 shrink-0`} />
@@ -684,6 +702,13 @@ export default function FatigueVelocityCarousel({
                   </div>
                 ))}
               </div>
+              
+              <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 p-3 mb-4">
+                <p className="text-[12px] text-white/60 leading-relaxed">
+                  <span className="font-semibold text-amber-400">Pro Tip:</span> When velocity drops below 20% of baseline, it’s a sign your muscles are approaching failure. This is the ideal stopping point for strength gains without excessive fatigue.
+                </p>
+              </div>
+
               <div className="pt-3 border-t border-white/[0.08]">
                 <p className="text-[12px] font-semibold text-white/50 mb-2">Bar Colors</p>
                 <div className="flex flex-wrap gap-x-5 gap-y-1.5">

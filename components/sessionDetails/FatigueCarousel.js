@@ -292,8 +292,8 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
 
   // ======================================================================
   // VELOCITY METRICS
-  // Primary metric: Mean Concentric Velocity (MCV) when available,
-  // falls back to peak velocity. Baseline: fastest of first 3 valid reps.
+  // Primary metric: Mean Propulsive Velocity (MPV) when available,
+  // falls back to MCV/peak velocity. Baseline: fastest of first 3 valid reps.
   // Data quality: reps with velocity ≤ 0.02 m/s are excluded as noise.
   // ======================================================================
   const velocity = useMemo(() => {
@@ -303,7 +303,7 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
     const vels = [];
     sets.forEach(set =>
       (set.repsData || []).forEach((rep, i) => {
-        // Prefer MCV (meanVelocity) as primary; fall back to peakVelocity
+        // Prefer MPV (meanVelocity) as primary; fall back to peakVelocity
         const mcv = parseFloat(rep.meanVelocity) || 0;
         const pv = parseFloat(rep.peakVelocity) || 0;
         const v = mcv > 0 ? mcv : pv;
@@ -332,9 +332,13 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
     const cvVal = meanV > 0 ? (stdV / meanV) * 100 : 0;
 
     // Velocity loss per rep — 10% threshold (González-Badillo et al.)
+    // Also detect surges (>20% above baseline) as compensatory momentum
+    const SURGE_THRESHOLD = 20; // 20% above baseline indicates compensation
     const enriched = vels.map(x => {
       const d = baseline > 0 ? ((baseline - x.v) / baseline) * 100 : 0;
-      return { ...x, dropPct: Math.round(d * 10) / 10, isEff: d < 10 };
+      const surgePct = baseline > 0 ? ((x.v - baseline) / baseline) * 100 : 0;
+      const isSurge = surgePct > SURGE_THRESHOLD;
+      return { ...x, dropPct: Math.round(d * 10) / 10, surgePct: Math.round(surgePct * 10) / 10, isEff: d < 10 && !isSurge, isSurge };
     });
 
     return {
@@ -472,7 +476,7 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
             <>
               <div className="flex gap-2 mb-3">
                 {[
-                  { label: 'Peak', value: `${velocity.baseline}`, unit: 'm/s', color: 'text-cyan-400' },
+                  { label: 'Baseline', value: `${velocity.baseline}`, unit: 'm/s', color: 'text-cyan-400' },
                   { label: 'Variability', value: `${velocity.cv}`, unit: '%', color: velocity.cv < 8 ? 'text-green-400' : velocity.cv < 15 ? 'text-yellow-400' : 'text-red-400' },
                   { label: 'Effective', value: `${velocity.effective}`, unit: `/${velocity.total}`, color: 'text-white' },
                 ].map((m, i) => (
@@ -501,12 +505,14 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
                       const hFrac = velocity.max > 0 ? d.v / velocity.max : 0;
                       const barH = Math.max(4, hFrac * plotH);
                       const y = P.t + plotH - barH;
-                      const color = d.isEff ? '#22d3ee' : '#475569';
-                      const op = d.isEff ? 0.9 : 0.5;
+                      // Color: cyan for effective, orange for surge (compensatory momentum), gray for fatigued
+                      const color = d.isSurge ? '#f97316' : d.isEff ? '#22d3ee' : '#475569';
+                      const op = d.isSurge ? 0.9 : d.isEff ? 0.9 : 0.5;
+                      const textColor = d.isSurge ? '#f97316' : d.isEff ? '#22d3ee' : '#64748b';
                       return (
                         <g key={i}>
                           <rect x={x} y={y} width={barW} height={barH} fill={color} opacity={op} rx="4" ry="4" />
-                          <text x={x + barW / 2} y={y - 4} fill={d.isEff ? '#22d3ee' : '#64748b'} fontSize="8" fontWeight="600" textAnchor="middle">
+                          <text x={x + barW / 2} y={y - 4} fill={textColor} fontSize="8" fontWeight="600" textAnchor="middle">
                             {d.v.toFixed(2)}
                           </text>
                           <text x={x + barW / 2} y={BAR_H - 6} fill="#4b5563" fontSize="8" textAnchor="middle">
@@ -577,7 +583,7 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
                   <div className="space-y-2 mb-4">
                     <p className="text-[13px] font-semibold text-white/70 mb-1">The 4 indicators:</p>
                     {[
-                      { color: 'bg-cyan-400', title: 'Speed Drop', desc: 'How much slower you moved by your last reps.' },
+                      { color: 'bg-cyan-400', title: 'Speed Change', desc: 'Speed drops indicate fatigue. Speed surges may indicate compensatory momentum (swinging).' },
                       { color: 'bg-purple-400', title: 'Rep Slowdown', desc: 'How much longer each rep took toward the end.' },
                       { color: 'bg-orange-400', title: 'Jerkiness', desc: 'Whether your movement became choppy or uneven.' },
                       { color: 'bg-rose-400', title: 'Shakiness', desc: 'Whether tremor or instability increased.' },
@@ -684,14 +690,42 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
             <div className="px-5 overflow-y-auto" style={{ maxHeight: '65vh' }}>
               <h4 className="text-[16px] font-bold text-white mb-3">Understanding Velocity</h4>
               <p className="text-[13px] text-white/60 leading-relaxed mb-4">
-                This chart tracks how fast you moved the weight on each rep. Faster movement means more power. As your muscles tire, your speed naturally drops.
+                Velocity tracking measures how fast you push or pull the weight. Think of it like a speedometer for your muscles — the faster you can move a given weight, the more power you’re generating.
               </p>
+              
+              {/* Visual: Speed vs Fatigue illustration */}
+              <div className="rounded-xl bg-gradient-to-r from-cyan-500/10 via-slate-500/10 to-orange-500/10 p-4 mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] text-cyan-400 font-medium">Fresh</span>
+                  <span className="text-[11px] text-slate-400 font-medium">Fatigued</span>
+                  <span className="text-[11px] text-orange-400 font-medium">Surge</span>
+                </div>
+                <div className="flex items-end justify-between h-8 gap-1">
+                  {[
+                    { h: 100, type: 'eff' },
+                    { h: 95, type: 'eff' },
+                    { h: 92, type: 'eff' },
+                    { h: 85, type: 'fat' },
+                    { h: 78, type: 'fat' },
+                    { h: 70, type: 'fat' },
+                    { h: 130, type: 'surge' }, // Compensatory momentum spike
+                  ].map((bar, i) => (
+                    <div 
+                      key={i} 
+                      className={`flex-1 rounded-t ${bar.type === 'surge' ? 'bg-orange-500' : bar.type === 'eff' ? 'bg-cyan-400' : 'bg-slate-500'}`} 
+                      style={{ height: `${Math.min(bar.h, 100)}%`, opacity: bar.type === 'fat' ? 0.5 : 0.9 }} 
+                    />
+                  ))}
+                </div>
+                <p className="text-[11px] text-white/40 mt-2 text-center">Speed drops as muscles tire. A late surge may indicate swinging/momentum compensation.</p>
+              </div>
+
               <div className="space-y-2 mb-4">
-                <p className="text-[13px] font-semibold text-white/70 mb-1">What the stats mean:</p>
+                <p className="text-[13px] font-semibold text-white/70 mb-1">Reading the Stats:</p>
                 {[
-                  { color: 'bg-cyan-400', title: 'Peak', desc: 'Your fastest speed from the first few reps — your baseline when you\'re freshest.' },
-                  { color: 'bg-emerald-400', title: 'Variability', desc: 'How much your speed changed rep to rep. Under 8% is very consistent; over 15% means big swings.' },
-                  { color: 'bg-white/60', title: 'Effective Reps', desc: 'Reps where your speed stayed within 10% of your best. These are your highest-quality reps.' },
+                  { color: 'bg-cyan-400', title: 'Baseline', desc: 'Your starting speed from the first few reps when you\'re freshest. This becomes your reference point.' },
+                  { color: 'bg-emerald-400', title: 'Variability', desc: 'How consistent your speed is. Low (< 8%) = steady technique. High (> 15%) = inconsistent effort or form.' },
+                  { color: 'bg-white/60', title: 'Effective Reps', desc: 'Reps where speed stayed within 10% of baseline. These deliver the best training stimulus for strength gains.' },
                 ].map((item, i) => (
                   <div key={i} className="flex items-start gap-2.5">
                     <div className={`w-2 h-2 rounded-full ${item.color} mt-1.5 shrink-0`} />
@@ -702,12 +736,27 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
                   </div>
                 ))}
               </div>
+              
+              <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 p-3 mb-4">
+                <p className="text-[12px] text-white/60 leading-relaxed">
+                  <span className="font-semibold text-amber-400">Pro Tip:</span> When velocity drops below 20% of baseline, it’s a sign your muscles are approaching failure. This is the ideal stopping point for strength gains without excessive fatigue.
+                </p>
+              </div>
+              <div className="rounded-xl bg-orange-500/10 border border-orange-500/20 p-3 mb-4">
+                <p className="text-[12px] text-white/60 leading-relaxed">
+                  <span className="font-semibold text-orange-400">Velocity Surge:</span> If you see a bar spike above baseline (orange), it may indicate compensatory momentum — using body swing to complete the rep when muscles are too fatigued. This is a sign of fatigue even though velocity increased.
+                </p>
+              </div>
               <div className="pt-3 border-t border-white/[0.08]">
                 <p className="text-[12px] font-semibold text-white/50 mb-2">Bar Colors</p>
                 <div className="flex flex-wrap gap-x-5 gap-y-1.5">
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-2 rounded-sm bg-cyan-400 opacity-90" />
                     <span className="text-[12px] text-white/50">Effective — strong output</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-2 rounded-sm bg-orange-500 opacity-90" />
+                    <span className="text-[12px] text-white/50">Surge — compensatory momentum</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-2 rounded-sm bg-slate-600 opacity-50" />

@@ -533,8 +533,55 @@ export const computeRepMetrics = (repData) => {
   const absVelocityProfile = velocityProfile.map(v => Math.abs(v));
   const peakLinearVelocity = Math.max(...absVelocityProfile);
   
-  // Mean velocity (average of absolute velocities, industry metric)
-  const meanLinearVelocity = mean(absVelocityProfile);
+  // ============================================================================
+  // MEAN PROPULSIVE VELOCITY (MPV) — Better for fatigue detection than MCV
+  // ============================================================================
+  // MPV = Mean velocity during the PROPULSIVE phase only
+  // Propulsive phase: when net acceleration > 0 (actively pushing/accelerating the weight)
+  // Once accel drops to ≤ 0, the "braking" phase begins — excluded from MPV
+  //
+  // Why MPV > MCV for fatigue:
+  //   - MCV includes deceleration phase (physics, not effort) — dilutes signal
+  //   - MPV captures only the "push" effort — more sensitive to fatigue
+  //   - González-Badillo et al.: MPV correlates better with %1RM and fatigue state
+  // ============================================================================
+  
+  // Find propulsive phase: samples where net acceleration > small threshold
+  // Use a small positive threshold to filter noise (0.1 m/s² ≈ 1% of gravity)
+  const PROPULSIVE_THRESHOLD = 0.1;
+  const propulsiveIndices = [];
+  
+  // Find the main concentric (lifting) phase by looking for sustained positive acceleration
+  let inPropulsive = false;
+  let propulsiveStart = -1;
+  let propulsiveEnd = -1;
+  
+  for (let i = 0; i < netAccel.length; i++) {
+    if (netAccel[i] > PROPULSIVE_THRESHOLD) {
+      if (!inPropulsive) {
+        inPropulsive = true;
+        propulsiveStart = i;
+      }
+      propulsiveIndices.push(i);
+    } else if (inPropulsive && netAccel[i] <= 0) {
+      // Propulsive phase ended — record end and break (first propulsive phase only)
+      propulsiveEnd = i;
+      break;
+    }
+  }
+  
+  // Calculate MPV from propulsive phase velocities
+  let meanPropulsiveVelocity = 0;
+  if (propulsiveIndices.length > 2) {
+    const propulsiveVelocities = propulsiveIndices.map(i => Math.abs(velocityProfile[i]));
+    meanPropulsiveVelocity = mean(propulsiveVelocities);
+  } else {
+    // Fallback to MCV if propulsive phase not detected (sensor noise, short rep)
+    meanPropulsiveVelocity = mean(absVelocityProfile);
+  }
+  
+  // Also keep MCV for reference (legacy compatibility)
+  const meanConcentricVelocity = mean(absVelocityProfile);
   
   // Peak acceleration from baseline
   const accelFromBaseline = accelMag.map(a => Math.abs(a - gravityBaseline));
@@ -598,7 +645,8 @@ export const computeRepMetrics = (repData) => {
     peakAcceleration,
     peakAccelerationAbsolute,
     peakVelocity: peakLinearVelocity, // TRUE peak velocity in m/s
-    meanVelocity: meanLinearVelocity, // Mean velocity in m/s
+    meanVelocity: meanPropulsiveVelocity, // MPV (Mean Propulsive Velocity) — primary metric for fatigue
+    meanConcentricVelocity, // MCV — legacy/fallback, includes deceleration phase
     velocityProfile, // Full velocity curve for visualization
     gravityBaseline, // Gravity estimate used (for debugging)
     
@@ -891,18 +939,58 @@ export const computeFatigueIndicators = (repMetricsList, mlClassification = null
   const peaks = repMetricsList.map(m => m.peak || 0);
   
   // === D_ω: Peak Angular Velocity Change (35%) ===
-  // Only penalize velocity DROPS (fatigue), not increases (warming up)
+  // Penalize BOTH velocity drops AND significant surges:
+  // - Velocity DROP = muscles too tired to move fast (classic fatigue)
+  // - Velocity SURGE (>20%) = compensatory swinging/momentum (form breakdown from fatigue)
+  // Small velocity increases (<20%) are allowed for warming up
+  // Both large drops and surges are signs of fatigue
   let D_omega, gyroDirection;
+  let rawVelocityChangePct = 0; // For display purposes (show full change)
+  const SURGE_THRESHOLD = 0.20; // Allow 20% velocity increase for warmup
+  
   if (hasGyro) {
     const avgGyroFirst = mean(gyroPeaks.slice(0, third));
     const avgGyroLast = mean(gyroPeaks.slice(-third));
-    D_omega = avgGyroFirst > 0 ? Math.max(0, (avgGyroFirst - avgGyroLast) / avgGyroFirst) : 0;
-    gyroDirection = avgGyroLast < avgGyroFirst ? 'drop' : 'surge';
+    const velocityChange = avgGyroFirst > 0 ? (avgGyroFirst - avgGyroLast) / avgGyroFirst : 0;
+    rawVelocityChangePct = velocityChange * 100; // Store for display
+    
+    if (velocityChange >= 0) {
+      // Velocity dropped (normal fatigue pattern)
+      D_omega = velocityChange;
+      gyroDirection = 'drop';
+    } else {
+      // Velocity increased (potential momentum compensation)
+      // Only penalize if surge exceeds warmup threshold
+      const surgeAmount = Math.abs(velocityChange);
+      if (surgeAmount > SURGE_THRESHOLD) {
+        // Compensatory momentum detected — penalize the excess beyond warmup threshold
+        D_omega = surgeAmount - SURGE_THRESHOLD;
+        gyroDirection = 'surge';
+      } else {
+        // Minor increase — probably just warming up, don't penalize
+        D_omega = 0;
+        gyroDirection = 'warmup';
+      }
+    }
   } else {
     const avgPeakFirst = mean(peaks.slice(0, third));
     const avgPeakLast = mean(peaks.slice(-third));
-    D_omega = avgPeakFirst > 0 ? Math.max(0, (avgPeakFirst - avgPeakLast) / avgPeakFirst) : 0;
-    gyroDirection = avgPeakLast < avgPeakFirst ? 'drop' : 'surge';
+    const velocityChange = avgPeakFirst > 0 ? (avgPeakFirst - avgPeakLast) / avgPeakFirst : 0;
+    rawVelocityChangePct = velocityChange * 100;
+    
+    if (velocityChange >= 0) {
+      D_omega = velocityChange;
+      gyroDirection = 'drop';
+    } else {
+      const surgeAmount = Math.abs(velocityChange);
+      if (surgeAmount > SURGE_THRESHOLD) {
+        D_omega = surgeAmount - SURGE_THRESHOLD;
+        gyroDirection = 'surge';
+      } else {
+        D_omega = 0;
+        gyroDirection = 'warmup';
+      }
+    }
   }
   
   // === I_T: Tempo/Duration Increase (25%) ===
@@ -1146,9 +1234,10 @@ export const computeFatigueIndicators = (repMetricsList, mlClassification = null
   
   if (hasGyro && D_omega > 0.15) {
     if (gyroDirection === 'surge') {
-      keyFindings.push(`⚠️ Peak angular velocity SURGED ${(D_omega * 100).toFixed(1)}% — compensatory swinging`);
-    } else {
-      keyFindings.push(`⚠️ Peak angular velocity dropped ${(D_omega * 100).toFixed(1)}% — muscles slowing`);
+      // Show the actual surge percentage (negative change means increase)
+      keyFindings.push(`⚠️ Peak angular velocity SURGED ${Math.abs(rawVelocityChangePct).toFixed(1)}% — compensatory swinging/momentum`);
+    } else if (gyroDirection === 'drop') {
+      keyFindings.push(`⚠️ Peak angular velocity dropped ${rawVelocityChangePct.toFixed(1)}% — muscles slowing`);
     }
   }
   
@@ -1174,6 +1263,7 @@ export const computeFatigueIndicators = (repMetricsList, mlClassification = null
     fatigueScore: Math.round(fatigueScore * 10) / 10,
     fatigueLevel,
     D_omega: Math.round(D_omega * 10000) / 10000,
+    rawVelocityChangePct: Math.round(rawVelocityChangePct * 100) / 100, // Raw change for display
     I_T: Math.round(I_T * 10000) / 10000,
     I_J: Math.round(I_J * 10000) / 10000,
     I_S: Math.round(I_S * 10000) / 10000,
@@ -1212,12 +1302,13 @@ export const computeFatigueIndicators = (repMetricsList, mlClassification = null
       sessionQuality: getSessionQuality(fatigueScore),
       consistencyRating: getConsistencyRating(consistencyScore),
       fatigueComponents: {
-        D_omega: Math.round(D_omega * 100 * 100) / 100,
+        D_omega: Math.round(D_omega * 100 * 100) / 100, // Penalized value (0 for warmup, reduced for surges)
+        rawVelocityChange: Math.round(rawVelocityChangePct * 100) / 100, // Actual velocity change %
         I_T: Math.round(I_T * 100 * 100) / 100,
         I_J: Math.round(I_J * 100 * 100) / 100,
         I_S: Math.round(I_S * 100 * 100) / 100,
         gyroDirection,
-        formula: 'F = 0.35·D_ω + 0.25·I_T + 0.20·I_J + 0.20·I_S'
+        formula: 'F = 0.35·D_ω + 0.25·I_T + 0.20·I_J + 0.20·I_S (surge detected = momentum compensation)'
       },
       keyFindings
     },

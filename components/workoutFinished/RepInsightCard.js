@@ -2,11 +2,11 @@ import { useState } from 'react';
 import ReactDOM from 'react-dom';
 
 export default function RepInsightCard({ repData, repNumber, targetROM, romUnit: propRomUnit, romCalibrated }) {
-  const { time, rom, peakVelocity, chartData, liftingTime, loweringTime, classification, smoothnessScore, romFulfillment, romUnit, peakTimePercent } = repData;
+  const { time, rom, peakVelocity, meanVelocity, chartData, liftingTime, loweringTime, classification, smoothnessScore, romFulfillment, romUnit, peakTimePercent } = repData;
   const [showConfidenceOverlay, setShowConfidenceOverlay] = useState(false);
-  const [showPeakVelocityInfo, setShowPeakVelocityInfo] = useState(false);
+  const [showVelocityInfo, setShowVelocityInfo] = useState(false);
   
-  // Drag-to-dismiss state for Peak Velocity overlay
+  // Drag-to-dismiss state for Velocity overlay
   const [dragStartY, setDragStartY] = useState(0);
   const [dragCurrentY, setDragCurrentY] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -25,7 +25,7 @@ export default function RepInsightCard({ repData, repNumber, targetROM, romUnit:
   const closeOverlay = () => {
     setIsClosingOverlay(true);
     setTimeout(() => {
-      setShowPeakVelocityInfo(false);
+      setShowVelocityInfo(false);
       setIsClosingOverlay(false);
       setDragCurrentY(0);
     }, 250);
@@ -91,7 +91,11 @@ export default function RepInsightCard({ repData, repNumber, targetROM, romUnit:
   const phaseTotalTime = (liftingTime || 0) + (loweringTime || 0);
   const repTime = phaseTotalTime > 0 ? phaseTotalTime : (time ? parseFloat(time) : null);
   const repRom = rom ? parseFloat(rom) : null;
-  const repPeakVelocity = peakVelocity != null ? parseFloat(peakVelocity) : null;
+  // Use Mean Propulsive Velocity (MPV) as primary - more sensitive to fatigue than MCV
+  // MPV only includes the propulsive phase (net accel > 0), excluding deceleration
+  const mcv = meanVelocity != null ? parseFloat(meanVelocity) : null;
+  const pv = peakVelocity != null ? parseFloat(peakVelocity) : null;
+  const repMeanVelocity = mcv != null && mcv > 0 ? mcv : pv;
   const hasChartData = chartData && chartData.length > 0;
 
   // ROM target reference - use calibrated targetROM or fallback to 120°
@@ -115,11 +119,11 @@ export default function RepInsightCard({ repData, repNumber, targetROM, romUnit:
   };
   const romDesc = getRomDescription();
 
-  // Peak velocity normalized to m/s scale (typical range: 0.1 - 1.5 m/s for strength exercises)
+  // Mean velocity normalized to m/s scale (typical range: 0.1 - 1.5 m/s for strength exercises)
   // Industry standard ranges:
   //   > 1.3 m/s = Speed/Power | 0.75-1.3 = Strength-speed | 0.5-0.75 = Strength | < 0.5 = Max strength
   const maxExpectedVelocity = 1.5; // m/s
-  const velocityProgress = repPeakVelocity != null ? Math.min(100, (repPeakVelocity / maxExpectedVelocity) * 100) : null;
+  const velocityProgress = repMeanVelocity != null ? Math.min(100, (repMeanVelocity / maxExpectedVelocity) * 100) : null;
 
   // Velocity zone classification
   const getVelocityZone = (v) => {
@@ -130,7 +134,7 @@ export default function RepInsightCard({ repData, repNumber, targetROM, romUnit:
     if (v >= 0.3) return { label: 'Max Strength', color: '#f97316' };
     return { label: 'Slow', color: '#ef4444' };
   };
-  const velocityZone = getVelocityZone(repPeakVelocity);
+  const velocityZone = getVelocityZone(repMeanVelocity);
 
   // Classification labels and colors for overlay
   const classLabels = [
@@ -489,7 +493,7 @@ export default function RepInsightCard({ repData, repNumber, targetROM, romUnit:
             )}
           </div>
 
-          {/* Right Card - Peak Velocity with chart background */}
+          {/* Right Card - Mean Velocity with chart background */}
           <div className="relative bg-black/30 rounded-xl sm:rounded-2xl overflow-hidden p-3 sm:p-5 lg:p-6 flex flex-col justify-between" style={{ minHeight: 'clamp(140px, 40vw, 280px)' }}>
             {/* Mini chart background - only render with actual data */}
             {hasChartData && (
@@ -563,11 +567,11 @@ export default function RepInsightCard({ repData, repNumber, targetROM, romUnit:
             )}
             
             <div className="relative z-10 flex items-center justify-between">
-              <span className="text-[10px] sm:text-xs lg:text-sm font-medium text-gray-300">Peak Velocity</span>
+              <span className="text-[10px] sm:text-xs lg:text-sm font-medium text-gray-300">Mean Velocity</span>
               <button
-                onClick={(e) => { e.stopPropagation(); setShowPeakVelocityInfo(true); }}
+                onClick={(e) => { e.stopPropagation(); setShowVelocityInfo(true); }}
                 className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-white/[0.08] flex items-center justify-center text-white/40 active:text-white/70 active:bg-white/[0.15] transition-colors"
-                aria-label="What is peak velocity?"
+                aria-label="What is mean velocity?"
               >
                 <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 100 20 10 10 0 000-20z" />
@@ -575,9 +579,9 @@ export default function RepInsightCard({ repData, repNumber, targetROM, romUnit:
               </button>
             </div>
             <div className="relative z-10">
-              {repPeakVelocity != null ? (
+              {repMeanVelocity != null ? (
                 <>
-                  <span className="text-xl sm:text-3xl lg:text-4xl font-bold text-green-400">{repPeakVelocity.toFixed(2)}</span>
+                  <span className="text-xl sm:text-3xl lg:text-4xl font-bold text-green-400">{repMeanVelocity.toFixed(2)}</span>
                   <span className="text-[10px] sm:text-xs lg:text-sm text-gray-400 ml-1">m/s</span>
                 </>
               ) : (
@@ -621,8 +625,8 @@ export default function RepInsightCard({ repData, repNumber, targetROM, romUnit:
         </div>
       </div>
 
-      {/* ── Peak Velocity Info Overlay ── */}
-      {showPeakVelocityInfo && typeof document !== 'undefined' && ReactDOM.createPortal(
+      {/* ── Mean Velocity Info Overlay ── */}
+      {showVelocityInfo && typeof document !== 'undefined' && ReactDOM.createPortal(
         <div
           className="fixed inset-0 z-[9999] flex items-end justify-center"
           onClick={closeOverlay}
@@ -644,21 +648,71 @@ export default function RepInsightCard({ repData, repNumber, targetROM, romUnit:
             </div>
 
             <div className="px-5 overflow-y-auto" style={{ maxHeight: '65vh' }}>
-              <h4 className="text-[16px] font-bold text-white mb-3">What is Peak Velocity?</h4>
+              <h4 className="text-[16px] font-bold text-white mb-3">What is Mean Velocity?</h4>
               <p className="text-[13px] text-white/60 leading-relaxed mb-4">
-                This is the fastest speed you moved the weight during this rep. Think of it like a speedometer for your lift — it shows how powerfully you pushed or pulled.
+                Mean velocity is your average lifting speed during the "push" phase of each rep — specifically, the part where you're actively accelerating the weight upward or outward.
               </p>
               
+              {/* Visual: Rep Phase Diagram */}
               <div className="rounded-xl bg-white/[0.04] p-4 mb-4">
-                <p className="text-[13px] font-semibold text-white/70 mb-2">Why It Matters</p>
+                <p className="text-[11px] text-white/50 mb-2 text-center">What happens during a rep:</p>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex-1 text-center">
+                    <div className="w-full h-10 rounded-lg bg-cyan-500/20 flex items-center justify-center mb-1">
+                      <svg className="w-4 h-4 text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+                    </div>
+                    <p className="text-[10px] text-cyan-400 font-medium">Push Phase</p>
+                    <p className="text-[9px] text-white/40">Measured here</p>
+                  </div>
+                  <div className="text-white/20">→</div>
+                  <div className="flex-1 text-center">
+                    <div className="w-full h-10 rounded-lg bg-slate-500/20 flex items-center justify-center mb-1">
+                      <svg className="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/></svg>
+                    </div>
+                    <p className="text-[10px] text-slate-400 font-medium">Slowdown</p>
+                    <p className="text-[9px] text-white/40">Excluded</p>
+                  </div>
+                  <div className="text-white/20">→</div>
+                  <div className="flex-1 text-center">
+                    <div className="w-full h-10 rounded-lg bg-purple-500/20 flex items-center justify-center mb-1">
+                      <svg className="w-4 h-4 text-purple-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+                    </div>
+                    <p className="text-[10px] text-purple-400 font-medium">Lower</p>
+                    <p className="text-[9px] text-white/40">Separate metric</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl bg-white/[0.04] p-4 mb-4">
+                <p className="text-[13px] font-semibold text-white/70 mb-2">Why This Matters</p>
                 <p className="text-[13px] text-white/50 leading-relaxed">
-                  When you're fresh, you move the weight faster. As your muscles get tired, your speed naturally drops. Watching this number helps you understand when you're pushing yourself and when you might need more rest.
+                  By focusing on the active "push" phase, we get a cleaner signal of your true effort. This method is more sensitive to fatigue — you'll see velocity drop sooner when muscles are tiring, helping you train smarter.
                 </p>
               </div>
 
-              <div className="rounded-xl bg-green-500/10 border border-green-500/20 p-4">
-                <p className="text-[13px] text-white/60 leading-relaxed">
-                  <span className="font-semibold text-green-400">In Simple Terms:</span> Higher velocity = more power and energy. If your speed drops a lot during your set, it means your muscles are working hard — which is often exactly what you want for building strength!
+              {/* Velocity Zones */}
+              <div className="mb-4">
+                <p className="text-[12px] font-semibold text-white/60 mb-2">Velocity Zones</p>
+                <div className="space-y-1.5">
+                  {[
+                    { range: '> 1.3 m/s', label: 'Power', color: 'bg-cyan-400', desc: 'Explosive, fast movements' },
+                    { range: '0.75-1.3', label: 'Speed-Strength', color: 'bg-green-400', desc: 'Athletic power training' },
+                    { range: '0.5-0.75', label: 'Strength', color: 'bg-yellow-400', desc: 'Moderate, controlled lifts' },
+                    { range: '< 0.5 m/s', label: 'Max Strength', color: 'bg-orange-400', desc: 'Heavy, grinding reps' },
+                  ].map((z, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <div className={`w-2 h-2 rounded-full ${z.color}`} />
+                      <span className="text-[11px] text-white/60 w-16">{z.range}</span>
+                      <span className="text-[11px] text-white/80 font-medium">{z.label}</span>
+                      <span className="text-[10px] text-white/40 ml-auto">{z.desc}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-xl bg-green-500/10 border border-green-500/20 p-3">
+                <p className="text-[12px] text-white/60 leading-relaxed">
+                  <span className="font-semibold text-green-400">Bottom Line:</span> Watch your velocity across reps. A steady decline means your muscles are working hard. A sudden drop signals it may be time to rest!
                 </p>
               </div>
             </div>

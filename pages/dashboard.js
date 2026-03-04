@@ -8,7 +8,6 @@ import EquipmentIcon from '../components/EquipmentIcon';
 import WorkoutCard from '../components/WorkoutCard';
 import LoadingScreen from '../components/LoadingScreen';
 import LoadTrendIndicator from '../components/LoadTrendIndicator';
-import MovementQuality from '../components/MovementQuality';
 import EquipmentDistributionCard from '../components/EquipmentDistributionCard';
 import TotalCaloriesCard from '../components/TotalCaloriesCard';
 import { ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -17,7 +16,6 @@ import { useWorkoutStreak } from '../utils/useWorkoutStreak';
 import { useAuth } from '../context/AuthContext';
 import { useWorkoutLogs } from '../utils/useWorkoutLogs';
 import { parseLogDate } from '../utils/workoutCache';
-import { useMovementQuality } from '../hooks/useMovementQuality';
 import ActivityOverview from '../components/ActivityOverview';
 import WorkoutStreak from '../components/WorkoutStreak';
 import { useBluetooth } from '../context/BluetoothProvider';
@@ -111,9 +109,6 @@ export default function Dashboard() {
     includeCalendar: true,
   });
 
-  // Fetch movement quality analytics from Firestore
-  const { qualityData: movementQualityData, loading: qualityLoading } = useMovementQuality(logs, hasWorkouts);
-  
   const router = useRouter();
   const currentPath = router.pathname;
   
@@ -1176,17 +1171,6 @@ export default function Dashboard() {
                 <div className="rounded-2xl bg-white/[0.07] flex-1" style={{ minHeight: '100px' }} />
               </div>
             </div>
-          </section>
-
-          {/* Movement Quality Card - Weekly aggregated IMU metrics */}
-          <section className="mb-4 md:mb-5 content-fade-up-4">
-            <MovementQuality
-              equipmentData={movementQualityData}
-              hasData={movementQualityData !== null}
-              loading={workoutsLoading || qualityLoading}
-              animate={true}
-              onFilterChange={(filter) => console.log('Filter changed:', filter)}
-            />
           </section>
 
           {/* Spacer for bottom nav */}

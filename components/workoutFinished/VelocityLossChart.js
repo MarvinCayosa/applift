@@ -2,14 +2,16 @@
  * VelocityLossChart Component
  * 
  * Industry-standard velocity-based training (VBT) visualization.
- * Uses REAL peak velocity (m/s) from accelerometer integration — not gyroscope.
+ * Uses Mean Propulsive Velocity (MPV) from accelerometer integration,
+ * with MCV/peak velocity as fallback when MPV is unavailable.
  * 
  * Based on methodology from:
  * - PUSH Band, Gymaware, Tendo Unit
  * - González-Badillo velocity loss research
  * 
  * Key metrics:
- * - Peak velocity per rep (bar chart, real m/s)
+ * - Velocity per rep (bar chart, MPV in m/s)
+ * - Baseline velocity (max of first 3 valid MPVs)
  * - Velocity loss threshold line (industry standard: 10-20%)
  * - Color coding: effective reps (cyan) vs fatigued reps (gray)
  */
@@ -35,7 +37,7 @@ export default function VelocityLossChart({
     filteredSets.forEach(set => {
       if (set.repsData && Array.isArray(set.repsData)) {
         set.repsData.forEach((rep, idx) => {
-          // Prefer MCV (meanVelocity) as primary; fall back to peakVelocity
+          // Prefer MPV (meanVelocity) as primary; fall back to peakVelocity
           const mcv = parseFloat(rep.meanVelocity) || 0;
           const pv = parseFloat(rep.peakVelocity) || 0;
           let velocity = mcv > 0 ? mcv : pv;
@@ -169,7 +171,7 @@ export default function VelocityLossChart({
       {/* Key stats row */}
       <div className="grid grid-cols-3 gap-2 mb-4">
         <div className="bg-black/30 rounded-xl p-3 text-center">
-          <p className="text-xs text-gray-400 mb-1">Peak Velocity</p>
+          <p className="text-xs text-gray-400 mb-1">Baseline</p>
           <p className="text-lg font-bold text-cyan-400">{chartMetrics.baselineVelocity}</p>
           <p className="text-[10px] text-gray-500">m/s</p>
         </div>
