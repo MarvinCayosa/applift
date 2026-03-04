@@ -384,7 +384,15 @@ export const onRepDetected = async (repInfo = {}) => {
   // For buffer samples: use relativeTime or timestamp
   const baseTimestamp = samplesToUse[0]?.timestamp || samplesToUse[0]?.relativeTime || 0;
   const endTimestamp = samplesToUse[samplesToUse.length - 1]?.timestamp || samplesToUse[samplesToUse.length - 1]?.relativeTime || baseTimestamp;
-  const duration = repInfo.duration ? repInfo.duration * 1000 : (endTimestamp - baseTimestamp);
+  
+  // *** ALWAYS calculate duration from actual sample timestamps ***
+  // This ensures the stored duration reflects the TRUE rep span
+  // (including boundary padding for lead-in and trail-out)
+  // repInfo.duration from RepCounter should already be correct, but sample timestamps are the source of truth
+  const duration = endTimestamp - baseTimestamp;
+  if (repInfo.duration && Math.abs(repInfo.duration * 1000 - duration) > 500) {
+    console.log(`[IMUStreaming] Duration mismatch: repInfo=${(repInfo.duration * 1000).toFixed(0)}ms, samples=${duration.toFixed(0)}ms - using sample duration`);
+  }
 
   // Convert samples to ML-ready format
   const mlSamples = samplesToUse.map(sample => 

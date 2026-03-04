@@ -152,81 +152,114 @@ function computeLocalVelocity(samples) {
  * @param {Array} samples - IMU sample objects with accelX, accelY, accelZ, relativeTime
  * @returns {{ liftingTime: number, loweringTime: number }}
  */
+/**
+ * Compute concentric/eccentric phase timings using ORIENTATION ANGLES (pitch/roll/yaw).
+ * 
+ * This mirrors the ROM computation approach:
+ * - Find the primary rotation axis (highest angular range)
+ * - Find the physical turning point (the extremum furthest from both edges)
+ * - Concentric = start → turning point (lifting phase)
+ * - Eccentric  = turning point → end (lowering phase)
+ * 
+ * Requires samples that include pitch/roll/yaw fields (IMU fusion output).
+ */
 function computeLocalPhaseTimings(samples) {
   if (!samples || samples.length < 3) {
     return { liftingTime: 0, loweringTime: 0 };
   }
 
+  const timestamps = samples.map(s => s.relativeTime ?? s.timestamp_ms ?? s.timestamp ?? 0);
+  const hasValidTimestamps = timestamps.some(t => t > 0) &&
+    (timestamps[timestamps.length - 1] - timestamps[0]) > 0;
+
+  // ── Orientation-based detection (quaternion fusion angles) ──────────────────
+  const pitch = samples.map(s => s.pitch ?? 0);
+  const roll  = samples.map(s => s.roll  ?? 0);
+  const yaw   = samples.map(s => s.yaw   ?? 0);
+  const hasOrientation = pitch.some(p => p !== 0) || roll.some(r => r !== 0);
+
+  if (hasOrientation) {
+    // Select the axis with the highest angular range (same as ROMComputer)
+    const pitchRange = Math.max(...pitch) - Math.min(...pitch);
+    const rollRange  = Math.max(...roll)  - Math.min(...roll);
+    const yawRange   = Math.max(...yaw)   - Math.min(...yaw);
+
+    let primarySignal;
+    if (pitchRange >= rollRange && pitchRange >= yawRange) primarySignal = pitch;
+    else if (rollRange >= yawRange) primarySignal = roll;
+    else primarySignal = yaw;
+
+    const n = primarySignal.length;
+    const maxIdx = primarySignal.indexOf(Math.max(...primarySignal));
+    const minIdx = primarySignal.indexOf(Math.min(...primarySignal));
+
+    // The turning point is the extremum that is most "internal" (furthest from both edges).
+    // e.g. for a concentration curl: pitch starts high (arm down), drops to minimum at
+    // the top of the curl (internal), then rises back — so minIdx is the turning point.
+    const maxEdgeDist = Math.min(maxIdx, n - 1 - maxIdx);
+    const minEdgeDist = Math.min(minIdx, n - 1 - minIdx);
+
+    let transitionIdx;
+    if (maxEdgeDist > minEdgeDist) transitionIdx = maxIdx;
+    else if (minEdgeDist > maxEdgeDist) transitionIdx = minIdx;
+    else transitionIdx = Math.abs(maxIdx - n / 2) <= Math.abs(minIdx - n / 2) ? maxIdx : minIdx;
+
+    // Guard: if turning point is at an edge, fall back to midpoint
+    if (transitionIdx <= 0 || transitionIdx >= n - 1) transitionIdx = Math.round(n / 2);
+
+    let liftingTime, loweringTime;
+    if (hasValidTimestamps) {
+      liftingTime  = (timestamps[transitionIdx]  - timestamps[0])     / 1000;
+      loweringTime = (timestamps[n - 1]           - timestamps[transitionIdx]) / 1000;
+    } else {
+      const totalDuration = n * 0.05; // ~50 ms per sample at 20 Hz
+      liftingTime  = (transitionIdx / n) * totalDuration;
+      loweringTime = ((n - transitionIdx) / n) * totalDuration;
+    }
+
+    console.log(`[PhaseTimings] Orientation-based: axis=${pitchRange >= rollRange && pitchRange >= yawRange ? 'pitch' : rollRange >= yawRange ? 'roll' : 'yaw'}, turningPt idx=${transitionIdx}/${n-1} (${hasValidTimestamps ? timestamps[transitionIdx] : '?'}ms), lifting=${liftingTime.toFixed(2)}s, lowering=${loweringTime.toFixed(2)}s`);
+    return { liftingTime: Math.max(0, liftingTime), loweringTime: Math.max(0, loweringTime) };
+  }
+
+  // ── Fallback: accelerometer-based ───────────────────────────────────────────
+  // Only used when orientation angles are unavailable.
   const accelX = samples.map(s => s.accelX || 0);
   const accelY = samples.map(s => s.accelY || 0);
   const accelZ = samples.map(s => s.accelZ || 0);
-
-  // Step 1: Determine primary movement axis (highest range)
   const xRange = Math.max(...accelX) - Math.min(...accelX);
   const yRange = Math.max(...accelY) - Math.min(...accelY);
   const zRange = Math.max(...accelZ) - Math.min(...accelZ);
-
   let primarySignal;
-  if (xRange >= yRange && xRange >= zRange) {
-    primarySignal = accelX;
-  } else if (yRange >= xRange && yRange >= zRange) {
-    primarySignal = accelY;
-  } else {
-    primarySignal = accelZ;
-  }
+  if (xRange >= yRange && xRange >= zRange) primarySignal = accelX;
+  else if (yRange >= zRange) primarySignal = accelY;
+  else primarySignal = accelZ;
 
-  // Step 2: Find the most prominent peak (by absolute value)
-  let bestIdx = 0;
-  let bestAbs = 0;
-
+  let bestIdx = 0, bestAbs = 0;
   for (let i = 1; i < primarySignal.length - 1; i++) {
-    const val = primarySignal[i];
-    const prev = primarySignal[i - 1];
-    const next = primarySignal[i + 1];
-    // Check if it's a local peak (positive) or valley (negative)
-    const isPeak = (val > prev && val > next) || (val < prev && val < next);
-    if (isPeak && Math.abs(val) > bestAbs) {
-      bestAbs = Math.abs(val);
-      bestIdx = i;
+    const v = primarySignal[i];
+    if (((v > primarySignal[i-1] && v > primarySignal[i+1]) ||
+         (v < primarySignal[i-1] && v < primarySignal[i+1])) && Math.abs(v) > bestAbs) {
+      bestAbs = Math.abs(v); bestIdx = i;
     }
   }
-
-  // Fallback: use index of max absolute value
   if (bestAbs === 0) {
-    const absVals = primarySignal.map(Math.abs);
-    bestIdx = absVals.indexOf(Math.max(...absVals));
+    const abs = primarySignal.map(Math.abs);
+    bestIdx = abs.indexOf(Math.max(...abs));
   }
-
-  // Guard edges
   if (bestIdx <= 0) bestIdx = 1;
   if (bestIdx >= primarySignal.length - 1) bestIdx = primarySignal.length - 2;
 
-  // Step 3: Calculate phase durations
-  // Try to use timestamps from samples
-  const timestamps = samples.map(s => s.relativeTime ?? s.timestamp_ms ?? s.timestamp ?? 0);
-  const hasValidTimestamps = timestamps.some(t => t > 0) && (timestamps[timestamps.length - 1] - timestamps[0]) > 0;
-
   let liftingTime, loweringTime;
-
   if (hasValidTimestamps) {
-    const startTime = timestamps[0];
-    const peakTime = timestamps[bestIdx];
-    const endTime = timestamps[timestamps.length - 1];
-    liftingTime = (peakTime - startTime) / 1000;
-    loweringTime = (endTime - peakTime) / 1000;
+    liftingTime  = (timestamps[bestIdx]              - timestamps[0]) / 1000;
+    loweringTime = (timestamps[timestamps.length - 1] - timestamps[bestIdx]) / 1000;
   } else {
-    // Estimate from sample count (~50ms per sample at 20Hz)
-    const totalDuration = primarySignal.length * 0.05;
-    liftingTime = (bestIdx / primarySignal.length) * totalDuration;
-    loweringTime = ((primarySignal.length - bestIdx) / primarySignal.length) * totalDuration;
+    const total = primarySignal.length * 0.05;
+    liftingTime  = (bestIdx / primarySignal.length) * total;
+    loweringTime = ((primarySignal.length - bestIdx) / primarySignal.length) * total;
   }
-
-  // Swap: acceleration peak occurs early in the concentric phase, not at the physical turning point.
-  // Swap output to match orientation-based convention: liftingTime = concentric, loweringTime = eccentric.
-  return {
-    liftingTime: Math.max(0, loweringTime),
-    loweringTime: Math.max(0, liftingTime)
-  };
+  // Swap: accel peak comes early in concentric; swap so liftingTime = concentric.
+  return { liftingTime: Math.max(0, loweringTime), loweringTime: Math.max(0, liftingTime) };
 }
 
 export function useWorkoutSession({ 
@@ -295,7 +328,16 @@ export function useWorkoutSession({
   // When target reps are reached at the peak, we delay completion to capture lowering phase
   const finalRepDelayRef = useRef(null);
   const awaitingFinalLoweringRef = useRef(false);
+  const delayCompletedRef = useRef(false); // Track when the lowering delay has completed
+  const [setCompletionTrigger, setSetCompletionTrigger] = useState(0); // Force effect re-run
   const FINAL_LOWERING_DELAY_MS = 2000; // 2 seconds to capture lowering phase
+
+  // *** QUATERNION-BASED REP COMPLETION ***
+  // When a rep is detected (accel peak/valley), we DON'T immediately fire onRepDetected.
+  // Instead we wait until the orientation (pitch/roll) returns to the starting position,
+  // meaning the full eccentric phase has been captured in the sample buffer.
+  const pendingRepCallbackRef = useRef(null);
+  // { repNumber, startPitch, detectedAtTime, lastRepMeta, romResult }
   
   // Rep counter
   const repCounterRef = useRef(new RepCounter());
@@ -429,10 +471,15 @@ export function useWorkoutSession({
       });
       
       // Rep counting - pass complete sample object for proper ML data storage
-      repCounterRef.current.addSample({
-        ...data,
-        relativeTime // Include relative time for timestamp
-      });
+      // *** STOP counting new reps once we're awaiting final eccentric capture ***
+      // This prevents overcounting during the 2-second set-finalization delay.
+      // The pitch-return check below still runs for the current pending rep.
+      if (!awaitingFinalLoweringRef.current) {
+        repCounterRef.current.addSample({
+          ...data,
+          relativeTime // Include relative time for timestamp
+        });
+      }
       
       // Feed quaternion data to ROMComputer for real ROM tracking
       if (romComputerRef.current && data.qw !== undefined) {
@@ -443,13 +490,34 @@ export function useWorkoutSession({
       setRepStats(newStats);
       
       // Check if a new rep was detected
-      if (newStats.repCount > lastRepCountRef.current) {
+      // Skip new rep detection if awaiting final eccentric (we're done counting)
+      if (!awaitingFinalLoweringRef.current && newStats.repCount > lastRepCountRef.current) {
         console.log(`[WorkoutSession] Rep ${newStats.repCount} detected!`);
         lastRepCountRef.current = newStats.repCount;
 
         // Clear the post-rollback flag now that a new rep has been detected
         postRollbackRef.current = false;
-        
+
+        // If a previous rep is still pending (unlikely but possible), fire it immediately
+        // with whatever samples are available now before starting the new pending rep.
+        if (pendingRepCallbackRef.current) {
+          const prev = pendingRepCallbackRef.current;
+          const prevRepData = repCounterRef.current.exportData();
+          const prevSamples = prevRepData.samples.filter(s => s.repNumber === prev.repNumber);
+          if (onRepDetectedRef.current && prevSamples.length > 0) {
+            console.log(`[WorkoutSession] Flushing pending rep ${prev.repNumber} (${prevSamples.length} samples) — next rep started`);
+            onRepDetectedRef.current({
+              repNumber: prev.repNumber,
+              duration: prev.lastRepMeta?.duration || (prevSamples.length * 0.1),
+              peakAcceleration: prev.lastRepMeta?.peakValue,
+              startTime: prev.lastRepMeta?.actualStartTime,
+              endTime: prevSamples[prevSamples.length - 1]?.relativeTime ?? prevSamples[prevSamples.length - 1]?.timestamp,
+              samples: prevSamples
+            });
+          }
+          pendingRepCallbackRef.current = null;
+        }
+
         // Complete the rep in ROMComputer to get real ROM value
         let repROMResult = null;
         if (romComputerRef.current) {
@@ -458,32 +526,104 @@ export function useWorkoutSession({
             console.log(`[WorkoutSession] Rep ${newStats.repCount} ROM: ${repROMResult.romValue.toFixed(1)}${repROMResult.unit === 'deg' ? '°' : ' cm'}${repROMResult.fulfillment ? ` (${repROMResult.fulfillment.toFixed(0)}% of target)` : ''}`);
           }
         }
-        
+
         // Get the precise boundary info from RepCounter
         const repData = repCounterRef.current.exportData();
         const lastRep = repData.reps[repData.reps.length - 1];
-        
-        // *** CRITICAL FIX: Extract samples directly from RepCounter by repNumber ***
-        // This matches index.html's approach - samples are assigned repNumber in allSamples
-        // We pass these samples directly instead of relying on time-based filtering
-        const samplesForRep = repData.samples.filter(s => s.repNumber === newStats.repCount);
-        console.log(`[WorkoutSession] Rep ${newStats.repCount}: extracted ${samplesForRep.length} samples from RepCounter (indices ${lastRep?.actualStartIndex}-${lastRep?.actualEndIndex})`);
-        
-        // Call onRepDetected callback with samples directly from RepCounter
-        // This is the SINGLE SOURCE OF TRUTH, like index.html
-        if (onRepDetectedRef.current) {
-          onRepDetectedRef.current({
+        const countDirection = repCounterRef.current?.countDirection || 'both';
+
+        // For BOTH mode (dumbbell): Rep is already counted at end of eccentric (full cycle)
+        // The samples are complete - fire callback immediately
+        if (countDirection === 'both') {
+          const repSamples = repData.samples.filter(s => s.repNumber === newStats.repCount);
+          console.log(`[WorkoutSession] Rep ${newStats.repCount} complete (full cycle), ${repSamples.length} samples`);
+          
+          if (onRepDetectedRef.current && repSamples.length > 0) {
+            const startIndex = repSamples[0]?.sampleIndex ?? lastRep?.actualStartIndex;
+            const endIndex = repSamples[repSamples.length - 1]?.sampleIndex ?? lastRep?.actualEndIndex;
+            
+            onRepDetectedRef.current({
+              repNumber: newStats.repCount,
+              duration: lastRep?.duration || (repSamples.length * 0.1),
+              peakAcceleration: lastRep?.peakValue,
+              startTime: lastRep?.actualStartTime ?? 0,
+              endTime: lastRep?.actualEndTime ?? relativeTime,
+              startIndex,
+              endIndex,
+              samples: repSamples
+            });
+          }
+        } else {
+          // For other modes (valley-to-peak, peak-to-valley): defer until pitch returns
+          // *** QUATERNION-BASED DEFERRED COMPLETION ***
+          // Don't call onRepDetected yet — the eccentric phase samples haven't arrived.
+          // Record the starting orientation so we can detect when the arm returns.
+          const repStartSampleIdx = lastRep?.actualStartIndex ?? 0;
+          const repStartPitch = repData.samples[repStartSampleIdx]?.pitch ?? data.pitch ?? 0;
+
+          pendingRepCallbackRef.current = {
             repNumber: newStats.repCount,
-            duration: lastRep?.duration || newStats.avgRepDuration,
-            peakAcceleration: lastRep?.peakValue || newStats.thresholdHigh,
-            // Precise boundary times
-            startTime: lastRep?.actualStartTime !== undefined ? lastRep.actualStartTime : lastRep?.startTime,
-            endTime: lastRep?.actualEndTime !== undefined ? lastRep.actualEndTime : lastRep?.endTime,
-            startIndex: lastRep?.actualStartIndex,
-            endIndex: lastRep?.actualEndIndex,
-            // *** NEW: Pass samples directly from RepCounter ***
-            samples: samplesForRep
-          });
+            startPitch: repStartPitch,
+            detectedAtTime: relativeTime,
+            lastRepMeta: lastRep,
+            romResult: repROMResult
+          };
+          console.log(`[WorkoutSession] Rep ${newStats.repCount} pending — waiting for pitch to return to ~${repStartPitch.toFixed(1)}°`);
+        }
+      }
+
+      // ── Pitch-return check: fire deferred onRepDetected ─────────────────────
+      // Every sample, check if orientation has returned close enough to the start
+      // of the pending rep, signalling the end of the eccentric phase.
+      if (pendingRepCallbackRef.current && data.pitch !== undefined) {
+        const pending = pendingRepCallbackRef.current;
+        const timeSinceDetection = relativeTime - pending.detectedAtTime;
+        const pitchDiff = Math.abs(data.pitch - pending.startPitch);
+        
+        // Track peak pitch during eccentric phase for better return detection
+        if (!pending.peakPitchDiff || pitchDiff > pending.peakPitchDiff) {
+          pending.peakPitchDiff = pitchDiff;
+        }
+
+        // Debug: Log pitch status every second while waiting
+        if (!pending.lastDebugLog || timeSinceDetection - (pending.lastDebugLog || 0) > 1000) {
+          console.log(`[WorkoutSession] Rep ${pending.repNumber} waiting: pitchDiff=${pitchDiff.toFixed(1)}°, peakSoFar=${(pending.peakPitchDiff || 0).toFixed(1)}°, elapsed=${timeSinceDetection.toFixed(0)}ms`);
+          pending.lastDebugLog = timeSinceDetection;
+        }
+
+        // Thresholds: 
+        // - Minimum 1500ms after detection (a real rep eccentric takes 1.5-3s)
+        // - Pitch must return within 15° of starting position
+        // - Must have seen significant movement (peak > 40°) to avoid false triggers
+        const MIN_ECCENTRIC_MS = 1500;
+        const PITCH_RETURN_THRESHOLD = 15; // degrees - tighter threshold
+        const MIN_PEAK_MOVEMENT = 40; // must have moved at least 40° during rep
+
+        const hasMovedEnough = pending.peakPitchDiff >= MIN_PEAK_MOVEMENT;
+        if (timeSinceDetection > MIN_ECCENTRIC_MS && pitchDiff < PITCH_RETURN_THRESHOLD && hasMovedEnough) {
+          const allRepData = repCounterRef.current.exportData();
+          const repSamples = allRepData.samples.filter(s => s.repNumber === pending.repNumber);
+
+          console.log(`[WorkoutSession] Rep ${pending.repNumber} complete — pitch returned (diff=${pitchDiff.toFixed(1)}°, peakMovement=${pending.peakPitchDiff.toFixed(1)}°, eccentric=${timeSinceDetection.toFixed(0)}ms), ${repSamples.length} samples`);
+
+          if (onRepDetectedRef.current && repSamples.length > 0) {
+            const startTime = pending.lastRepMeta?.actualStartTime ?? 0;
+            // Get actual sample indices for proper data extraction
+            const startIndex = repSamples[0]?.sampleIndex ?? pending.lastRepMeta?.actualStartIndex;
+            const endIndex = repSamples[repSamples.length - 1]?.sampleIndex ?? pending.lastRepMeta?.actualEndIndex;
+            
+            onRepDetectedRef.current({
+              repNumber: pending.repNumber,
+              duration: (relativeTime - startTime) / 1000,
+              peakAcceleration: pending.lastRepMeta?.peakValue,
+              startTime,
+              endTime: relativeTime,
+              startIndex,
+              endIndex,
+              samples: repSamples
+            });
+          }
+          pendingRepCallbackRef.current = null;
         }
       }
     }
@@ -555,31 +695,59 @@ export function useWorkoutSession({
         return;
       }
       
-      // Skip if we're already waiting for the final lowering phase
-      if (awaitingFinalLoweringRef.current) {
+      // Skip if we're waiting for the final lowering phase (but not if delay has completed)
+      if (awaitingFinalLoweringRef.current && !delayCompletedRef.current) {
         return;
       }
       
       if (repStats.repCount >= recommendedReps && repStats.repCount > 0) {
         // Check if this is a valley-to-peak exercise (bench press, squats, leg extension)
         // For these exercises, the rep is counted at the PEAK (top of push), so we need
-        // to wait for the lowering phase before finalizing the set
+        // to wait for the lowering phase before finalizing the set.
+        // BOTH mode (dumbbell): NO delay needed - rep is counted at end of eccentric (full cycle)
         const countDirection = repCounterRef.current?.countDirection || 'both';
-        const needsLoweringDelay = countDirection === 'valley-to-peak';
+        const needsLoweringDelay = countDirection === 'valley-to-peak'; // Only valley-to-peak needs delay
         
-        if (needsLoweringDelay && !finalRepDelayRef.current) {
-          // Start waiting for the lowering phase
-          console.log('[WorkoutSession] 🏋️ Final rep detected at peak - waiting 2s for lowering phase data...');
+        // If we're currently waiting for the delay (timeout in progress), skip
+        if (finalRepDelayRef.current) {
+          return;
+        }
+        
+        // If we need a delay and haven't started one yet, start it now
+        if (needsLoweringDelay && !awaitingFinalLoweringRef.current) {
+          // Start waiting for the lowering phase / pitch return
+          console.log('[WorkoutSession] 🏋️ Final rep detected — waiting for full eccentric phase (pitch return)...');
           awaitingFinalLoweringRef.current = true;
           
           finalRepDelayRef.current = setTimeout(() => {
-            console.log('[WorkoutSession] ✅ Lowering phase capture complete - finalizing set');
-            awaitingFinalLoweringRef.current = false;
+            console.log('[WorkoutSession] ✅ Eccentric capture window complete — finalizing set');
+            // Mark delay as completed so set completion can proceed
             finalRepDelayRef.current = null;
+            delayCompletedRef.current = true;
+
+            // Flush any pending rep that didn't get a pitch-return signal
+            // (e.g. user stopped mid-eccentric)
+            if (pendingRepCallbackRef.current) {
+              const pending = pendingRepCallbackRef.current;
+              const flushRepData = repCounterRef.current.exportData();
+              const flushSamples = flushRepData.samples.filter(s => s.repNumber === pending.repNumber);
+              if (onRepDetectedRef.current && flushSamples.length > 0) {
+                console.log(`[WorkoutSession] Flushing final pending rep ${pending.repNumber} at set end (${flushSamples.length} samples)`);
+                const startTime = pending.lastRepMeta?.actualStartTime ?? 0;
+                onRepDetectedRef.current({
+                  repNumber: pending.repNumber,
+                  duration: (flushSamples[flushSamples.length - 1]?.relativeTime ?? flushSamples[flushSamples.length - 1]?.timestamp ?? startTime) / 1000 - startTime / 1000,
+                  peakAcceleration: pending.lastRepMeta?.peakValue,
+                  startTime,
+                  samples: flushSamples
+                });
+              }
+              pendingRepCallbackRef.current = null;
+            }
             
             // Trigger a re-render to process set completion
-            // We do this by updating a state that the effect depends on
-            setRepStats(prev => ({ ...prev }));
+            // Increment the trigger to force the effect to re-run
+            setSetCompletionTrigger(prev => prev + 1);
           }, FINAL_LOWERING_DELAY_MS);
           
           return; // Don't process set completion yet
@@ -591,6 +759,7 @@ export function useWorkoutSession({
           finalRepDelayRef.current = null;
         }
         awaitingFinalLoweringRef.current = false;
+        delayCompletedRef.current = false;
         
         // Track stats for this completed set
         const currentRepData = repCounterRef.current.exportData();
@@ -713,7 +882,7 @@ export function useWorkoutSession({
         }
       }
     }
-  }, [repStats.repCount, recommendedReps, isRecording, isPaused, countdownActive, isOnBreak, currentSet, recommendedSets]);
+  }, [repStats.repCount, recommendedReps, isRecording, isPaused, countdownActive, isOnBreak, currentSet, recommendedSets, setCompletionTrigger]);
 
   // Pause/Resume
   const togglePause = () => {
@@ -755,6 +924,7 @@ export function useWorkoutSession({
     setBreakPaused(false);
     
     // Reset reps and increment set
+    pendingRepCallbackRef.current = null;  // Discard any pending deferred rep
     repCounterRef.current.reset();
     setRepStats(repCounterRef.current.getStats());
     setCurrentSet(prev => prev + 1);
@@ -770,6 +940,7 @@ export function useWorkoutSession({
       finalRepDelayRef.current = null;
     }
     awaitingFinalLoweringRef.current = false;
+    delayCompletedRef.current = false;
     
     // Clear chart data for new set BEFORE countdown
     setTimeData([]);
@@ -869,6 +1040,7 @@ export function useWorkoutSession({
     recordingStartTime.current = 0;
     workoutStartTime.current = 0; // Reset workout start time
     rawDataLog.current = [];
+    pendingRepCallbackRef.current = null;
     repCounterRef.current.reset();
     resetFilters();
     setRepStats(repCounterRef.current.getStats());
@@ -890,6 +1062,7 @@ export function useWorkoutSession({
       finalRepDelayRef.current = null;
     }
     awaitingFinalLoweringRef.current = false;
+    delayCompletedRef.current = false;
     
     console.log('[WorkoutSession] Starting recording...');
     
@@ -909,11 +1082,13 @@ export function useWorkoutSession({
       finalRepDelayRef.current = null;
     }
     awaitingFinalLoweringRef.current = false;
+    delayCompletedRef.current = false;
     
     // Reset for next session
     setCurrentSet(1);
     workoutStartTime.current = 0;
     setWorkoutStats({ totalReps: 0, allRepDurations: [], completedSets: 0, totalTime: 0, setData: [] });
+    pendingRepCallbackRef.current = null;
     repCounterRef.current.reset();
     setRepStats(repCounterRef.current.getStats());
   };
@@ -973,6 +1148,7 @@ export function useWorkoutSession({
 
   // Reset rep counter
   const resetReps = () => {
+    pendingRepCallbackRef.current = null;
     repCounterRef.current.reset();
     setRepStats(repCounterRef.current.getStats());
   };
@@ -1111,6 +1287,7 @@ export function useWorkoutSession({
     isPausedRef.current = true;
 
     // Reset rep counter
+    pendingRepCallbackRef.current = null;
     repCounterRef.current.reset();
     setRepStats(repCounterRef.current.getStats());
     lastRepCountRef.current = 0;

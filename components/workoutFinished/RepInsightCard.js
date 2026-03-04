@@ -5,6 +5,39 @@ export default function RepInsightCard({ repData, repNumber, targetROM, romUnit:
   const { time, rom, peakVelocity, chartData, liftingTime, loweringTime, classification, smoothnessScore, romFulfillment, romUnit, peakTimePercent } = repData;
   const [showConfidenceOverlay, setShowConfidenceOverlay] = useState(false);
   const [showPeakVelocityInfo, setShowPeakVelocityInfo] = useState(false);
+  
+  // Drag-to-dismiss state for Peak Velocity overlay
+  const [dragStartY, setDragStartY] = useState(0);
+  const [dragCurrentY, setDragCurrentY] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isClosingOverlay, setIsClosingOverlay] = useState(false);
+
+  // Drag handlers for overlay
+  const handleOverlayTouchStart = (e) => {
+    setDragStartY(e.touches[0].clientY);
+    setIsDragging(true);
+  };
+  const handleOverlayTouchMove = (e) => {
+    if (!isDragging) return;
+    const diff = e.touches[0].clientY - dragStartY;
+    if (diff > 0) setDragCurrentY(diff);
+  };
+  const closeOverlay = () => {
+    setIsClosingOverlay(true);
+    setTimeout(() => {
+      setShowPeakVelocityInfo(false);
+      setIsClosingOverlay(false);
+      setDragCurrentY(0);
+    }, 250);
+  };
+  const handleOverlayTouchEnd = () => {
+    setIsDragging(false);
+    if (dragCurrentY > 100) {
+      closeOverlay();
+    } else {
+      setDragCurrentY(0);
+    }
+  };
 
   // Calculate lifting/lowering percentages from actual data
   const totalPhaseTime = (liftingTime || 0) + (loweringTime || 0);
@@ -592,53 +625,40 @@ export default function RepInsightCard({ repData, repNumber, targetROM, romUnit:
       {showPeakVelocityInfo && typeof document !== 'undefined' && ReactDOM.createPortal(
         <div
           className="fixed inset-0 z-[9999] flex items-end justify-center"
-          onClick={() => setShowPeakVelocityInfo(false)}
+          onClick={closeOverlay}
         >
-          <div className="absolute inset-0 bg-black/60" />
+          <div className={`absolute inset-0 bg-black/60 transition-opacity duration-250 ${isClosingOverlay ? 'opacity-0' : 'opacity-100'}`} />
           <div
-            className="relative w-full max-w-lg rounded-t-2xl bg-[#1e1e1e] border-t border-white/10 pb-8 animate-slideUp"
+            className={`relative w-full max-w-lg rounded-t-2xl bg-[#1e1e1e] border-t border-white/10 pb-8 ${isClosingOverlay ? 'animate-slideDown' : 'animate-slideUp'}`}
+            style={{ transform: isDragging ? `translateY(${dragCurrentY}px)` : undefined }}
             onClick={e => e.stopPropagation()}
           >
             {/* Drag handle */}
-            <div className="flex justify-center pt-3 pb-2">
+            <div
+              className="flex justify-center pt-3 pb-2 cursor-grab active:cursor-grabbing"
+              onTouchStart={handleOverlayTouchStart}
+              onTouchMove={handleOverlayTouchMove}
+              onTouchEnd={handleOverlayTouchEnd}
+            >
               <div className="w-10 h-1 rounded-full bg-white/20" />
             </div>
 
             <div className="px-5 overflow-y-auto" style={{ maxHeight: '65vh' }}>
-              <h4 className="text-[16px] font-bold text-white mb-3">Understanding Peak Velocity</h4>
+              <h4 className="text-[16px] font-bold text-white mb-3">What is Peak Velocity?</h4>
               <p className="text-[13px] text-white/60 leading-relaxed mb-4">
-                Peak velocity measures the fastest speed you achieved during this rep, calculated from accelerometer integration. It reflects your power output and neuromuscular readiness.
+                This is the fastest speed you moved the weight during this rep. Think of it like a speedometer for your lift — it shows how powerfully you pushed or pulled.
               </p>
               
-              <div className="space-y-2 mb-4">
-                <p className="text-[13px] font-semibold text-white/70 mb-2">Velocity Zones (m/s):</p>
-                {[
-                  { color: 'bg-cyan-400', range: '> 1.3', label: 'Power Zone', desc: 'Explosive movements — great for athletic performance' },
-                  { color: 'bg-green-400', range: '0.75 – 1.3', label: 'Speed-Strength', desc: 'Balanced power and control — ideal for hypertrophy' },
-                  { color: 'bg-yellow-400', range: '0.5 – 0.75', label: 'Strength Zone', desc: 'Moderate load, controlled tempo — building strength' },
-                  { color: 'bg-orange-400', range: '0.3 – 0.5', label: 'Max Strength', desc: 'Heavy load, slow movement — peak force production' },
-                  { color: 'bg-red-400', range: '< 0.3', label: 'Grinding', desc: 'Very heavy or fatigued — watch your form' },
-                ].map((zone, i) => (
-                  <div key={i} className="flex items-start gap-2.5">
-                    <div className={`w-2 h-2 rounded-full ${zone.color} mt-1.5 shrink-0`} />
-                    <div>
-                      <span className="text-[13px] font-semibold text-white/80">{zone.range} — {zone.label}</span>
-                      <p className="text-[12px] text-white/40 leading-relaxed">{zone.desc}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              
-              <div className="rounded-xl bg-white/[0.04] p-3 mb-4">
-                <p className="text-[12px] font-semibold text-white/50 mb-2">Why It Matters</p>
-                <p className="text-[12px] text-white/40 leading-relaxed">
-                  Tracking velocity helps you train at the right intensity. If your velocity drops significantly during a set, it may indicate fatigue or that the weight is too heavy for your training goal.
+              <div className="rounded-xl bg-white/[0.04] p-4 mb-4">
+                <p className="text-[13px] font-semibold text-white/70 mb-2">Why It Matters</p>
+                <p className="text-[13px] text-white/50 leading-relaxed">
+                  When you're fresh, you move the weight faster. As your muscles get tired, your speed naturally drops. Watching this number helps you understand when you're pushing yourself and when you might need more rest.
                 </p>
               </div>
 
-              <div className="rounded-xl bg-cyan-500/10 border border-cyan-500/20 p-3">
-                <p className="text-[12px] text-cyan-400 leading-relaxed">
-                  <span className="font-semibold">Pro Tip:</span> For muscle growth, aim to keep velocity above 0.5 m/s. When it drops below 0.3 m/s consistently, consider reducing weight or taking longer rest.
+              <div className="rounded-xl bg-green-500/10 border border-green-500/20 p-4">
+                <p className="text-[13px] text-white/60 leading-relaxed">
+                  <span className="font-semibold text-green-400">In Simple Terms:</span> Higher velocity = more power and energy. If your speed drops a lot during your set, it means your muscles are working hard — which is often exactly what you want for building strength!
                 </p>
               </div>
             </div>
