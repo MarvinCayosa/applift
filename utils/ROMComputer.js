@@ -66,10 +66,9 @@ export class ROMComputer {
     this.primaryAxis = null;        // auto-detected: 'roll','pitch','yaw'
     this.baselineAngle = null;      // Euler baseline
     
-    // Stroke ROM state — quaternion gravity removal + trapezoidal integration + ZUPT
-    // Ported from reference implementation: uses ESP32's onboard quaternion to rotate
-    // accel into world frame, subtracts calibrated gravity magnitude from world-Z,
-    // then double-integrates with combined accel+gyro ZUPT for drift control.
+    // Stroke ROM state — VERTICAL ONLY displacement via gravity-axis projection
+    // Simple approach: double-integrate vertical acceleration to get displacement
+    // Reset to 0cm after each rep for consistent measurements
     this.velocity = 0;
     this.displacement = 0;
     this.lastTimestamp = 0;
@@ -79,7 +78,10 @@ export class ROMComputer {
     this.gravityUnitVec = null;     // unit vector along gravity axis (vertical reference)
     this.gravityMag = 9.81;         // calibrated gravity magnitude (from rest accel vector norm)
     this.gravityInitSamples = [];   // buffer: first N accel samples averaged for robust gravity
-    this.GRAVITY_INIT_COUNT = 10;   // number of samples to average (~0.5s at 20Hz)
+    this.GRAVITY_INIT_COUNT = 3;    // FAST: only 3 samples (~0.15s at 20Hz) for quick reset
+    this.storedGravity = null;      // Store good gravity baseline for instant reuse
+    this.storedGravityUnitVec = null;
+    this.storedGravityMag = 9.81;
     this.gyroBias = {x:0,y:0,z:0}; // calibrated gyro offset (native units) from baseline hold
     this.gyroInRadians = false;     // auto-detected: true if ESP32 outputs rad/s
     this.stillCounter = 0;          // consecutive near-zero samples for ZUPT
@@ -305,52 +307,53 @@ export class ROMComputer {
     if (this.sampleHistory.length > this.maxHistorySize) this.sampleHistory.shift();
   }
   
-  // ---- STROKE ROM (vertical-only displacement via gravity-axis projection) ----
+  // ---- STROKE ROM (VERTICAL ONLY displacement) ----
   // VERTICAL ONLY: Projects acceleration onto the gravity axis established at rest.
-  // This inherently ignores ALL horizontal and diagonal acceleration components.
-  // Applied to: Bench Press, Back Squats, Lateral Pulldown, Seated Leg Extension.
-  //
-  // Pipeline:
-  //   1. At rest, capture N accel samples → average → compute gravity unit vector
-  //   2. Each sample: dot(rawAccel, gravityUnitVec) − gravityMag = vertical linear accel
-  //   3. Two-stage cascaded EMA for strong noise rejection (~12dB/octave)
-  //   4. Dead-zone (NOISE_FLOOR = 0.15 m/s²) for MEMS sensor noise
-  //   5. Combined accel+gyro ZUPT for stillness detection
-  //   6. Trapezoidal integration: accel → velocity → displacement
-  //   7. Velocity clamping (MAX_VELOCITY = 1.5 m/s) prevents runaway drift
-  //   8. Exercise-specific ROM clamping (e.g., bench press max 80cm)
-  // ROM = peak-to-trough vertical displacement within a rep.
+  // Ignores ALL horizontal and diagonal acceleration components.
+  // Resets to 0cm after each rep for consistent measurements.
   addStrokeSample(q, accelX, accelY, accelZ, gyroX, gyroY, gyroZ, timestamp) {
-    // === Gravity initialization: average first N samples for robust vertical reference ===
-    // A single noisy sample can have ~1° error in gravity direction, which leaks
-    // horizontal acceleration (~3 m/s² during bench press) into the vertical channel
-    // causing ~12cm position error per rep. Averaging 10 samples reduces this to ~4cm.
+    // === Gravity initialization ===
+    // Fast: use stored gravity if available, otherwise collect 3 samples
     if (this.baselineGravity === null) {
-      this.gravityInitSamples.push({ x: accelX, y: accelY, z: accelZ });
-      this.lastTimestamp = timestamp;
-      
-      if (this.gravityInitSamples.length < this.GRAVITY_INIT_COUNT) {
-        return; // Still collecting samples — don't integrate yet
+      // Use stored gravity for instant start (no delay between reps)
+      if (this.storedGravity !== null) {
+        this.baselineGravity = this.storedGravity;
+        this.gravityUnitVec = this.storedGravityUnitVec;
+        this.gravityMag = this.storedGravityMag;
+        // DON'T set lastTimestamp here - let it be set later so dt > 0 and this sample is processed
+        console.log(`⚡ [ROM] Using stored gravity - instant 0cm reset`);
+      } else {
+        // First time: collect samples to establish gravity baseline
+        this.gravityInitSamples.push({ x: accelX, y: accelY, z: accelZ });
+        this.lastTimestamp = timestamp;
+        
+        if (this.gravityInitSamples.length < this.GRAVITY_INIT_COUNT) {
+          return; // Still collecting samples
+        }
+        
+        // Average samples for gravity estimation
+        let avgAx = 0, avgAy = 0, avgAz = 0;
+        this.gravityInitSamples.forEach(s => { avgAx += s.x; avgAy += s.y; avgAz += s.z; });
+        const count = this.gravityInitSamples.length;
+        avgAx /= count; avgAy /= count; avgAz /= count;
+        
+        this.baselineGravity = { x: avgAx, y: avgAy, z: avgAz };
+        this.gravityMag = Math.sqrt(avgAx*avgAx + avgAy*avgAy + avgAz*avgAz);
+        if (this.gravityMag > 0) {
+          this.gravityUnitVec = {
+            x: avgAx / this.gravityMag,
+            y: avgAy / this.gravityMag,
+            z: avgAz / this.gravityMag
+          };
+        }
+        // Store for instant reuse after rep reset
+        this.storedGravity = this.baselineGravity;
+        this.storedGravityUnitVec = this.gravityUnitVec;
+        this.storedGravityMag = this.gravityMag;
+        this.gravityInitSamples = [];
+        console.log(`🔍 [ROM] Gravity baseline set: mag=${this.gravityMag.toFixed(3)}`);
+        return;
       }
-      
-      // Average all collected samples for robust gravity estimation
-      let avgAx = 0, avgAy = 0, avgAz = 0;
-      this.gravityInitSamples.forEach(s => { avgAx += s.x; avgAy += s.y; avgAz += s.z; });
-      const count = this.gravityInitSamples.length;
-      avgAx /= count; avgAy /= count; avgAz /= count;
-      
-      this.baselineGravity = { x: avgAx, y: avgAy, z: avgAz };
-      this.gravityMag = Math.sqrt(avgAx*avgAx + avgAy*avgAy + avgAz*avgAz);
-      if (this.gravityMag > 0) {
-        this.gravityUnitVec = {
-          x: avgAx / this.gravityMag,
-          y: avgAy / this.gravityMag,
-          z: avgAz / this.gravityMag
-        };
-      }
-      this.gravityInitSamples = []; // Free memory
-      console.log(`🔍 [ROM DEBUG] Gravity mag=${this.gravityMag.toFixed(4)} axis=(${this.gravityUnitVec?.x.toFixed(3)},${this.gravityUnitVec?.y.toFixed(3)},${this.gravityUnitVec?.z.toFixed(3)}) averaged from ${count} samples`);
-      return;
     }
     
     if (this.lastTimestamp === 0) { this.lastTimestamp = timestamp; return; }
@@ -358,11 +361,9 @@ export class ROMComputer {
     if (dt <= 0 || dt >= 0.5) { this.lastTimestamp = timestamp; return; }
     this.lastTimestamp = timestamp;
     
-    // === STEP 1: Gravity-axis projection (vertical only) ===
-    // Project raw acceleration onto the gravity unit vector established at rest.
-    // This extracts ONLY the vertical component — horizontal and diagonal are ignored.
-    // Unlike quaternion rotation (which can leak horizontal accel through orientation error),
-    // gravity-axis projection is stable and purely vertical.
+    // === STEP 1: Gravity-axis projection (VERTICAL ONLY) ===
+    // Project raw acceleration onto the gravity unit vector.
+    // This extracts ONLY the vertical component — horizontal is ignored.
     const rawVertAccel = this.projectOnGravity(accelX, accelY, accelZ);
     
     // === STEP 2: Cascaded EMA smoothing (2-stage) ===
@@ -533,14 +534,20 @@ export class ROMComputer {
     this.liveRepROM = 0;
     this.liveAdjustedROM = 0;
     this.liveFulfillment = 0;
-    // Reset stroke state for clean integration
+    // Reset stroke state for clean integration - start from 0cm
     this.velocity = 0;
     this.displacement = 0;
+    this.liveDisplacementCm = 0;
     this.stillCounter = 0;
     this.peakDisplacement = 0;
     this.minDisplacement = 0;
     this.prevVertAccel = 0;
     this.prevVertAccel2 = 0;
+    this.emaInitialized = false;
+    // Clear current baseline - will use storedGravity if available
+    this.baselineGravity = null;
+    this.gravityUnitVec = null;
+    this.gravityInitSamples = [];
   }
   
   // ---- Finish calibration rep and return ROM value ----
@@ -560,10 +567,21 @@ export class ROMComputer {
       const repRangeROM = this.repMaxAngle - this.repMinAngle;
       romValue = Math.max(romValue, repRangeROM);
     } else {
-      // For stroke ROM, use ONLY retroCorrect - do NOT override with live min/max
-      // The live min/max (repMaxAngle/repMinAngle) drifts significantly;
-      // retroCorrect uses forward-backward integration which cancels drift.
-      romValue = this.computeStrokeROM();
+      // For stroke ROM, use retroCorrect for accurate drift-free measurement.
+      // CALIBRATION: Use PEAK displacement (not max-min ROM) because:
+      //   - We start from a known 0 position
+      //   - preRepBuffer may include transition motion from previous rep which
+      //     causes false negative displacement and inflates max-min ROM
+      //   - Peak is the actual distance traveled from start position
+      const corrected = this.retroCorrect(this.currentRepData);
+      if (corrected && corrected.peak > 0) {
+        // For calibration, use peak displacement (distance from 0)
+        romValue = corrected.peak;
+        console.log(`[ROMComputer] Calibration stroke: using peak=${corrected.peak.toFixed(1)}cm (raw rom=${corrected.rom.toFixed(1)}cm)`);
+      } else {
+        // Fallback to live tracking
+        romValue = this.repMaxAngle - this.repMinAngle;
+      }
     }
     
     // Clamp to exercise-specific physical maximum — anything above is sensor drift
@@ -579,17 +597,23 @@ export class ROMComputer {
     this.liveRepROM = 0;
     this.liveAdjustedROM = 0;
     
-    // Reset stroke state (calibration context — EMA IS reset because
-    // calibration reps are self-contained and don't need continuous filter state)
+    // Reset stroke state - reset to 0cm for next rep
     if (romType === 'stroke') {
       this.velocity = 0;
       this.displacement = 0;
+      this.liveDisplacementCm = 0;
       this.stillCounter = 0;
       this.peakDisplacement = 0;
       this.minDisplacement = 0;
       this.prevVertAccel = 0;
       this.prevVertAccel2 = 0;
       this.emaInitialized = false;
+      // Clear current baseline - will use storedGravity for next rep
+      this.baselineGravity = null;
+      this.gravityUnitVec = null;
+      this.gravityInitSamples = [];
+      // Clear preRepBuffer to prevent transition samples from contaminating next calibration rep
+      this.preRepBuffer = [];
     }
     
     const unit = romType === 'angle' ? '°' : ' cm';
@@ -666,17 +690,27 @@ export class ROMComputer {
     this.repROMs.push(repROM);
     
     // Zero-velocity reset at rep boundary for stroke
-    // IMPORTANT: Do NOT reset prevVertAccel/prevVertAccel2 (EMA filter state).
-    // Resetting them re-starts the cascaded EMA from 0, which attenuates the
-    // first 3-5 samples of the next rep by 35-64%. The EMA state should be
-    // continuous across rep boundaries for accurate live tracking.
+    // Reset everything to 0 immediately when rep is recorded
+    // This ensures next rep starts fresh at 0cm
     if (romType === 'stroke') {
       this.velocity = 0;
       this.displacement = 0;
       this.peakDisplacement = 0;
       this.minDisplacement = 0;
       this.stillCounter = 0;
-      // prevVertAccel, prevVertAccel2 — PRESERVED (continuous EMA)
+      // Reset live display to 0cm immediately
+      this.liveDisplacementCm = 0;
+      this.liveVelocity = 0;
+      // Reset EMA filter state so next rep starts fresh
+      this.prevVertAccel = 0;
+      this.prevVertAccel2 = 0;
+      this.emaInitialized = false;
+      // Clear current gravity baseline - will use storedGravity for instant restart
+      // Keep storedGravity for instant reuse on next rep
+      this.baselineGravity = null;
+      this.gravityUnitVec = null;
+      this.gravityInitSamples = [];
+      console.log(`📍 [ROM] Rep finished - reset to 0cm (instant restart ready)`);
     }
     this.currentRepData = [];
     this.repMinAngle = Infinity;
@@ -1080,6 +1114,11 @@ export class ROMComputer {
         z: this.baselineGravity.z / this.gravityMag
       };
     }
+    
+    // Store gravity for instant reuse after rep reset (critical for calibration!)
+    this.storedGravity = this.baselineGravity;
+    this.storedGravityUnitVec = this.gravityUnitVec;
+    this.storedGravityMag = this.gravityMag;
     
     // Compute gyro bias from rest samples (if gyro data available)
     // At rest, any non-zero gyro reading is bias/offset that should be subtracted.

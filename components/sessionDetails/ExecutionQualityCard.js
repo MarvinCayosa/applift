@@ -122,22 +122,23 @@ export default function ExecutionQualityCard({ setsData, gcsData, selectedSet = 
       return { chartData: [], totalReps: 0 };
     }
 
-    // Count by severity bucket
-    const buckets = {}; // { severity -> { label, count, color } }
+    // Count by actual label (not by severity bucket) - this preserves equipment-specific labels
+    // e.g., "Pulling Too Fast" and "Releasing Too Fast" instead of generic "Uncontrolled Movement"
+    const labelCounts = {}; // { label -> { name, value, color, severity } }
 
     allReps.forEach((rep) => {
       const severity = getSeverity(rep);
       const label = getLabelForSeverity(rep, severity);
       const color = SEVERITY_COLORS[severity];
 
-      if (!buckets[severity]) {
-        buckets[severity] = { name: label, value: 0, color, severity };
+      if (!labelCounts[label]) {
+        labelCounts[label] = { name: label, value: 0, color, severity };
       }
-      buckets[severity].value++;
+      labelCounts[label].value++;
     });
 
-    // Sort: green (0) first, then yellow (1), then red (2)
-    const chartData = Object.values(buckets).sort((a, b) => a.severity - b.severity);
+    // Sort: green (Clean) first, then yellow (severity 1), then red (severity 2)
+    const chartData = Object.values(labelCounts).sort((a, b) => a.severity - b.severity);
 
     return { chartData, totalReps };
   }, [setsData, gcsData, selectedSet]);

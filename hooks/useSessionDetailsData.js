@@ -333,7 +333,12 @@ export default function useSessionDetailsData({ logId, equipment, exercise }) {
               loweringTime: ar?.loweringTime ?? lr.loweringTime ?? 0,
               peakTimePercent: ar?.peakTimePercent ?? lr.peakTimePercent ?? null,
               peakVelocity: ar?.peakVelocity ?? lr.peakVelocity,
-              rom: ar?.rom ?? lr.rom,
+              // For ROM: prefer local ROMComputer value (retroCorrect) for stroke exercises.
+              // The analysis service computes ROM from accel magnitude (inaccurate for displacement).
+              // localRep.rom comes from ROMComputer.getROMForRep() which uses retroCorrect.
+              rom: (lr.rom && lr.romUnit?.trim() === 'cm') ? lr.rom : (ar?.rom ?? lr.rom),
+              romFulfillment: lr.romFulfillment ?? ar?.romFulfillment,
+              romUnit: lr.romUnit ?? ar?.romUnit,
               chartData: ar?.chartData?.length > 0 ? ar.chartData : lr.chartData,
             };
           });

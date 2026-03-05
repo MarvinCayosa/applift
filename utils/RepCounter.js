@@ -27,14 +27,14 @@ const COUNT_DIRECTION = {
 // Exercise-specific counting direction
 // Dumbbell exercises: use PEAK_TO_VALLEY so rep counts at the BOTTOM (after lowering)
 // Barbell exercises: count valley-to-peak only (prevents double-counting)
-// Weight stack: direction depends on exercise type
+// Weight stack: accel magnitude shows peak-then-valley during pull motion
 const EXERCISE_COUNT_DIRECTION = {
   0: COUNT_DIRECTION.PEAK_TO_VALLEY,  // Concentration Curls - count at bottom (after lowering)
   1: COUNT_DIRECTION.PEAK_TO_VALLEY,  // Overhead Extension - count at bottom (after lowering)
   2: COUNT_DIRECTION.VALLEY_TO_PEAK,  // Bench Press - push up from chest only
   3: COUNT_DIRECTION.VALLEY_TO_PEAK,  // Back Squats - stand up only
-  4: COUNT_DIRECTION.PEAK_TO_VALLEY,  // Lateral Pulldown - pull down only
-  5: COUNT_DIRECTION.VALLEY_TO_PEAK,  // Seated Leg Extension - extend up only
+  4: COUNT_DIRECTION.PEAK_TO_VALLEY,  // Lateral Pulldown - peak during pull, valley at rest
+  5: COUNT_DIRECTION.PEAK_TO_VALLEY,  // Seated Leg Extension - peak during extension
 };
 
 // Equipment name → exercise code mapping (same as ROMComputer)
@@ -676,13 +676,77 @@ export class RepCounter {
       }
     }
     
+    // For FULL-CYCLE mode (weight stack exercises):
+    // startValley might be the previous rep's endValley (includes rest time between reps).
+    // Scan FORWARD from startValley to find when motion actually begins (accel deviates from baseline).
+    // Also scan to find end of lowering phase for accurate boundaries.
+    if (this.countDirection === 'full-cycle' && this.allSamples.length > 0) {
+      const peakIdx = peak.index;
+      const startIdx = startValley.index;
+      const endIdx = endValley.index;
+      
+      // Calculate baseline (average accel magnitude during rest ~9.8 m/s²)
+      // Use the detected startValley value as reference
+      const baselineVal = startValley.value;
+      const motionThreshold = 0.15; // Must deviate >0.15 m/s² from baseline to count as motion
+      
+      // 1. Find actual motion start: scan forward from startValley to find first significant deviation
+      let actualStartIdx = startIdx;
+      for (let i = startIdx; i < peakIdx; i++) {
+        const s = this.allSamples[i];
+        const val = s?.filteredMagnitude || s?.accelMag || baselineVal;
+        const deviation = Math.abs(val - baselineVal);
+        if (deviation > motionThreshold) {
+          // Found start of motion - go back a few samples for buffer
+          actualStartIdx = Math.max(startIdx, i - 2);
+          break;
+        }
+      }
+      
+      // 2. Verify/adjust actual motion end
+      // The detected endValley should be close to actual motion end
+      // Just extend slightly if motion is still ongoing at detected valley
+      let actualEndIdx = endIdx;
+      const maxLookForward = Math.min(endIdx + Math.floor(0.3 * this.samplingRate), this.allSamples.length - 1);
+      
+      // Check if motion continues past detected valley
+      for (let i = endIdx + 1; i <= maxLookForward; i++) {
+        const s = this.allSamples[i];
+        const val = s?.filteredMagnitude || s?.accelMag || baselineVal;
+        const deviation = Math.abs(val - baselineVal);
+        
+        if (deviation > motionThreshold * 0.3) {
+          // Motion still ongoing - extend
+          actualEndIdx = i;
+        } else {
+          // Motion ended
+          break;
+        }
+      }
+      
+      // Apply adjustments if they improve boundaries
+      if (actualStartIdx > repStartIndex) {
+        const skippedRest = actualStartIdx - repStartIndex;
+        console.log(`📐 [full-cycle] Trimmed start: skipped ${skippedRest} rest samples (idx ${repStartIndex} → ${actualStartIdx})`);
+        repStartIndex = actualStartIdx;
+      }
+      
+      // Store adjusted end index for use below
+      this._fullCycleAdjustedEndIdx = actualEndIdx;
+      
+      if (actualEndIdx > endIdx) {
+        console.log(`📐 [full-cycle] Extended end: +${actualEndIdx - endIdx} samples to capture settling (idx ${endIdx} → ${actualEndIdx})`);
+      }
+    }
+    
     // For continuous segmentation: if we have a previous rep end, start after it
     if (this.previousRepEndIndex !== null && this.previousRepEndIndex + 1 > repStartIndex) {
       repStartIndex = this.previousRepEndIndex + 1;
     }
     
-    // Use the actual end valley's global index
-    let repEndIndex = endValley.index;
+    // Use the actual end valley's global index (or adjusted end for full-cycle)
+    let repEndIndex = this._fullCycleAdjustedEndIdx || endValley.index;
+    this._fullCycleAdjustedEndIdx = null; // Clear for next rep
     
     // Validate the index is within bounds
     if (repEndIndex >= this.allSamples.length) {
@@ -734,6 +798,18 @@ export class RepCounter {
     }
     if (this.allSamples[repEndIndex]) {
       repData.actualEndTime = this.allSamples[repEndIndex].timestamp;
+    }
+    
+    // *** Recalculate duration from actual adjusted boundaries ***
+    // This ensures duration matches the actual sample span, not the detected valley times
+    if (repData.actualStartTime && repData.actualEndTime) {
+      const adjustedDuration = (repData.actualEndTime - repData.actualStartTime) / 1000;
+      if (Math.abs(adjustedDuration - repData.duration) > 0.1) {
+        console.log(`📐 Duration adjusted: ${repData.duration.toFixed(2)}s → ${adjustedDuration.toFixed(2)}s (from sample boundaries)`);
+      }
+      repData.duration = adjustedDuration;
+      // Also update repTimes array
+      this.repTimes[this.repTimes.length - 1] = adjustedDuration;
     }
     
     // *** Store this rep's end index for the next rep to continue from ***

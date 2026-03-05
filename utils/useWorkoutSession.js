@@ -424,6 +424,9 @@ export function useWorkoutSession({
   const isPausedRef = useRef(false);
   const countdownActiveRef = useRef(false);
   
+  // Collect IMU samples during countdown for baseline calibration
+  const countdownSamplesRef = useRef([]);
+  
   // Break state
   const [isOnBreak, setIsOnBreak] = useState(false);
   const [breakTimeRemaining, setBreakTimeRemaining] = useState(restTime);
@@ -535,6 +538,15 @@ export function useWorkoutSession({
     // Always update display values (even during countdown)
     setCurrentIMU(data);
     
+    // Collect samples during countdown for baseline calibration
+    if (countdownActiveRef.current && isRecordingRef.current) {
+      countdownSamplesRef.current.push(data);
+      // Keep only last 30 samples (3 seconds at 10Hz)
+      if (countdownSamplesRef.current.length > 30) {
+        countdownSamplesRef.current.shift();
+      }
+    }
+    
     // Update sample count
     sampleCounter.current++;
     const now = Date.now();
@@ -608,6 +620,11 @@ export function useWorkoutSession({
       // Feed quaternion data to ROMComputer for real ROM tracking
       if (romComputerRef.current && data.qw !== undefined) {
         romComputerRef.current.addSample(data);
+        // For stroke exercises (weight stack/barbell), store displacement for charting
+        // The displacement value shows actual motion better than accelMag
+        if (romComputerRef.current.liveDisplacementCm !== undefined) {
+          data.displacement = romComputerRef.current.liveDisplacementCm;
+        }
       }
       
       const newStats = repCounterRef.current.getStats();
@@ -896,12 +913,19 @@ export function useWorkoutSession({
         
         // Prepare rep data for this set — each rep gets its OWN data segment
         const allSamples = currentRepData.samples;
+        
+        // Check if this is a stroke exercise (has displacement data)
+        const isStrokeExercise = allSamples.some(s => s.displacement !== undefined);
+        
         const setRepsData = currentRepData.reps.map((rep, index) => {
           // *** Use repNumber assignment for precise extraction ***
           // This matches the index.html algorithm exactly
           const repSamples = allSamples.filter(s => s.repNumber === rep.repNumber);
-          // Use filteredMagnitude for proper charting (smooth curve)
-          const repChartData = repSamples.map(s => s.filteredMagnitude || s.accelMag || 0);
+          // For stroke exercises: use displacement for charting (shows actual motion)
+          // For angle exercises: use filteredMagnitude (shows acceleration variation)
+          const repChartData = isStrokeExercise 
+            ? repSamples.map(s => Math.abs(s.displacement ?? 0))
+            : repSamples.map(s => s.filteredMagnitude || s.accelMag || 0);
           
           // *** Compute phase timings locally using primary movement axis ***
           // (matching main_csv.py algorithm)
@@ -1113,6 +1137,9 @@ export function useWorkoutSession({
     setIsRecording(true);
     isRecordingRef.current = true;
     
+    // Clear countdown samples at start - fresh baseline collection
+    countdownSamplesRef.current = [];
+    
     // Set workout start time on first set (after countdown starts)
     if (currentSet === 1 && workoutStartTime.current === 0) {
       workoutStartTime.current = Date.now();
@@ -1147,12 +1174,20 @@ export function useWorkoutSession({
     setIsRecording(true);
     isRecordingRef.current = true;
     
-    // *** Reset ROM baseline at the start of each set ***
-    // This eliminates varying starting positions between sets
-    // The next IMU sample will become the new reference position
+    // *** Set ROM baseline from countdown samples ***
+    // Uses samples collected during 3-2-1 countdown for accurate baseline
+    // This ensures displacement starts at 0cm when recording begins
     if (romComputerRef.current) {
-      romComputerRef.current.calibrateBaseline();
-      console.log('[WorkoutSession] ROM baseline reset for new set');
+      const samples = countdownSamplesRef.current;
+      if (samples.length >= 5) {
+        romComputerRef.current.setBaselineFromSamples(samples);
+        console.log(`[WorkoutSession] ROM baseline set from ${samples.length} countdown samples`);
+      } else {
+        romComputerRef.current.calibrateBaseline();
+        console.log('[WorkoutSession] ROM baseline reset (insufficient countdown samples)');
+      }
+      // Clear countdown samples for next set
+      countdownSamplesRef.current = [];
     }
     
     // Scroll to top to show chart

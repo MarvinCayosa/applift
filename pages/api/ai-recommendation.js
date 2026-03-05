@@ -76,6 +76,7 @@ BARBELL WEIGHTS (always include bar in total): Olympic 20kg, Women's 15kg, EZ 8k
 - Barbell bar only: recommendedLoad=20 → weightBreakdown "Bar only (20kg)"
 - Dumbbell (2kg handle): recommendedLoad=10 → weightBreakdown "2kg handle + 8kg plates". Handle only: weightBreakdown "Handle only (2kg)"
 - Weight Stack / Machine: recommendedLoad=25 → weightBreakdown "25kg on stack"
+- WEIGHT STACK INCREMENTS: Weight stack machines use 5kg increments (5, 10, 15, 20, 25...). ALWAYS recommend weight in multiples of 5kg for weight stack exercises.
 - Always tell user exactly what plates/weight to load — never just show a total number
 
 SAFETY RULES:

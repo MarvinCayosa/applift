@@ -1,0 +1,519 @@
+================================================================================
+                    APPLIFT POST-WORKOUT METRICS DOCUMENTATION
+                        Final Calculations and Processes
+================================================================================
+
+This document describes all metrics calculated for post-workout summaries and
+real-time feedback in the AppLift PWA application.
+
+================================================================================
+TABLE OF CONTENTS
+================================================================================
+1. SMOOTHNESS SCORE
+2. VELOCITY METRICS (Peak Velocity & Mean Propulsive Velocity)
+3. MOVEMENT PHASE TIMING (Concentric/Eccentric)
+4. RANGE OF MOTION (ROM) CALCULATION
+5. ROM FULFILLMENT CLASSIFICATION
+6. FATIGUE SCORE
+7. CONSISTENCY SCORE
+8. ML MOVEMENT CLASSIFICATION
+9. AGGREGATE SCORES
+
+================================================================================
+1. SMOOTHNESS SCORE
+================================================================================
+
+SOURCE: utils/useWorkoutSession.js - computeLocalSmoothnessScore()
+
+DESCRIPTION:
+LDLJ-inspired (Log Dimensionless Jerk) algorithm that measures movement 
+irregularity. Higher score = smoother movement.
+
+ALGORITHM:
+
+Input: Array of IMU samples with filteredMagnitude/accelMag
+
+Step 1: Calculate Duration
+--------------------------
+duration = (lastTimestamp - firstTimestamp) / 1000  [in seconds]
+dt = duration / (sampleCount - 1)                   [time step]
+
+Step 2: Calculate Range of Motion
+---------------------------------
+rom = max(signal) - min(signal)
+safeRom = max(rom, 0.1)  [prevents division by zero]
+
+Step 3: Compute Velocity (1st derivative)
+-----------------------------------------
+velocity[i] = (signal[i] - signal[i-1]) / dt
+
+Step 4: Compute Jerk (2nd derivative)
+-------------------------------------
+jerk[i] = |velocity[i] - velocity[i-1]| / dt
+meanJerk = average(jerk)
+normalizedJerk = meanJerk / safeRom
+
+Step 5: Count Direction Changes
+-------------------------------
+directionChanges = count of sign changes in velocity array
+directionRate = directionChanges / duration
+
+Step 6: Count Excess Peaks
+--------------------------
+peakCount = local maxima + local minima in signal
+excessPeaks = max(0, peakCount - 2)  [Expected: 1 peak + 1 valley = 2]
+
+Step 7: Calculate Irregularity Score
+------------------------------------
+jerkContrib = clamp(0, 40, (normalizedJerk - 1.5) × 13.3)
+dirContrib  = clamp(0, 35, (directionRate - 0.5) × 10)
+peakContrib = clamp(0, 25, excessPeaks × 3.3)
+
+irregularityScore = jerkContrib + dirContrib + peakContrib
+
+Step 8: Final Smoothness Score
+------------------------------
+smoothnessScore = clamp(0, 100, 100 - irregularityScore)
+
+OUTPUT: Integer 0-100 (higher = smoother)
+
+
+================================================================================
+2. VELOCITY METRICS (Peak Velocity & Mean Propulsive Velocity)
+================================================================================
+
+SOURCE: utils/useWorkoutSession.js - computeLocalVelocity()
+
+DESCRIPTION:
+Uses accelerometer integration to compute velocity profile. Returns both
+instantaneous peak velocity and Mean Propulsive Velocity (MPV).
+
+ALGORITHM:
+
+Input: Array of IMU samples with accelMag/filteredMagnitude
+
+Step 1: Estimate Gravity Baseline
+---------------------------------
+gravityBaseline = average of first 25% of samples (min 3 samples)
+Default fallback = 9.81 m/s²
+
+Step 2: Calculate Net Acceleration
+----------------------------------
+netAccel[i] = accelMag[i] - gravityBaseline
+
+Step 3: Trapezoidal Integration (Acceleration → Velocity)
+---------------------------------------------------------
+velocity[0] = 0
+velocity[i] = velocity[i-1] + 0.5 × (netAccel[i] + netAccel[i-1]) × dt
+
+Step 4: Remove Drift (Linear Detrending)
+----------------------------------------
+drift = (lastVelocity - firstVelocity) / (sampleCount - 1)
+velocity[i] = velocity[i] - (firstVelocity + drift × i)
+
+Step 5: Calculate Peak Velocity
+-------------------------------
+peakVelocity = max(|velocity|)  [in m/s]
+
+Step 6: Calculate Mean Propulsive Velocity (MPV)
+------------------------------------------------
+PROPULSIVE_THRESHOLD = 0.1 m/s²
+
+propulsiveVelocities = velocity[i] where netAccel[i] > PROPULSIVE_THRESHOLD
+
+MPV = average(propulsiveVelocities)  [only propulsive phase]
+Fallback: MCV = average(|velocity|)  [if propulsive phase undetected]
+
+OUTPUT:
+- peak: Peak velocity rounded to 2 decimal places (m/s)
+- mean: MPV rounded to 2 decimal places (m/s)
+
+NOTE: MPV excludes the deceleration/"braking" phase, making it more
+indicative of actual effort and better for fatigue detection than MCV.
+
+
+================================================================================
+3. MOVEMENT PHASE TIMING (Concentric/Eccentric)
+================================================================================
+
+SOURCE: utils/useWorkoutSession.js - computeLocalPhaseTimings()
+
+DESCRIPTION:
+Computes concentric (lifting) and eccentric (lowering) phase timings using
+orientation angles from IMU fusion output.
+
+PRIMARY METHOD: Orientation-Based Detection
+
+Step 1: Extract Orientation Angles
+----------------------------------
+pitch, roll, yaw arrays from samples (quaternion fusion output)
+
+Step 2: Select Primary Rotation Axis
+------------------------------------
+pitchRange = max(pitch) - min(pitch)
+rollRange  = max(roll)  - min(roll)
+yawRange   = max(yaw)   - min(yaw)
+
+primarySignal = axis with highest range
+
+Step 3: Identify Turning Point
+------------------------------
+For dumbbell curls:
+- minPitch = arm curled (top of movement) = turning point
+- maxPitch = arm extended (rest position)
+
+turningIdx = index of minimum value on primary axis
+
+Step 4: Determine Movement Pattern
+----------------------------------
+Calculate distances from start position:
+- startDistFromRest = |startValue - maxValue|
+- startDistFromCurl = |startValue - minValue|
+- startsNearRest = startDistFromRest < startDistFromCurl
+
+Step 5: Calculate Phase Times
+-----------------------------
+turningTimeMs = timestamp at turning point - start timestamp
+afterTurningMs = total duration - turningTimeMs
+
+If startsNearRest:
+  Phase 1 (to turning point) = Lifting (concentric)
+  Phase 2 (after turning point) = Lowering (eccentric)
+Else:
+  More complex pattern detection (lower→lift→lower)
+
+Step 6: Sanity Bounds
+---------------------
+liftRatio = liftingTime / totalTime
+If liftRatio < 0.25: set to 35% lift / 65% lower
+If liftRatio > 0.75: set to 55% lift / 45% lower
+
+FALLBACK METHOD: Accelerometer-Based
+(Used when orientation angles unavailable)
+- Select axis with highest acceleration range
+- Find most prominent peak
+- Lifting = time before peak
+- Lowering = time after peak
+
+OUTPUT:
+- liftingTime: Concentric phase duration in seconds
+- loweringTime: Eccentric phase duration in seconds
+
+
+================================================================================
+4. RANGE OF MOTION (ROM) CALCULATION
+================================================================================
+
+SOURCE: utils/ROMComputer.js
+
+DESCRIPTION:
+Two ROM computation methods based on exercise type:
+
+TYPE 1: ANGLE ROM (Dumbbell Exercises)
+--------------------------------------
+Used for: Bicep Curls, Shoulder Press, Lateral Raises
+
+Method: Quaternion-based angle calculation
+- Tracks orientation angles (pitch/roll/yaw) from IMU fusion
+- ROM = angular distance between start and peak positions
+
+Reference Maximum ROMs:
+- Curls: 180° (theoretical full curl)
+- Shoulder Press: 135°
+- Lateral Raises: 90°
+
+TYPE 2: STROKE ROM (Barbell/Weight Stack Exercises)
+---------------------------------------------------
+Used for: Bench Press, Squats, Lat Pulldowns, Leg Extensions
+
+Method: Vertical displacement via double integration
+1. Extract vertical acceleration component
+2. First integration: acceleration → velocity
+3. Second integration: velocity → displacement
+4. Apply drift correction between integrations
+
+Reference Maximum ROMs (in cm):
+- Bench Press: 80 cm
+- Squats: 100 cm
+- Lat Pulldowns: 80 cm
+- Leg Extensions: 60 cm
+
+CALIBRATION PROCESS:
+--------------------
+1. User performs 3 full-ROM calibration reps
+2. ROM values from each rep are measured
+3. Target ROM = average of 3 calibration rep ROMs
+4. All subsequent reps compared against target
+
+FULFILLMENT CALCULATION:
+------------------------
+fulfillment = (actualROM / targetROM) × 100
+
+Where:
+- actualROM = measured ROM for current rep
+- targetROM = calibrated reference ROM
+
+
+================================================================================
+5. ROM FULFILLMENT CLASSIFICATION
+================================================================================
+
+SOURCE: components/RecommendedSetCard.js, components/workoutFinished/ExecutionQualityCard.js
+
+TWO-TIER SYSTEM:
+----------------
+┌─────────────────┬──────────────────┬─────────────┐
+│ Classification  │ ROM Fulfillment  │ Color       │
+├─────────────────┼──────────────────┼─────────────┤
+│ FULL ROM        │ ≥ 85%            │ Green       │
+│ PARTIAL ROM     │ < 85%            │ Yellow      │
+└─────────────────┴──────────────────┴─────────────┘
+
+THRESHOLDS:
+- FULL_ROM_THRESHOLD = 85
+- Reps ≥ 85% fulfillment = Full ROM (good form)
+- Reps < 85% fulfillment = Partial ROM (reduced range)
+
+DISPLAY: Shows count of Full ROM vs Partial ROM reps in workout summary
+
+
+================================================================================
+6. FATIGUE SCORE
+================================================================================
+
+SOURCE: services/workoutAnalysisService.js - computeFatigueIndicators()
+
+DESCRIPTION:
+Composite metric indicating muscular fatigue level during workout.
+Computed from 5 normalized components, each scaled 0-100.
+
+COMPONENT INDICATORS:
+---------------------
+
+1. D_ω (Velocity Drop Indicator)
+   - Measures decline in Mean Propulsive Velocity across sets
+   - Calculation:
+     - velFirst = average MPV of first 2 reps
+     - velLast = average MPV of last 2 reps
+     - dropPct = (velFirst - velLast) / velFirst × 100
+   - Scoring: dropPct × 1.5 (moderate drop = moderate fatigue)
+
+2. I_T (Duration Increase Indicator)
+   - Measures increase in rep duration (slower reps = fatigue)
+   - Calculation:
+     - durFirst = average duration of first 3 reps
+     - durLast = average duration of last 3 reps
+     - incPct = (durLast - durFirst) / durFirst × 100
+   - Scoring: incPct × 2 (capped at 100)
+
+3. I_J (Jerk Increase Indicator)
+   - Measures increase in movement jerkiness
+   - Uses normalized jerk from smoothness algorithm
+   - Higher jerk = more irregular movement = fatigue
+
+4. I_S (Shakiness Increase Indicator)
+   - Measures increase in high-frequency tremors
+   - Computed from direction change rate increase
+   - More direction changes = muscle instability = fatigue
+
+5. Q_exec (ML Execution Quality)
+   - From ML classification model
+   - Maps movement quality categories to scores:
+     - Clean = 100 (optimal)
+     - Abrupt Initiation = 60 (moderate issues)
+     - Uncontrolled Movement = 30 (significant issues)
+
+FATIGUE FORMULA:
+----------------
+
+WITH ML Classification Available:
+F = 0.25×D_ω + 0.18×I_T + 0.14×I_J + 0.14×I_S + 0.29×Q_exec
+
+WITHOUT ML Classification:
+F = 0.35×D_ω + 0.25×I_T + 0.20×I_J + 0.20×I_S
+
+FATIGUE LEVELS:
+---------------
+┌──────────────┬─────────────┬─────────────────────────────────────────┐
+│ Level        │ Score Range │ Interpretation                          │
+├──────────────┼─────────────┼─────────────────────────────────────────┤
+│ Minimal      │ 0 - 14      │ Little to no fatigue detected           │
+│ Low          │ 15 - 29     │ Slight fatigue, still performing well   │
+│ Moderate     │ 30 - 49     │ Noticeable fatigue, form may degrade    │
+│ High         │ 50 - 69     │ Significant fatigue, consider rest      │
+│ Severe       │ 70 - 100    │ Extreme fatigue, high injury risk       │
+└──────────────┴─────────────┴─────────────────────────────────────────┘
+
+OUTPUT: Fatigue score 0-100 and categorical level
+
+
+================================================================================
+7. CONSISTENCY SCORE
+================================================================================
+
+SOURCE: services/workoutAnalysisService.js - computeFatigueIndicators()
+
+DESCRIPTION:
+Measures how consistent the user's reps are across multiple quality dimensions.
+Based on Coefficient of Variation (CV) for each metric.
+
+SUB-SCORES:
+-----------
+
+1. ROM Consistency
+   - CV of ROM fulfillment values across all reps
+   - Lower CV = more consistent ROM = higher score
+
+2. Smoothness Consistency
+   - CV of smoothness scores across all reps
+   - Lower CV = more consistent movement quality
+
+3. Duration Consistency
+   - CV of rep durations across all reps
+   - Lower CV = more consistent tempo
+
+4. Peak Acceleration Consistency
+   - CV of peak acceleration values across all reps
+   - Lower CV = more consistent effort
+
+CV FORMULA:
+-----------
+CV = (standardDeviation / mean) × 100
+
+CONSISTENCY SCORE CONVERSION:
+-----------------------------
+Individual score = max(0, 100 - (CV × scaleFactor))
+
+Where scaleFactor calibrates the sensitivity of each sub-score.
+
+FINAL CONSISTENCY SCORE:
+------------------------
+ConsistencyScore = average(ROMScore, SmoothnessScore, DurationScore, PeakScore)
+
+OUTPUT: Consistency score 0-100 (higher = more consistent)
+
+
+================================================================================
+8. ML MOVEMENT CLASSIFICATION
+================================================================================
+
+SOURCE: Cloud Run ML API (cloud-run-ml-api/main.py)
+
+DESCRIPTION:
+Machine learning model that classifies movement quality based on IMU sensor data.
+
+CLASSIFICATION CATEGORIES:
+--------------------------
+
+1. CLEAN
+   - Smooth, controlled movement throughout
+   - Proper form and technique
+   - Optimal execution
+
+2. ABRUPT INITIATION
+   - Jerky or sudden start to movement
+   - May indicate compensatory patterns
+   - Often seen with too-heavy weights
+
+3. UNCONTROLLED MOVEMENT
+   - Irregular, unstable movement
+   - Loss of form during execution
+   - High risk of injury
+
+FEATURES USED:
+--------------
+- Accelerometer data (X, Y, Z axes)
+- Gyroscope data (X, Y, Z axes)
+- Magnitude calculations
+- Time-series patterns
+
+DISTRIBUTION OUTPUT:
+--------------------
+Returns probability distribution across all 3 categories:
+{
+  "clean": 0.85,
+  "abrupt_initiation": 0.10,
+  "uncontrolled_movement": 0.05
+}
+
+Final classification = category with highest probability
+
+
+================================================================================
+9. AGGREGATE SCORES
+================================================================================
+
+SOURCE: hooks/useMovementQuality.js
+
+OVERALL MOVEMENT QUALITY SCORE:
+-------------------------------
+Used for dashboard display and summary cards.
+
+FORMULA:
+weightedScore = (fatigue × 0.40) + (consistency × 0.35) + (smoothness × 0.25)
+
+INTERPRETATION:
+- 90-100: Excellent - Optimal performance
+- 75-89:  Good - Minor areas for improvement
+- 60-74:  Fair - Noticeable technique issues
+- 40-59:  Poor - Significant form problems
+- 0-39:   Very Poor - Major concerns, risk of injury
+
+SESSION-LEVEL AGGREGATION:
+--------------------------
+For workout summary cards:
+
+Average Smoothness = mean of all rep smoothness scores
+Average Velocity = mean of all rep velocities
+ROM Distribution = count of Full ROM vs Partial ROM reps
+Total Volume = sets × reps × weight
+Estimated Calories = volume-based calculation with exercise MET values
+
+
+================================================================================
+APPENDIX: DATA FLOW
+================================================================================
+
+1. IMU SENSOR → Raw accelerometer/gyroscope data (20Hz)
+
+2. BLUETOOTH → Transfer to PWA application
+
+3. LOCAL PROCESSING:
+   - Rep detection (RepCounter.js)
+   - Local smoothness calculation
+   - Local velocity calculation
+   - Local phase timing calculation
+   - ROM computation (ROMComputer.js)
+
+4. SERVER PROCESSING (Cloud Run ML API):
+   - ML movement classification
+   - Fatigue score computation
+   - Consistency analysis
+
+5. DISPLAY:
+   - Real-time feedback during workout
+   - Set completion summaries
+   - Post-workout analysis cards
+
+
+================================================================================
+APPENDIX: FILE REFERENCES
+================================================================================
+
+Key Files:
+- utils/useWorkoutSession.js - Local metric computation (smoothness, velocity, timing)
+- utils/ROMComputer.js - ROM calculation (angle and stroke types)
+- utils/RepCounter.js - Rep detection algorithm
+- services/workoutAnalysisService.js - Fatigue and consistency scoring
+- hooks/useMovementQuality.js - Dashboard analytics aggregation
+- cloud-run-ml-api/main.py - ML classification model
+
+UI Components:
+- components/RecommendedSetCard.js - Real-time rep display
+- components/workoutFinished/ExecutionQualityCard.js - ROM distribution card
+- components/MovementQuality.js - Movement quality display
+
+
+================================================================================
+                           END OF DOCUMENTATION
+================================================================================

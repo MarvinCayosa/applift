@@ -7,15 +7,19 @@ const triggerHaptic = () => {
   }
 };
 
-// Ruler Picker - For weight with 0.5 increments (starting at 1)
+// Ruler Picker - For weight with configurable increments
+// Weight stack uses 5kg increments (5, 10, 15...), others use 0.5kg
 // UI matches the reference image with vertical tick marks and center indicator
-function RulerPicker({ value, onValueChange, unit, onUnitChange }) {
+function RulerPicker({ value, onValueChange, unit, onUnitChange, isWeightStack = false }) {
   const wheelRef = useRef(null);
   const scrollTimeoutRef = useRef(null);
   const lastValueRef = useRef(-1);
   const [displayValue, setDisplayValue] = useState(value);
   
-  const config = { min: 1, max: 200, step: 0.5 };
+  // Weight stack machines use 5kg increments (standard gym equipment)
+  const config = isWeightStack 
+    ? { min: 5, max: 200, step: 5 }
+    : { min: 1, max: 200, step: 0.5 };
   const tickWidth = 20;
   const totalTicks = Math.floor((config.max - config.min) / config.step) + 1;
 
@@ -76,13 +80,18 @@ function RulerPicker({ value, onValueChange, unit, onUnitChange }) {
   }));
 
   const formatValue = (val) => {
+    // Weight stack uses whole numbers only (5, 10, 15...)
+    if (isWeightStack) {
+      return `${Math.round(val)}`;
+    }
     return val % 1 === 0 ? `${val}.0` : val.toFixed(1);
   };
 
-  // Major tick every 1kg, minor tick every 0.5kg
-  const isMajorTick = (tickValue) => tickValue % 1 === 0;
+  // For weight stack: all ticks are major (5kg increments)
+  // For others: major tick every 1kg, minor tick every 0.5kg
+  const isMajorTick = (tickValue) => isWeightStack ? true : tickValue % 1 === 0;
   // Show number label every 0.5kg (like 75.5, 76.0, 76.5)
-  const showLabel = (tickValue) => tickValue % 0.5 === 0;
+  const showLabel = (tickValue) => isWeightStack ? true : tickValue % 0.5 === 0;
 
   return (
     <div className="relative">
@@ -339,10 +348,14 @@ export default function CustomSetModal({
   fieldType = 'weight',
   equipment = ''
 }) {
+  // Check if weight stack equipment
+  const isWeightStack = equipment === 'Weight Stack';
+  
   // Default values for each field type - start at the lowest value
+  // Weight stack starts at 5kg (minimum increment)
   const getDefaultValue = (type) => {
     switch (type) {
-      case 'weight': return 1;
+      case 'weight': return isWeightStack ? 5 : 1;
       case 'sets': return 1;
       case 'reps': return 1;
       default: return 1;
@@ -350,9 +363,14 @@ export default function CustomSetModal({
   };
 
   // If initialValue is null, undefined, empty string, or 0 - use default (lowest)
+  // For weight stack, snap to nearest 5kg increment
   const getInitialValue = () => {
     if (initialValue === null || initialValue === undefined || initialValue === '' || initialValue === 0) {
       return getDefaultValue(fieldType);
+    }
+    // Snap weight stack values to nearest 5kg
+    if (isWeightStack && fieldType === 'weight') {
+      return Math.round(initialValue / 5) * 5 || 5;
     }
     return initialValue;
   };
@@ -531,7 +549,7 @@ export default function CustomSetModal({
                   const next = !barOnly;
                   setBarOnly(next);
                   if (next) {
-                    setValue(barWeight);
+                    setValue(0); // Plate weight = 0, bar weight added separately
                   }
                   triggerHaptic();
                 }}
@@ -563,6 +581,7 @@ export default function CustomSetModal({
                   }}
                   unit={weightUnit}
                   onUnitChange={setWeightUnit}
+                  isWeightStack={equipment === 'Weight Stack'}
                 />
               </div>
             ) : (

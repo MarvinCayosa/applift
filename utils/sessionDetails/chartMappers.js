@@ -17,6 +17,9 @@ export const SET_COLORS = [
  * Build per-set segments from GCS workout_data.json
  *
  * Each segment: { setNumber, data: number[], color }
+ * 
+ * For stroke exercises (weight stack/barbell), uses displacement if available
+ * as it shows actual motion better than accel magnitude which is ~constant.
  *
  * @param {Object} gcsData – parsed workout_data.json (has .sets array)
  * @returns {{ segments: Array, allData: number[] }}
@@ -26,6 +29,14 @@ export function buildChartSegments(gcsData) {
 
   const segments = [];
   const allData = [];
+  
+  // Check if this is a stroke exercise (has displacement data)
+  // Weight stacks and barbells use displacement for better chart visualization
+  const isStrokeExercise = gcsData.sets.some(setObj => 
+    (setObj.reps || []).some(rep => 
+      (rep.samples || []).some(s => s.displacement !== undefined)
+    )
+  );
 
   gcsData.sets.forEach((setObj, si) => {
     const setNum = setObj.setNumber || si + 1;
@@ -35,7 +46,15 @@ export function buildChartSegments(gcsData) {
     (setObj.reps || []).forEach((rep) => {
       const samples = rep.samples || [];
       samples.forEach((s) => {
-        const v = Math.abs(s.filteredMag ?? s.accelMag ?? 0);
+        // For stroke exercises: use displacement (cm) for charting
+        // For angle exercises: use filteredMag/accelMag
+        let v;
+        if (isStrokeExercise && s.displacement !== undefined) {
+          // Use absolute displacement - shows up/down motion clearly
+          v = Math.abs(s.displacement);
+        } else {
+          v = Math.abs(s.filteredMag ?? s.accelMag ?? 0);
+        }
         setData.push(v);
         allData.push(v);
       });
