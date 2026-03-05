@@ -872,6 +872,7 @@ export default function SelectedWorkout() {
             customSets={customSets}
             customReps={customReps}
             customWeightUnit={customWeightUnit}
+            customBarWeight={customBarWeight}
             restMinutes={Math.floor(customRestTime / 60)}
             restSeconds={customRestTime % 60}
             onRestTimeChange={setCustomRestTime}
@@ -1033,30 +1034,38 @@ export default function SelectedWorkout() {
                 // Custom set: use ONLY user-set values, no AI fallback
                 const finalSets = isCustomSet ? customSets : aiSets;
                 const finalReps = isCustomSet ? customReps : parseReps(aiReps);
-                const finalWeight = isCustomSet ? customWeight : aiWeight;
                 const finalWeightUnit = isCustomSet ? customWeightUnit : 'kg';
                 const finalRestTime = isCustomSet ? customRestTime : aiRestTime;
+                
+                // Calculate final weight for custom sets:
+                // For barbell/dumbbell, add bar/handle weight to plate weight
+                // User selects plate weight (e.g., 2.5kg) and bar/handle weight (e.g., 2kg)
+                // Total weight = plate weight + bar weight (e.g., 4.5kg)
+                const eqLower = equipment.toLowerCase();
+                const hasBaseWeight = eqLower === 'barbell' || eqLower === 'dumbbell';
+                const customTotalWeight = isCustomSet && hasBaseWeight 
+                  ? customWeight + (customBarWeight || (eqLower === 'barbell' ? 20 : 2))
+                  : customWeight;
+                const finalWeight = isCustomSet ? customTotalWeight : aiWeight;
                 
                 // Generate weight breakdown for custom sets
                 const generateCustomBreakdown = () => {
                   if (!isCustomSet) return aiRec?.weightBreakdown || '';
-                  const w = finalWeight;
                   const unit = finalWeightUnit;
-                  const eqLower = equipment.toLowerCase();
                   
                   if (eqLower === 'barbell') {
                     const barW = customBarWeight || 20;
-                    const plateW = w - barW;
+                    const plateW = customWeight || 0;
                     if (plateW <= 0) return `Bar only (${barW}${unit})`;
                     return `${barW}${unit} bar + ${plateW}${unit} plates`;
                   } else if (eqLower === 'dumbbell') {
-                    // Just show total weight for dumbbell (unilateral/isolated exercises)
+                    // Show handle + plates for dumbbell
                     const handleW = customBarWeight || 2;
-                    const plateW = w - handleW;
+                    const plateW = customWeight || 0;
                     if (plateW <= 0) return `Handle only (${handleW}${unit})`;
                     return `${handleW}${unit} handle + ${plateW}${unit} plates`;
                   } else {
-                    return `${w}${unit} on stack`;
+                    return `${customWeight}${unit} on stack`;
                   }
                 };
                 const finalWeightBreakdown = generateCustomBreakdown();

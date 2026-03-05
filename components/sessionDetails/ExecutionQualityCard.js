@@ -271,10 +271,6 @@ export default function ExecutionQualityCard({ setsData, gcsData, selectedSet = 
             </button>
           );
         })}
-
-        {totalReps > 0 && (
-          <p className="text-[9px] text-gray-600 text-center mt-1.5">Based on all sessions</p>
-        )}
       </div>
     </div>
   );

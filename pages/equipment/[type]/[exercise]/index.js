@@ -759,9 +759,6 @@ export default function ExerciseDetailPage() {
                                   ))
                                 })()}
                               </div>
-
-                              {/* Subtitle */}
-                              <p className="text-[10px] text-white/40 text-center mt-3">Based on all sessions</p>
                             </div>
                           ) : (
                             <p className="text-white/25 text-xs text-center py-8 flex-1 flex items-center justify-center">No data yet</p>

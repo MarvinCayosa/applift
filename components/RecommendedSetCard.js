@@ -42,6 +42,7 @@ export default function RecommendedSetCard({
   customSets = null,
   customReps = null,
   customWeightUnit = 'kg',
+  customBarWeight = 0, // Bar/handle weight for display calculation
   // Rest timer values
   restMinutes = 0,
   restSeconds = 30,
@@ -103,6 +104,15 @@ export default function RecommendedSetCard({
     onCustomFieldClick(field);
   };
 
+  // Calculate total display weight for custom set (plate weight + bar/handle weight)
+  // For barbell/dumbbell, add bar weight to the user's plate selection
+  const isBarbell = equipment?.toLowerCase() === 'barbell';
+  const isDumbbell = equipment?.toLowerCase() === 'dumbbell';
+  const hasBaseWeight = isBarbell || isDumbbell;
+  const customDisplayWeight = customWeight != null 
+    ? (hasBaseWeight ? customWeight + customBarWeight : customWeight)
+    : null;
+
   const cards = [
     // Only include recommended card when AI is enabled
     ...(aiEnabled ? [{
@@ -118,7 +128,7 @@ export default function RecommendedSetCard({
     }] : []),
     {
       type: 'custom',
-      weight: customWeight,
+      weight: customDisplayWeight, // Use total weight (plate + bar) for display
       weightUnit: customWeightUnit,
       sets: customSets,
       reps: customReps,
@@ -262,8 +272,8 @@ export default function RecommendedSetCard({
                             >
                               <p className="text-xs text-white/70 mb-0.5">Weight</p>
                               <div className="flex items-baseline justify-center gap-1">
-                                <p className="text-4xl font-bold leading-none" style={{ color: customWeight ? equipmentColor : 'rgba(255,255,255,0.4)' }}>
-                                  {customWeight || '-'}
+                                <p className="text-4xl font-bold leading-none" style={{ color: customDisplayWeight ? equipmentColor : 'rgba(255,255,255,0.4)' }}>
+                                  {customDisplayWeight || '-'}
                                 </p>
                                 <p className="text-xs text-white/70 leading-none">{card.weightUnit}</p>
                               </div>
@@ -512,8 +522,8 @@ export default function RecommendedSetCard({
                             >
                               <p className="text-xs text-white/70 mb-0.5">Weight</p>
                               <div className="flex items-baseline justify-center gap-1">
-                                <p className="text-5xl font-bold leading-none" style={{ color: customWeight ? equipmentColor : 'rgba(255,255,255,0.4)' }}>
-                                  {customWeight || '-'}
+                                <p className="text-5xl font-bold leading-none" style={{ color: customDisplayWeight ? equipmentColor : 'rgba(255,255,255,0.4)' }}>
+                                  {customDisplayWeight || '-'}
                                 </p>
                                 <p className="text-xs text-white/70 leading-none">{card.weightUnit}</p>
                               </div>
