@@ -180,7 +180,7 @@ function computeLocalVelocity(samples) {
  * 
  * Requires samples that include pitch/roll/yaw fields (IMU fusion output).
  */
-function computeLocalPhaseTimings(samples) {
+function computeLocalPhaseTimings(samples, repInfo = null) {
   if (!samples || samples.length < 3) {
     return { liftingTime: 0, loweringTime: 0 };
   }
@@ -188,6 +188,9 @@ function computeLocalPhaseTimings(samples) {
   const timestamps = samples.map(s => s.relativeTime ?? s.timestamp_ms ?? s.timestamp ?? 0);
   const hasValidTimestamps = timestamps.some(t => t > 0) &&
     (timestamps[timestamps.length - 1] - timestamps[0]) > 0;
+  const totalDurationMs = hasValidTimestamps 
+    ? (timestamps[timestamps.length - 1] - timestamps[0])
+    : samples.length * 50; // ~50ms per sample at 20Hz
 
   // ── Orientation-based detection (quaternion fusion angles) ──────────────────
   const pitch = samples.map(s => s.pitch ?? 0);
@@ -196,45 +199,145 @@ function computeLocalPhaseTimings(samples) {
   const hasOrientation = pitch.some(p => p !== 0) || roll.some(r => r !== 0);
 
   if (hasOrientation) {
-    // Select the axis with the highest angular range (same as ROMComputer)
+    // Select the axis with the highest angular range
     const pitchRange = Math.max(...pitch) - Math.min(...pitch);
     const rollRange  = Math.max(...roll)  - Math.min(...roll);
     const yawRange   = Math.max(...yaw)   - Math.min(...yaw);
 
-    let primarySignal;
-    if (pitchRange >= rollRange && pitchRange >= yawRange) primarySignal = pitch;
-    else if (rollRange >= yawRange) primarySignal = roll;
-    else primarySignal = yaw;
-
-    const n = primarySignal.length;
-    const maxIdx = primarySignal.indexOf(Math.max(...primarySignal));
-    const minIdx = primarySignal.indexOf(Math.min(...primarySignal));
-
-    // The turning point is the extremum that is most "internal" (furthest from both edges).
-    // e.g. for a concentration curl: pitch starts high (arm down), drops to minimum at
-    // the top of the curl (internal), then rises back — so minIdx is the turning point.
-    const maxEdgeDist = Math.min(maxIdx, n - 1 - maxIdx);
-    const minEdgeDist = Math.min(minIdx, n - 1 - minIdx);
-
-    let transitionIdx;
-    if (maxEdgeDist > minEdgeDist) transitionIdx = maxIdx;
-    else if (minEdgeDist > maxEdgeDist) transitionIdx = minIdx;
-    else transitionIdx = Math.abs(maxIdx - n / 2) <= Math.abs(minIdx - n / 2) ? maxIdx : minIdx;
-
-    // Guard: if turning point is at an edge, fall back to midpoint
-    if (transitionIdx <= 0 || transitionIdx >= n - 1) transitionIdx = Math.round(n / 2);
-
-    let liftingTime, loweringTime;
-    if (hasValidTimestamps) {
-      liftingTime  = (timestamps[transitionIdx]  - timestamps[0])     / 1000;
-      loweringTime = (timestamps[n - 1]           - timestamps[transitionIdx]) / 1000;
+    let primarySignal, axisName;
+    if (pitchRange >= rollRange && pitchRange >= yawRange) {
+      primarySignal = pitch;
+      axisName = 'pitch';
+    } else if (rollRange >= yawRange) {
+      primarySignal = roll;
+      axisName = 'roll';
     } else {
-      const totalDuration = n * 0.05; // ~50 ms per sample at 20 Hz
-      liftingTime  = (transitionIdx / n) * totalDuration;
-      loweringTime = ((n - transitionIdx) / n) * totalDuration;
+      primarySignal = yaw;
+      axisName = 'yaw';
     }
 
-    console.log(`[PhaseTimings] Orientation-based: axis=${pitchRange >= rollRange && pitchRange >= yawRange ? 'pitch' : rollRange >= yawRange ? 'roll' : 'yaw'}, turningPt idx=${transitionIdx}/${n-1} (${hasValidTimestamps ? timestamps[transitionIdx] : '?'}ms), lifting=${liftingTime.toFixed(2)}s, lowering=${loweringTime.toFixed(2)}s`);
+    const n = primarySignal.length;
+    const minVal = Math.min(...primarySignal);
+    const maxVal = Math.max(...primarySignal);
+    const minIdx = primarySignal.indexOf(minVal);
+    const maxIdx = primarySignal.indexOf(maxVal);
+    const startVal = primarySignal[0];
+    const endVal = primarySignal[n - 1];
+    
+    // For dumbbell curls: min pitch = arm curled (peak of movement) = turning point
+    // max pitch = arm extended (rest position)
+    // The movement cycle is: rest(max) → curl(min) → rest(max)
+    
+    // IMPORTANT: Use min pitch as turning point for curl exercises
+    // This is the top of the curl where concentric ends and eccentric begins
+    const turningIdx = minIdx;
+    const turningVal = minVal;
+    
+    // Calculate total angular movement from start to turning point
+    const phase1AngleChange = Math.abs(startVal - turningVal);
+    const phase2AngleChange = Math.abs(endVal - turningVal);
+    const totalAngleChange = phase1AngleChange + phase2AngleChange;
+    
+    // If the rep starts near max pitch (rest), Phase 1 is lifting
+    // If the rep starts near min pitch (curled), Phase 1 is lowering
+    const startDistFromRest = Math.abs(startVal - maxVal);
+    const startDistFromCurl = Math.abs(startVal - minVal);
+    const startsNearRest = startDistFromRest < startDistFromCurl;
+    
+    // Time-based phase calculation
+    const turningTimeMs = hasValidTimestamps 
+      ? (timestamps[turningIdx] - timestamps[0])
+      : (turningIdx / n) * totalDurationMs;
+    const afterTurningMs = totalDurationMs - turningTimeMs;
+    
+    let liftingTimeMs, loweringTimeMs;
+    
+    // Check if there's a clear lower→lift→lower pattern
+    // This happens when: 1) max comes before min, AND 2) we start significantly away from rest
+    // If we start AT rest (close to max), it's a normal lift→lower pattern even if maxIdx < minIdx
+    const startDistFromMax = Math.abs(startVal - maxVal);
+    const totalRange = maxVal - minVal;
+    const startFarFromRest = startDistFromMax > totalRange * 0.10; // >10% away from max
+    
+    if (maxIdx < minIdx && maxIdx > 2 && startFarFromRest) {
+      // Pattern: [partial lower] → max (rest) → min (curl) → [partial lower]
+      // The lifting phase is strictly: max → min
+      const maxTimeMs = hasValidTimestamps 
+        ? (timestamps[maxIdx] - timestamps[0])
+        : (maxIdx / n) * totalDurationMs;
+      const liftPhaseMs = turningTimeMs - maxTimeMs; // From max to min
+      
+      // Lowering = everything else (before max + after min)
+      loweringTimeMs = totalDurationMs - liftPhaseMs;
+      liftingTimeMs = liftPhaseMs;
+      
+      console.log(`[PhaseTimings] Detected lower→lift→lower pattern, maxIdx=${maxIdx}, liftMs=${liftingTimeMs.toFixed(0)}`);
+    } else if (startsNearRest) {
+      // Started at rest → Phase 1 (to turning point) is lifting
+      // BUT: the rep data might be incomplete (doesn't return to rest)
+      // Scale based on angle coverage to estimate full phases
+      
+      // Check if Phase 2 captures full return to rest
+      const expectedReturnAngle = phase1AngleChange; // Should match lifting
+      const returnRatio = Math.min(1.0, phase2AngleChange / expectedReturnAngle);
+      
+      if (returnRatio < 0.5) {
+        // Very incomplete lowering - estimate based on lifting velocity
+        // Assume eccentric (lowering) takes similar time as concentric (lifting)
+        const estimatedFullLowerMs = turningTimeMs * 1.1; // Eccentric ~10% longer typically
+        const estimatedTotalMs = turningTimeMs + estimatedFullLowerMs;
+        const scaleFactor = totalDurationMs / estimatedTotalMs;
+        
+        liftingTimeMs = turningTimeMs * scaleFactor;
+        loweringTimeMs = totalDurationMs - liftingTimeMs;
+      } else {
+        // Reasonable coverage - use time-based with adjustment
+        // Scale Phase 2 time based on angle completion
+        const adjustedLowerMs = afterTurningMs / returnRatio;
+        const adjustedTotalMs = turningTimeMs + adjustedLowerMs;
+        const scaleFactor = totalDurationMs / adjustedTotalMs;
+        
+        liftingTimeMs = turningTimeMs * scaleFactor;
+        loweringTimeMs = totalDurationMs - liftingTimeMs;
+      }
+    } else {
+      // Started from curled position - Phase 1 is completing previous rep's lowering
+      // Find the max (rest position) to determine where lifting starts
+      
+      if (maxIdx < minIdx) {
+        // Sequence: start → max (rest) → min (curl) → end
+        // Lowering: start to max, Lifting: max to min, Lowering: min to end
+        const toRestMs = hasValidTimestamps 
+          ? (timestamps[maxIdx] - timestamps[0])
+          : (maxIdx / n) * totalDurationMs;
+        const liftMs = turningTimeMs - toRestMs;
+        const afterCurlMs = afterTurningMs;
+        
+        liftingTimeMs = liftMs;
+        loweringTimeMs = totalDurationMs - liftMs;
+      } else {
+        // max is after min - unusual sequence, use 50/50 with slight eccentric bias
+        liftingTimeMs = totalDurationMs * 0.45;
+        loweringTimeMs = totalDurationMs * 0.55;
+      }
+    }
+    
+    let liftingTime = liftingTimeMs / 1000;
+    let loweringTime = loweringTimeMs / 1000;
+    const total = liftingTime + loweringTime;
+    
+    // Sanity bounds: phases should be between 25% and 75%
+    const liftRatio = liftingTime / total;
+    if (liftRatio < 0.25) {
+      liftingTime = total * 0.35;
+      loweringTime = total * 0.65;
+    } else if (liftRatio > 0.75) {
+      liftingTime = total * 0.55;
+      loweringTime = total * 0.45;
+    }
+    
+    console.log(`[PhaseTimings] turningIdx=${turningIdx}/${n-1}, startsNear=${startsNearRest?'rest':'curl'}, lift=${liftingTime.toFixed(2)}s, lower=${loweringTime.toFixed(2)}s`);
+    
     return { liftingTime: Math.max(0, liftingTime), loweringTime: Math.max(0, loweringTime) };
   }
 
@@ -386,7 +489,11 @@ export function useWorkoutSession({
   // This prevents double-counting issues (e.g., bench press counting both lift and lower)
   useEffect(() => {
     if (equipment && workout) {
+      // Use the standard count direction from exercise mapping (PEAK_TO_VALLEY for dumbbells)
+      // Orientation-valley mode is DISABLED - it has issues with first rep detection
       repCounterRef.current.setExerciseFromNames(equipment, workout);
+      // Don't override with orientation-valley mode - use acceleration-based detection
+      console.log('[WorkoutSession] Using acceleration-based rep detection (PEAK_TO_VALLEY for dumbbell)');
     }
   }, [equipment, workout]);
   
@@ -549,9 +656,11 @@ export function useWorkoutSession({
         const lastRep = repData.reps[repData.reps.length - 1];
         const countDirection = repCounterRef.current?.countDirection || 'both';
 
-        // For BOTH, FULL-CYCLE, and PEAK-TO-VALLEY modes: Rep is already counted at end of eccentric
+        // For BOTH, FULL-CYCLE, PEAK-TO-VALLEY, and ORIENTATION-VALLEY modes: 
+        // Rep is already counted at end of eccentric (full cycle captured)
         // The samples are complete - fire callback immediately
-        if (countDirection === 'both' || countDirection === 'full-cycle' || countDirection === 'peak-to-valley') {
+        if (countDirection === 'both' || countDirection === 'full-cycle' || 
+            countDirection === 'peak-to-valley' || countDirection === 'orientation-valley') {
           const repSamples = repData.samples.filter(s => s.repNumber === newStats.repCount);
           console.log(`[WorkoutSession] Rep ${newStats.repCount} complete (${countDirection}), ${repSamples.length} samples`);
           
@@ -706,44 +815,52 @@ export function useWorkoutSession({
   useEffect(() => {
     if (isRecording && !isPaused && !countdownActive && !isOnBreak) {
       // Skip set completion check if we just rolled back from BLE disconnect
-      // This prevents immediate completion when repStats already >= target after rollback
       if (postRollbackRef.current) {
         console.log('[WorkoutSession] Skipping set completion check - post-rollback state');
         return;
       }
-      
       // Skip if we're waiting for the final lowering phase (but not if delay has completed)
       if (awaitingFinalLoweringRef.current && !delayCompletedRef.current) {
         return;
       }
-      
       if (repStats.repCount >= recommendedReps && repStats.repCount > 0) {
-        // Check if this is a valley-to-peak exercise (bench press, squats, leg extension)
-        // For these exercises, the rep is counted at the PEAK (top of push), so we need
-        // to wait for the lowering phase before finalizing the set.
-        // BOTH mode (dumbbell): NO delay needed - rep is counted at end of eccentric (full cycle)
         const countDirection = repCounterRef.current?.countDirection || 'both';
-        const needsLoweringDelay = countDirection === 'valley-to-peak'; // Only valley-to-peak needs delay
-        
+        const isDumbbell = /dumbbell/i.test(equipment) || /dumbbell/i.test(workout);
+        const needsLoweringDelay = countDirection === 'valley-to-peak';
+        // For dumbbell exercises in orientation-valley mode, force-complete the last rep at set end
+        if (isDumbbell && repCounterRef.current.forceCompleteCurrentRep) {
+          const forcedRep = repCounterRef.current.forceCompleteCurrentRep();
+          console.log('[WorkoutSession] Dumbbell: force-completed last rep at set end (orientation-valley mode)', forcedRep);
+          
+          // Trigger onRepDetected callback for the force-completed rep so it gets saved to GCS
+          if (forcedRep && onRepDetectedRef.current) {
+            const repData = repCounterRef.current.exportData();
+            const repSamples = repData.samples.filter(s => s.repNumber === forcedRep.repNumber);
+            if (repSamples.length > 0) {
+              console.log(`[WorkoutSession] Triggering onRepDetected for force-completed rep ${forcedRep.repNumber} (${repSamples.length} samples)`);
+              onRepDetectedRef.current({
+                repNumber: forcedRep.repNumber,
+                duration: forcedRep.duration,
+                peakAcceleration: forcedRep.peakAcceleration || forcedRep.peakValue,
+                startTime: forcedRep.actualStartTime || forcedRep.startTime,
+                endTime: forcedRep.actualEndTime || forcedRep.endTime,
+                samples: repSamples
+              });
+            }
+          }
+        }
         // If we're currently waiting for the delay (timeout in progress), skip
         if (finalRepDelayRef.current) {
           return;
         }
-        
         // If we need a delay and haven't started one yet, start it now
         if (needsLoweringDelay && !awaitingFinalLoweringRef.current) {
-          // Start waiting for the lowering phase / pitch return
           console.log('[WorkoutSession] 🏋️ Final rep detected — waiting for full eccentric phase (pitch return)...');
           awaitingFinalLoweringRef.current = true;
-          
           finalRepDelayRef.current = setTimeout(() => {
             console.log('[WorkoutSession] ✅ Eccentric capture window complete — finalizing set');
-            // Mark delay as completed so set completion can proceed
             finalRepDelayRef.current = null;
             delayCompletedRef.current = true;
-
-            // Flush any pending rep that didn't get a pitch-return signal
-            // (e.g. user stopped mid-eccentric)
             if (pendingRepCallbackRef.current) {
               const pending = pendingRepCallbackRef.current;
               const flushRepData = repCounterRef.current.exportData();
@@ -761,15 +878,10 @@ export function useWorkoutSession({
               }
               pendingRepCallbackRef.current = null;
             }
-            
-            // Trigger a re-render to process set completion
-            // Increment the trigger to force the effect to re-run
             setSetCompletionTrigger(prev => prev + 1);
           }, FINAL_LOWERING_DELAY_MS);
-          
-          return; // Don't process set completion yet
+          return;
         }
-        
         // Clear the delay states if they exist (either delay completed or not needed)
         if (finalRepDelayRef.current) {
           clearTimeout(finalRepDelayRef.current);
@@ -793,7 +905,8 @@ export function useWorkoutSession({
           
           // *** Compute phase timings locally using primary movement axis ***
           // (matching main_csv.py algorithm)
-          const phaseTimings = computeLocalPhaseTimings(repSamples);
+          // Pass rep info with peakIndex for accurate turning point detection
+          const phaseTimings = computeLocalPhaseTimings(repSamples, rep);
           
           // Compute local smoothness and velocity metrics immediately
           const localSmoothnessScore = computeLocalSmoothnessScore(repSamples);
@@ -1190,7 +1303,8 @@ export function useWorkoutSession({
     const setRepsData = currentRepData.reps.map((rep, index) => {
       const repSamples = allSamples.filter(s => s.repNumber === rep.repNumber);
       const repChartData = repSamples.map(s => s.filteredMagnitude || s.accelMag || 0);
-      const phaseTimings = computeLocalPhaseTimings(repSamples);
+      // Pass rep info with peakIndex for accurate turning point detection
+      const phaseTimings = computeLocalPhaseTimings(repSamples, rep);
       
       // Compute local smoothness and velocity metrics immediately
       const localSmoothnessScore = computeLocalSmoothnessScore(repSamples);

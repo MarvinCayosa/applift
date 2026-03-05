@@ -94,6 +94,71 @@ const linearRegressionSlope = (values) => {
   return (n * sumXY - sumX * sumY) / denom;
 };
 
+// ============================================================================
+// QUATERNION UTILITIES (ported from ROMComputer.js)
+// ============================================================================
+
+/**
+ * Compute angular displacement between two quaternions in degrees.
+ * This is immune to Euler gimbal lock and wrapping artifacts.
+ * @param {Object} q1 - First quaternion {w, x, y, z}
+ * @param {Object} q2 - Second quaternion {w, x, y, z}
+ * @returns {number} Angle in degrees (0-180)
+ */
+const quatAngleDeg = (q1, q2) => {
+  const dot = q1.w * q2.w + q1.x * q2.x + q1.y * q2.y + q1.z * q2.z;
+  const clamped = Math.min(1, Math.max(-1, Math.abs(dot)));
+  return 2 * Math.acos(clamped) * (180 / Math.PI);
+};
+
+/**
+ * Compute Range of Motion from QUATERNION DATA.
+ * Uses quaternion angular displacement — immune to Euler gimbal lock and
+ * atan2 wrapping artifacts that inflate ROM when crossing ±180° boundaries.
+ * 
+ * @param {Array<Object>} samples - Array of samples with {qw, qx, qy, qz}
+ * @returns {Object} { romDegrees, minAngle, maxAngle, method: 'quaternion' }
+ */
+export const computeROMFromQuaternions = (samples) => {
+  if (!samples || samples.length < 3) {
+    return { romDegrees: 0, minAngle: 0, maxAngle: 0, method: 'quaternion' };
+  }
+  
+  // Filter samples that have valid quaternion data
+  const quatSamples = samples.filter(s => 
+    s.qw !== undefined && s.qx !== undefined && s.qy !== undefined && s.qz !== undefined
+  );
+  
+  if (quatSamples.length < 3) {
+    return { romDegrees: 0, minAngle: 0, maxAngle: 0, method: 'quaternion' };
+  }
+  
+  // Use first sample as baseline (neutral position)
+  const baseline = {
+    w: quatSamples[0].qw,
+    x: quatSamples[0].qx,
+    y: quatSamples[0].qy,
+    z: quatSamples[0].qz
+  };
+  
+  // Calculate angular displacement from baseline for each sample
+  const angles = quatSamples.map(s => {
+    const q = { w: s.qw, x: s.qx, y: s.qy, z: s.qz };
+    return quatAngleDeg(baseline, q);
+  });
+  
+  const minAngle = Math.min(...angles);
+  const maxAngle = Math.max(...angles);
+  const romDegrees = Math.min(maxAngle - minAngle, 180); // Cap at 180°
+  
+  return {
+    romDegrees,
+    minAngle,
+    maxAngle,
+    method: 'quaternion'
+  };
+};
+
 /**
  * Find peaks in signal using prominence-based detection
  */
@@ -427,17 +492,52 @@ export const computeRepMetrics = (repData) => {
   // ROM from filtered magnitude (legacy - for backward compatibility)
   const romMetrics = computeROM(filteredMag);
   
-  // *** ROM in degrees from ORIENTATION ANGLES (more accurate) ***
-  // Check if we have valid orientation data (not all zeros)
+  // ============================================================================
+  // ROM COMPUTATION PRIORITY (best to worst):
+  // 1. Quaternion-based (immune to gimbal lock & Euler wrapping)
+  // 2. Euler-based (orientation angles)
+  // 3. Accelerometer-based (legacy fallback)
+  // ============================================================================
+  
+  // Check if quaternion data is available
+  const hasQuaternionData = samples.some(s => 
+    s.qw !== undefined && s.qx !== undefined && s.qy !== undefined && s.qz !== undefined
+  );
+  
+  // Check if Euler orientation data is available
   const hasOrientationData = roll.some(r => r !== 0) || pitch.some(p => p !== 0) || yaw.some(y => y !== 0);
+  
+  // Compute ROM using best available method
+  let romDegrees;
+  let romMethod = 'unknown';
+  
+  if (hasQuaternionData) {
+    // BEST: Quaternion-based ROM (immune to gimbal lock & wrapping)
+    const quatROM = computeROMFromQuaternions(samples);
+    romDegrees = {
+      romDegrees: quatROM.romDegrees,
+      primaryAxis: 'quaternion',
+      minAngle: quatROM.minAngle,
+      maxAngle: quatROM.maxAngle,
+      method: 'quaternion'
+    };
+    romMethod = 'quaternion';
+  } else if (hasOrientationData) {
+    // GOOD: Euler-based ROM (wrap-corrected)
+    romDegrees = computeROMFromOrientation(roll, pitch, yaw);
+    romDegrees.method = 'euler';
+    romMethod = 'euler';
+  } else {
+    // FALLBACK: Accelerometer-based ROM
+    romDegrees = computeROMDegrees(accelX, accelY, accelZ);
+    romDegrees.method = 'accelerometer';
+    romMethod = 'accelerometer';
+  }
+  
+  // Also compute Euler-based for comparison/logging when using quaternions
   const romFromOrientation = hasOrientationData 
     ? computeROMFromOrientation(roll, pitch, yaw)
     : { romDegrees: 0, primaryAxis: 'unknown', rollRange: 0, pitchRange: 0, yawRange: 0 };
-  
-  // Use orientation-based ROM if available, otherwise fall back to accelerometer-based
-  const romDegrees = hasOrientationData 
-    ? romFromOrientation 
-    : computeROMDegrees(accelX, accelY, accelZ);
   
   // Smoothness metrics
   const smoothnessMetrics = computeSmoothnessMetrics(accelX, accelY, accelZ, timestamps, filteredMag);
@@ -606,6 +706,7 @@ export const computeRepMetrics = (repData) => {
     peak: romMetrics.peak,
     trough: romMetrics.trough,
     romDegrees: romDegrees.romDegrees,
+    romMethod: romDegrees.method || romMethod, // 'quaternion' | 'euler' | 'accelerometer'
     minAngle: romDegrees.minAngle || romDegrees.pitchMin,
     maxAngle: romDegrees.maxAngle || romDegrees.pitchMax,
     meanAngle: romDegrees.meanAngle,
@@ -615,6 +716,7 @@ export const computeRepMetrics = (repData) => {
     romPitchRange: romDegrees.pitchRange,
     romYawRange: romDegrees.yawRange,
     hasOrientationData,
+    hasQuaternionData,
     
     // Smoothness metrics
     smoothnessScore: smoothnessMetrics.smoothnessScore,

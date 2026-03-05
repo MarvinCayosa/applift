@@ -623,12 +623,14 @@ export class RepCounter {
     console.log(`✅ REP #${this.repCount} | Duration: ${duration.toFixed(2)}s | Range: ${Math.abs(peak.value - startValley.value).toFixed(2)} m/s²`);
     
     // Store rep metadata with precise boundary information
+    // IMPORTANT: Store peak.index for accurate phase timing calculation
     const repData = {
       repNumber: this.repCount,
       startTime: startValley.time,
       endTime: endValley.time,
       startIndex: startValley.index,
       endIndex: endValley.index,
+      peakIndex: peak.index,  // Critical for phase timing - the turning point
       duration: duration,
       peakAcceleration: peak.value,
       peakValue: peak.value,
