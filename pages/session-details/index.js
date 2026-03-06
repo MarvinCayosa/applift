@@ -264,6 +264,7 @@ export default function SessionDetailsPage() {
           {/* Fatigue + Velocity Loss — swipeable carousel */}
           <FatigueCarousel
             setsData={vm.mergedSetsData}
+            smoothnessData={vm.smoothnessData}
             fatigueScore={vm.fatigueScore}
             fatigueLevel={vm.fatigueLevel}
             fatigueComponents={vm.fatigueComponents}

@@ -74,15 +74,19 @@ export class RepCounter {
     this.lastRepEndTime = 0;
     
     // Peak detection for slow movements (balanced sensitivity)
-    this.minPeakProminence = config.minPeakProminence || 0.15; // Restored from 0.25 - full-cycle mode prevents false positives
-    this.minPeakDistance = config.minPeakDistance || 10; // Reduced from 20 - allow 0.5s between peaks/valleys for fast reps
+    this.minPeakProminence = config.minPeakProminence || 0.08; // Lowered from 0.15 - allows slow controlled reps to count
+    this.minPeakDistance = config.minPeakDistance || 8; // Reduced from 10 - faster recovery after missed rep (0.4s at 20Hz)
     this.minRepDuration = config.minRepDuration || 0.5; // Restored from 0.6 - allows faster reps
-    this.maxRepDuration = config.maxRepDuration || 10.0; // Increased from 8.0 - allows very slow controlled reps
+    this.maxRepDuration = config.maxRepDuration || 12.0; // Increased from 10.0 - allows very slow controlled reps
     this.adaptiveThreshold = true; // Use adaptive thresholding
     
     // Anti-tremor: Refractory period after counting a rep (prevents double-counting during shaking)
-    this.refractoryPeriod = config.refractoryPeriod || 800; // 800ms cooldown after rep
+    this.refractoryPeriod = config.refractoryPeriod || 500; // Reduced from 800ms - faster recovery for slow rep sequences
     this.lastRepCountedTime = 0; // Timestamp of last counted rep
+    
+    // Slow rep detection: Track recent signal amplitude for adaptive sensitivity
+    this.recentRanges = []; // Rolling window of recent signal ranges
+    this.slowRepMode = false; // Activated when movement is slow/controlled
     
     // Dynamic threshold (in m/s² - gravity ≈ 9.81 m/s²)
     this.thresholdHigh = 10.5;
@@ -102,6 +106,10 @@ export class RepCounter {
     // Pending rep for direction-specific modes (valley-to-peak, peak-to-valley)
     // We count at the turn point but wait for the return to capture full cycle
     this.pendingRep = null; // { startPoint, peakPoint, countedAt, waitingFor: 'valley' | 'peak' }
+    
+    // Pending peak for peak-to-valley mode (handles slow reps where user starts from valley)
+    // When we see valley→peak in peak-to-valley mode, we store the peak and wait for a completing valley
+    this.pendingPeakForValley = null; // { valleyStart, peak, detectedAt }
     
     // Full-cycle mode state (for dumbbell exercises)
     // Tracks a complete Valley→Peak→Valley cycle before counting
@@ -271,10 +279,16 @@ export class RepCounter {
     const stdDev = Math.sqrt(variance);
     
     // Fixed threshold approach - use minimum threshold to prevent issues with many reps
-    // Use 20% of range OR 0.2 m/s² minimum (more conservative to avoid false positives)
-    const rangeThreshold = Math.max(range * 0.20, 0.20);
-    const stdThreshold = Math.max(stdDev * 0.6, 0.20);
+    // Use 20% of range OR 0.15 m/s² minimum (lowered from 0.20 to help slow reps)
+    const rangeThreshold = Math.max(range * 0.20, 0.15);
+    const stdThreshold = Math.max(stdDev * 0.6, 0.15);
     const finalThreshold = Math.min(rangeThreshold, stdThreshold);
+    
+    // Track recent ranges for slow rep detection
+    this.recentRanges.push(range);
+    if (this.recentRanges.length > 10) this.recentRanges.shift();
+    const avgRange = this.recentRanges.reduce((a, b) => a + b, 0) / this.recentRanges.length;
+    this.slowRepMode = avgRange < 0.5; // Low signal amplitude = slow controlled movement
     
     // Update thresholds EVERY window
     this.thresholdHigh = mean + finalThreshold;
@@ -289,29 +303,38 @@ export class RepCounter {
     const n = window.length;
     const currentGlobalIndex = this.accelBuffer.length - 1;
     
-    // Anti-tremor: Check if we're in refractory period (skip detection entirely)
+    // Anti-tremor: Check if we're in refractory period
+    // For slow rep mode, reduce refractory period to allow continuous slow movement
     const now = Date.now();
-    if (this.lastRepCountedTime && (now - this.lastRepCountedTime) < this.refractoryPeriod) {
+    const effectiveRefractory = this.slowRepMode ? this.refractoryPeriod * 0.6 : this.refractoryPeriod;
+    if (this.lastRepCountedTime && (now - this.lastRepCountedTime) < effectiveRefractory) {
       // Still in refractory period - skip peak/valley detection to prevent tremor-induced double counting
       return;
     }
     
-    // Find all peaks (local maxima) - 5-sample window for stable detection (increased from 3)
-    // Wider window helps filter out high-frequency tremor/shaking
+    // Peak detection window size: 3 for slow movements (catches gradual transitions), 5 for normal
+    const peakWindow = this.slowRepMode ? 3 : 5;
+    
+    // Find all peaks (local maxima)
     const peaks = [];
-    for (let i = 5; i < n - 5; i++) {
+    for (let i = peakWindow; i < n - peakWindow; i++) {
       let isPeak = true;
       const centerValue = window[i];
       
-      // Check if it's higher than neighbors (5-sample window = filters tremors better)
-      for (let j = i - 5; j <= i + 5; j++) {
+      // Check if it's higher than neighbors
+      for (let j = i - peakWindow; j <= i + peakWindow; j++) {
         if (j !== i && window[j] >= centerValue) {
           isPeak = false;
           break;
         }
       }
       
-      if (isPeak && centerValue > this.thresholdHigh) {
+      // For slow rep mode, use a more lenient threshold
+      const thresholdCheck = this.slowRepMode 
+        ? centerValue > (this.thresholdHigh + this.thresholdLow) / 2 + (this.thresholdHigh - this.thresholdLow) * 0.3
+        : centerValue > this.thresholdHigh;
+      
+      if (isPeak && thresholdCheck) {
         const globalIndex = currentGlobalIndex - (n - 1 - i);
         
         // Check minimum peak distance to prevent multiple detections in one rep
@@ -325,22 +348,26 @@ export class RepCounter {
       }
     }
     
-    // Find all valleys (local minima) - 5-sample window for stable detection (increased from 3)
-    // Wider window helps filter out high-frequency tremor/shaking
+    // Find all valleys (local minima)
     const valleys = [];
-    for (let i = 5; i < n - 5; i++) {
+    for (let i = peakWindow; i < n - peakWindow; i++) {
       let isValley = true;
       const centerValue = window[i];
       
-      // Check if it's lower than neighbors (5-sample window = filters tremors better)
-      for (let j = i - 5; j <= i + 5; j++) {
+      // Check if it's lower than neighbors
+      for (let j = i - peakWindow; j <= i + peakWindow; j++) {
         if (j !== i && window[j] <= centerValue) {
           isValley = false;
           break;
         }
       }
       
-      if (isValley && centerValue < this.thresholdLow) {
+      // For slow rep mode, use a more lenient threshold
+      const thresholdCheck = this.slowRepMode
+        ? centerValue < (this.thresholdHigh + this.thresholdLow) / 2 - (this.thresholdHigh - this.thresholdLow) * 0.3
+        : centerValue < this.thresholdLow;
+      
+      if (isValley && thresholdCheck) {
         const globalIndex = currentGlobalIndex - (n - 1 - i);
         
         // Check minimum valley distance to prevent multiple detections in one rep
@@ -435,23 +462,50 @@ export class RepCounter {
           isValidRep = true;
         }
       }
-      // PEAK-TO-VALLEY mode: Count peak→valley, but capture full cycle (peak→valley→peak)
+      // PEAK-TO-VALLEY mode: Count peak→valley
+      // The backward scan in completeRep already captures the full Valley→Peak→Valley cycle,
+      // so NO pendingRep extension is needed (it would steal the next rep's start).
       else if (this.countDirection === 'peak-to-valley') {
-        // First check if we have a pending rep waiting for completion (return phase)
-        if (this.pendingRep && this.pendingRep.waitingFor === 'peak') {
-          // Check if this peak comes after the pending rep's valley
-          if (lastPeak.index > this.pendingRep.endPoint.index && 
-              lastPeak.index > this.lastDetectedPeakIndex) {
-            // Complete the pending rep with full cycle data
-            this.extendLastRepToPoint(lastPeak);
-            this.pendingRep = null;
-            this.lastDetectedPeakIndex = lastPeak.index;
-            this.lastPeakIndex = lastPeak.index;
-            console.log(`📦 [RepCounter] Extended last rep to include return phase (peak idx=${lastPeak.index})`);
+        // First check if we have a pending peak waiting for a completing valley
+        // This handles slow reps where user starts from valley position (valley→peak→valley pattern)
+        if (this.pendingPeakForValley) {
+          const pending = this.pendingPeakForValley;
+          // Check if current valley comes after the pending peak and hasn't been counted
+          if (lastValley.index > pending.peak.index && lastValley.index > this.lastDetectedValleyIndex) {
+            const pendingProminence = Math.abs(pending.peak.value - lastValley.value);
+            const risingProminence = Math.abs(pending.peak.value - pending.valleyStart.value);
+            const pendingDuration = (lastValley.time - pending.valleyStart.time) / 1000;
+            
+            // Use lower thresholds for pending reps (they passed initial detection)
+            const effectiveProminence = this.slowRepMode ? this.minPeakProminence * 0.4 : this.minPeakProminence * 0.6;
+            
+            if (pendingDuration >= this.minRepDuration && 
+                pendingDuration <= this.maxRepDuration && 
+                Math.min(pendingProminence, risingProminence) >= effectiveProminence) {
+              
+              console.log(`🔄 [peak-to-valley] Pending peak completed! valley=${pending.valleyStart.index}→peak=${pending.peak.index}→valley=${lastValley.index}, duration=${pendingDuration.toFixed(2)}s`);
+              
+              this.completeRep(pending.valleyStart, pending.peak, lastValley);
+              this.lastRepCountedTime = Date.now();
+              this.lastDetectedValleyIndex = lastValley.index;
+              this.lastDetectedPeakIndex = pending.peak.index;
+              this.lastValleyIndex = lastValley.index;
+              this.lastPeakIndex = pending.peak.index;
+              this.lastRepEndTime = lastValley.time;
+              this.pendingPeakForValley = null;
+              return; // Rep counted, don't check normal pattern
+            }
+          }
+          
+          // Timeout: clear pending if too old
+          const timeSincePending = Date.now() - pending.detectedAt;
+          if (timeSincePending > this.maxRepDuration * 1000) {
+            console.log(`⏰ [peak-to-valley] Pending peak timeout - clearing`);
+            this.pendingPeakForValley = null;
           }
         }
         
-        // Count Peak -> Valley (pulling down from top)
+        // Count Peak -> Valley (pulling down from top) - normal pattern
         if (lastPeak.index < lastValley.index) {
           // Skip if we've already counted this valley
           if (lastValley.index <= this.lastDetectedValleyIndex) {
@@ -464,6 +518,25 @@ export class RepCounter {
           prominence = Math.abs(lastPeak.value - lastValley.value);
           repDuration = (lastValley.time - lastPeak.time) / 1000;
           isValidRep = true;
+        }
+        // Valley before Peak - user started from bottom, store peak for when they lower back down
+        // This handles slow reps where user starts from rest position
+        else if (lastValley.index < lastPeak.index && lastPeak.index > this.lastDetectedPeakIndex) {
+          const risingProminence = Math.abs(lastPeak.value - lastValley.value);
+          const effectiveThreshold = this.slowRepMode ? this.minPeakProminence * 0.3 : this.minPeakProminence * 0.5;
+          
+          // Only store if prominence is significant enough
+          if (risingProminence >= effectiveThreshold) {
+            // Check if this is a NEW peak we haven't stored yet
+            if (!this.pendingPeakForValley || lastPeak.index > this.pendingPeakForValley.peak.index) {
+              this.pendingPeakForValley = {
+                valleyStart: lastValley,
+                peak: lastPeak,
+                detectedAt: Date.now()
+              };
+              console.log(`📌 [peak-to-valley] Stored pending peak: valley=${lastValley.index}→peak=${lastPeak.index}, prominence=${risingProminence.toFixed(3)}, waiting for completing valley...`);
+            }
+          }
         }
       }
       // FULL-CYCLE mode: Count only when complete Valley→Peak→Valley cycle is detected
@@ -489,13 +562,18 @@ export class RepCounter {
               
               // Use same validation as 'both' mode - just need decent prominence
               // Take the smaller of the two prominences as the rep quality measure
-              const effectiveProminence = Math.min(totalProminence, fallingProminence);
+              const cycleProminence = Math.min(totalProminence, fallingProminence);
+              
+              // Adaptive threshold: even more lenient for slow controlled movements
+              const fullCycleThreshold = this.slowRepMode 
+                ? this.minPeakProminence * 0.25  // 25% for slow reps
+                : this.minPeakProminence * 0.5;   // 50% for normal reps
               
               if (totalDuration >= this.minRepDuration && 
                   totalDuration <= this.maxRepDuration && 
-                  effectiveProminence >= this.minPeakProminence * 0.5) { // More lenient - 50% of normal threshold
+                  cycleProminence >= fullCycleThreshold) {
                 
-                console.log(`✅ [FullCycle] Rep complete! Duration=${totalDuration.toFixed(2)}s, prominence=${effectiveProminence.toFixed(3)}`);
+                console.log(`✅ [FullCycle] Rep complete! Duration=${totalDuration.toFixed(2)}s, prominence=${cycleProminence.toFixed(3)}, slowMode=${this.slowRepMode}`);
                 
                 this.completeRep(fcs.startValley, fcs.peak, endValley);
                 this.lastRepCountedTime = Date.now();
@@ -530,10 +608,13 @@ export class RepCounter {
             const peak = peaks[peaks.length - 1];
             if (peak.index > fcs.startValley.index) {
               const risingProminence = Math.abs(peak.value - fcs.startValley.value);
-              // Use lenient threshold - 50% of normal (same as original 'both' mode sensitivity)
-              if (risingProminence >= this.minPeakProminence * 0.5) {
+              // Adaptive threshold: more lenient for slow controlled movements
+              const risingThreshold = this.slowRepMode 
+                ? this.minPeakProminence * 0.25  // 25% for slow reps
+                : this.minPeakProminence * 0.5;   // 50% for normal reps
+              if (risingProminence >= risingThreshold) {
                 fcs.peak = peak;
-                console.log(`🔄 [FullCycle] Peak detected idx=${peak.index}, prominence=${risingProminence.toFixed(3)}`);
+                console.log(`🔄 [FullCycle] Peak detected idx=${peak.index}, prominence=${risingProminence.toFixed(3)}, slowMode=${this.slowRepMode}`);
               }
             }
           }
@@ -562,13 +643,18 @@ export class RepCounter {
       
       if (isValidRep) {
         // Log detection attempt for debugging
-        console.log(`🔍 Rep candidate: duration=${repDuration.toFixed(2)}s, prominence=${prominence.toFixed(3)} m/s²`);
+        console.log(`🔍 Rep candidate: duration=${repDuration.toFixed(2)}s, prominence=${prominence.toFixed(3)} m/s², slowMode=${this.slowRepMode}`);
+        
+        // Adaptive prominence: lower threshold for slow controlled movements
+        // Slow reps have less acceleration variation but are still valid
+        const effectiveProminence = this.slowRepMode 
+          ? this.minPeakProminence * 0.5  // 50% of normal threshold for slow reps
+          : this.minPeakProminence;
         
         // Validation with anti-tremor checks
-        // Increased prominence threshold filters out small shaking movements
         if (repDuration >= this.minRepDuration && 
             repDuration <= this.maxRepDuration && 
-            prominence >= this.minPeakProminence) {
+            prominence >= effectiveProminence) {
           
           // Count the rep and start refractory period
           this.completeRep(startPoint, peakPoint, endPoint);
@@ -582,6 +668,12 @@ export class RepCounter {
           this.lastRepEndTime = endPoint.time;
           
           // For direction-specific modes, mark pending rep to capture full cycle
+          // NOTE: Only valley-to-peak needs extension — it detects at the end of
+          // the concentric phase and must wait for the eccentric (lowering) to finish.
+          // peak-to-valley does NOT need extension — the backward scan in completeRep
+          // already captures the full Valley→Peak→Valley cycle. Extending to the
+          // next peak would steal the next rep's concentric start, causing Rep N+1
+          // to miss its starting valley (shifted boundaries).
           if (this.countDirection === 'valley-to-peak') {
             this.pendingRep = {
               startPoint,
@@ -589,16 +681,15 @@ export class RepCounter {
               endPoint,
               waitingFor: 'valley' // Wait for lowering phase
             };
-          } else if (this.countDirection === 'peak-to-valley') {
-            this.pendingRep = {
-              startPoint,
-              peakPoint,
-              endPoint,
-              waitingFor: 'peak' // Wait for return phase
-            };
           }
         } else {
-          console.log(`❌ Failed validation: duration=${repDuration >= this.minRepDuration && repDuration <= this.maxRepDuration}, prominence=${prominence >= this.minPeakProminence} (need ${this.minPeakProminence})`);
+          console.log(`❌ Failed validation: duration=${repDuration.toFixed(2)}s (need ${this.minRepDuration}-${this.maxRepDuration}s), prominence=${prominence.toFixed(3)} (need ${effectiveProminence.toFixed(3)}), slowMode=${this.slowRepMode}`);
+          
+          // CRITICAL FIX: Update indices even on failed validation to prevent blocking
+          // This allows the detector to move past failed attempts and detect new peaks/valleys
+          // Without this, the same failing peak/valley keeps being detected and blocks progress
+          this.lastPeakIndex = lastPeak.index;
+          this.lastValleyIndex = lastValley.index;
         }
       } else if (this.countDirection !== 'both') {
         // For direction-specific modes only: update tracking indices when ignoring a direction
@@ -911,9 +1002,12 @@ export class RepCounter {
     this.previousRepEndValley = null;  // Reset previous rep end valley
     this.previousRepEndIndex = null;   // Reset previous rep end index
     this.pendingRep = null;            // Reset pending rep for direction-specific modes
+    this.pendingPeakForValley = null;  // Reset pending peak for peak-to-valley slow reps
     this.inRepPhase = false;
     this.repStartTime = 0;
     this.lastRepCountedTime = 0;       // Reset refractory timer
+    this.recentRanges = [];            // Reset slow rep detection
+    this.slowRepMode = false;
     
     // Reset full-cycle state (dumbbell mode)
     this.fullCycleState = {
@@ -965,6 +1059,7 @@ export class RepCounter {
     }
     
     this.pendingRep = null;
+    this.pendingPeakForValley = null;
   }
   
   exportData() {
@@ -1007,8 +1102,11 @@ export class RepCounter {
     this.lastDetectedValleyIndex = -1;
     this.lastDetectedPeakIndex = -1;
     this.pendingRep = null;  // Clear pending rep for direction-specific modes
+    this.pendingPeakForValley = null;  // Clear pending peak for peak-to-valley slow reps
     this.repStartTime = 0;
     this.lastRepCountedTime = 0;  // Clear refractory timer
+    this.recentRanges = [];  // Reset slow rep detection
+    this.slowRepMode = false;
     
     // Reset full-cycle state (dumbbell mode)
     this.fullCycleState = {

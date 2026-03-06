@@ -267,7 +267,7 @@ export default function ExecutionQualityCard({ setsData, gcsData, selectedSet = 
                   isActive ? 'text-white scale-110' : 'text-gray-400'
                 }`}
               >
-                {percentage}%
+                {item.value}
               </span>
             </button>
           );

@@ -585,6 +585,10 @@ export default function SelectedWorkout() {
               // ML Clean rep metrics for AI decision making
               cleanRepPct: cleanRepPct,
               cleanReps: cleanReps,
+              // Velocity Loss (D_omega) and Smoothness metrics for AI recommendation
+              // D_omega is stored as 0-1 ratio, convert to percentage
+              avgVelocityLoss: analytics?.fatigue?.D_omega != null ? analytics.fatigue.D_omega * 100 : null,
+              avgSmoothness: analytics?.summary?.avgSmoothness ?? null,
               // Comprehensive performance summary
               performance: buildPerformanceSummary(data, analytics),
             };

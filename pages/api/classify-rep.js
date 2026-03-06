@@ -123,7 +123,7 @@ const percentile = (arr, p) => {
 // ---- Downsample 10Hz sensor data to 7Hz for model compatibility ----
 // Models were trained on ~7Hz data. If the incoming sample rate is higher,
 // we linearly interpolate all signals down to 7Hz so the feature distributions
-// (jerk, smoothness, peak counts, LDLJ, etc.) match training data.
+// (jerk, smoothness, peak counts, mean jerk magnitude, etc.) match training data.
 const TARGET_SAMPLE_RATE_HZ = 7;
 
 function downsampleTo7Hz(samples) {

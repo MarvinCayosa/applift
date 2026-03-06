@@ -461,6 +461,12 @@ export default function SessionSummaryPage() {
           {/* Fatigue + Velocity Loss — swipeable carousel */}
           <FatigueCarousel
             setsData={mergedSetsData}
+            smoothnessData={analysisData?.repsData?.map(r => ({
+              repNumber: r.repNumber,
+              setNumber: r.setNumber,
+              smoothnessScore: r.smoothnessScore ?? 50,
+              meanJerk: r.meanJerk ?? null,
+            }))}
             fatigueScore={analysisData?.fatigueScore}
             fatigueLevel={analysisData?.fatigueLevel}
             selectedSet="all"

@@ -9,6 +9,7 @@ import CancelConfirmModal from '../components/workoutMonitor/CancelConfirmModal'
 import ResumeCountdown from '../components/workoutMonitor/ResumeCountdown';
 import WaitingForInternetModal from '../components/workoutMonitor/WaitingForInternetModal';
 import ConnectPill from '../components/ConnectPill';
+import SetBreakOverlay from '../components/setBreak/SetBreakOverlay';
 import { useBluetooth } from '../context/BluetoothProvider';
 import { useWorkoutSession } from '../utils/useWorkoutSession';
 import { useWorkoutLogging } from '../context/WorkoutLoggingContext';
@@ -48,6 +49,7 @@ export default function WorkoutMonitor() {
     pendingSetUploads,
     flushPendingSetClassifications,
     checkHasPendingUploads,
+    backgroundMLStatus,
   } = useWorkoutLogging();
   
   // Track last rep count for detecting new reps
@@ -635,6 +637,7 @@ export default function WorkoutMonitor() {
           velocityLossPercent: rep.velocityLossPercent ?? null,
           isEffective: rep.isEffective ?? null,
           smoothnessScore: rep.smoothnessScore ?? null,
+          meanJerk: rep.meanJerk ?? null,
           isClean: rep.isClean ?? null,
           quality: rep.quality ?? null,
           liftingTime: rep.liftingTime ?? 0,
@@ -1351,102 +1354,24 @@ export default function WorkoutMonitor() {
         </div>
       )}
 
-      {/* Break Overlay */}
-      {isOnBreak && (
-        <div className="break-overlay fixed inset-0 z-[100] flex items-center justify-center bg-black px-4 animate-fadeIn">
-          <div className="flex flex-col items-center gap-8 sm:gap-10">
-            <div className="text-center">
-              <div className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-3 sm:mb-4">
-                Take a break!
-              </div>
-              <div className="text-base sm:text-lg md:text-xl text-white/70">
-                {motivationalMessage}
-              </div>
-            </div>
-            
-            {/* Circular Progress Timer - Bigger and centered */}
-            <div className="relative w-64 h-64 sm:w-80 sm:h-80 md:w-96 md:h-96">
-              <svg className="w-full h-full transform -rotate-90" viewBox="0 0 256 256">
-                {/* Background circle */}
-                <circle
-                  cx="128"
-                  cy="128"
-                  r="110"
-                  stroke="rgba(255, 255, 255, 0.1)"
-                  strokeWidth="16"
-                  fill="none"
-                />
-                {/* Glow effect circle */}
-                <circle
-                  cx="128"
-                  cy="128"
-                  r="110"
-                  stroke="url(#breakGradient)"
-                  strokeWidth="16"
-                  fill="none"
-                  strokeLinecap="round"
-                  strokeDasharray={`${2 * Math.PI * 110}`}
-                  strokeDashoffset={`${2 * Math.PI * 110 * (1 - (sessionRestTime - breakTimeRemaining) / sessionRestTime)}`}
-                  style={{ 
-                    transition: breakPaused ? 'none' : 'stroke-dashoffset 1s linear',
-                    filter: 'drop-shadow(0 0 8px rgba(168, 85, 247, 0.8))'
-                  }}
-                />
-                {/* Gradient definition - light to dark as time progresses */}
-                <defs>
-                  <linearGradient id="breakGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor={breakTimeRemaining > sessionRestTime * 0.67 ? "#e9d5ff" : breakTimeRemaining > sessionRestTime * 0.33 ? "#c084fc" : "#9333ea"} />
-                    <stop offset="50%" stopColor={breakTimeRemaining > sessionRestTime * 0.5 ? "#c084fc" : "#a855f7"} />
-                    <stop offset="100%" stopColor={breakTimeRemaining > sessionRestTime * 0.33 ? "#a855f7" : "#7c3aed"} />
-                  </linearGradient>
-                </defs>
-              </svg>
-              
-              {/* Timer text in center */}
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <div className="text-6xl sm:text-7xl md:text-8xl font-bold text-white">
-                  {Math.floor(breakTimeRemaining / 60)}:{(breakTimeRemaining % 60).toString().padStart(2, '0')}
-                </div>
-              </div>
-            </div>
-            
-            {/* Pause and Stop buttons */}
-            <div className="flex items-center gap-8 sm:gap-12">
-              {/* Pause button */}
-              <button
-                onClick={toggleBreakPause}
-                className="flex flex-col items-center gap-2 transition-all hover:scale-110"
-              >
-                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-white/10 flex items-center justify-center">
-                  {breakPaused ? (
-                    <svg className="w-8 h-8 sm:w-10 sm:h-10 text-white ml-1" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M8 5v14l11-7z"/>
-                    </svg>
-                  ) : (
-                    <svg className="w-8 h-8 sm:w-10 sm:h-10 text-white" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
-                    </svg>
-                  )}
-                </div>
-                <span className="text-sm sm:text-base text-white/80">{breakPaused ? 'Resume' : 'Pause'}</span>
-              </button>
-              
-              {/* Stop button */}
-              <button
-                onClick={stopBreak}
-                className="flex flex-col items-center gap-2 transition-all hover:scale-110"
-              >
-                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-white/10 flex items-center justify-center">
-                  <svg className="w-7 h-7 sm:w-9 sm:h-9 text-white" fill="currentColor" viewBox="0 0 24 24">
-                    <rect x="6" y="6" width="12" height="12" rx="2"/>
-                  </svg>
-                </div>
-                <span className="text-sm sm:text-base text-white/80">End</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Break Overlay with Set Performance Analysis */}
+      <SetBreakOverlay
+        isOpen={isOnBreak}
+        setData={workoutStats.setData.length > 0 ? workoutStats.setData[workoutStats.setData.length - 1] : null}
+        currentSet={workoutStats.completedSets}
+        totalSets={recommendedSets}
+        timeRemaining={breakTimeRemaining}
+        totalTime={sessionRestTime}
+        isPaused={breakPaused}
+        onTogglePause={toggleBreakPause}
+        onSkip={stopBreak}
+        motivationalMessage={motivationalMessage}
+        backgroundMLStatus={backgroundMLStatus}
+        exerciseName={workout}
+        equipment={equipment}
+        weight={weight}
+        weightUnit={weightUnit}
+      />
 
       {/* Rep Notification */}
       <WorkoutNotification 

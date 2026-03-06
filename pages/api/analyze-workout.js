@@ -682,63 +682,61 @@ function findPeaks(signal, prominenceThreshold = 0.05) {
   return { peaks, valleys };
 }
 
+/**
+ * Compute smoothness using Mean Jerk Magnitude
+ * 
+ * References:
+ *   - Flash & Hogan (1985) - Minimum jerk model for arm movements
+ *   - Rohrer et al. (2002) - Jerk metrics in stroke rehabilitation
+ *   - Balasubramanian et al. (2012) - Smoothness metric validation
+ * 
+ * Formula: Mean Jerk = (1/N) × Σ|j(t)| where j(t) = da/dt
+ * 
+ * Lower jerk = smoother movement (fewer sudden acceleration changes)
+ * We normalize to 0-100 scale where higher = smoother.
+ */
 function computeSmoothnessMetrics(accelX, accelY, accelZ, timestamps, filteredMag = null) {
   if (!accelX || accelX.length < 4) {
-    return { irregularityScore: 0, smoothnessScore: 50 };
+    return { smoothnessScore: 50, meanJerk: 0 };
   }
   
-  const duration = (timestamps[timestamps.length - 1] - timestamps[0]) / 1000;
-  if (duration <= 0) return { irregularityScore: 0, smoothnessScore: 50 };
+  const T = (timestamps[timestamps.length - 1] - timestamps[0]) / 1000; // duration in seconds
+  if (T <= 0) return { smoothnessScore: 50, meanJerk: 0 };
   
-  const dt = duration / (timestamps.length - 1);
+  const dt = T / (timestamps.length - 1); // sampling interval
   
-  let signal;
-  if (filteredMag && filteredMag.length === accelX.length) {
-    signal = filteredMag;
-  } else {
-    signal = accelX.map((x, i) => Math.sqrt(x * x + accelY[i] * accelY[i] + accelZ[i] * accelZ[i]));
+  // Compute jerk magnitude at each timestep
+  // Jerk = derivative of acceleration: j = da/dt
+  let totalJerkMagnitude = 0;
+  for (let i = 1; i < accelX.length; i++) {
+    const jerkX = (accelX[i] - accelX[i - 1]) / dt;
+    const jerkY = (accelY[i] - accelY[i - 1]) / dt;
+    const jerkZ = (accelZ[i] - accelZ[i - 1]) / dt;
+    
+    // Jerk magnitude (3D vector norm)
+    const jerkMag = Math.sqrt(jerkX * jerkX + jerkY * jerkY + jerkZ * jerkZ);
+    totalJerkMagnitude += jerkMag;
   }
   
-  const rom = Math.max(...signal) - Math.min(...signal);
-  const safeRom = rom < 0.1 ? 0.1 : rom;
+  // Mean jerk magnitude (m/s³)
+  const meanJerk = totalJerkMagnitude / (accelX.length - 1);
   
-  const velocity = [];
-  for (let i = 1; i < signal.length; i++) {
-    velocity.push((signal[i] - signal[i - 1]) / dt);
-  }
+  // Normalize to 0-100 scale
+  // Based on empirical data from resistance training:
+  //   5 m/s³ = very smooth (controlled movement) → 100
+  //   40 m/s³ = very jerky (abrupt/uncontrolled) → 0
+  // Linear mapping: score = 100 - (meanJerk - 5) × (100 / 35)
+  const JERK_MIN = 5;   // m/s³ - smooth threshold
+  const JERK_MAX = 40;  // m/s³ - jerky threshold
+  const JERK_RANGE = JERK_MAX - JERK_MIN;
   
-  const jerk = [];
-  for (let i = 1; i < velocity.length; i++) {
-    jerk.push(Math.abs((velocity[i] - velocity[i - 1]) / dt));
-  }
-  
-  const meanJerk = jerk.length > 0 ? mean(jerk) : 0;
-  const normalizedJerk = meanJerk / safeRom;
-  
-  let directionChanges = 0;
-  for (let i = 1; i < velocity.length; i++) {
-    if ((velocity[i] > 0 && velocity[i - 1] < 0) || (velocity[i] < 0 && velocity[i - 1] > 0)) {
-      directionChanges++;
-    }
-  }
-  const directionRate = directionChanges / duration;
-  
-  const { peaks, valleys } = findPeaks(signal, 0.05);
-  const totalPeaks = peaks.length + valleys.length;
-  const excessPeaks = Math.max(0, totalPeaks - 2);
-  
-  const jerkContrib = Math.min(40, Math.max(0, normalizedJerk - 1.5) * 13.3);
-  const dirContrib = Math.min(35, Math.max(0, directionRate - 0.5) * 10);
-  const peaksContrib = Math.min(25, excessPeaks * 3.3);
-  
-  const irregularityScore = jerkContrib + dirContrib + peaksContrib;
-  const smoothnessScore = Math.max(0, Math.min(100, 100 - irregularityScore));
+  const smoothnessScore = Math.max(0, Math.min(100, 
+    100 - ((meanJerk - JERK_MIN) * (100 / JERK_RANGE))
+  ));
   
   return {
-    irregularityScore: Math.round(irregularityScore * 100) / 100,
     smoothnessScore: Math.round(smoothnessScore * 100) / 100,
-    normalizedJerk,
-    meanJerk
+    meanJerk: Math.round(meanJerk * 100) / 100
   };
 }
 
@@ -883,6 +881,7 @@ function computeRepMetrics(repData) {
     durationMs,
     sampleCount: samples.length,
     smoothnessScore: smoothnessMetrics.smoothnessScore,
+    meanJerk: smoothnessMetrics.meanJerk,
     gyroPeak,
     liftingTime,
     loweringTime,

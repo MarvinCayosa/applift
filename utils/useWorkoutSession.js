@@ -8,77 +8,9 @@ const MAX_CHART_POINTS = 100; // Last 5 seconds at 20Hz
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LOCAL METRIC COMPUTATION HELPERS
-// Compute smoothnessScore and peakVelocity locally so they're available
-// immediately without waiting for server analysis.
+// Compute peakVelocity locally so it's available immediately without
+// waiting for server analysis.
 // ═══════════════════════════════════════════════════════════════════════════
-
-/**
- * Compute smoothness score from rep samples (LDLJ-inspired algorithm)
- * Based on: normalized jerk + direction changes + excess peaks
- * Higher score = smoother movement
- */
-function computeLocalSmoothnessScore(samples) {
-  if (!samples || samples.length < 4) return 70; // Default if insufficient data
-  
-  const signal = samples.map(s => s.filteredMagnitude || s.accelMag || 0);
-  const timestamps = samples.map(s => s.relativeTime ?? s.timestamp ?? 0);
-  
-  // Duration in seconds
-  const duration = timestamps.length > 1 
-    ? (timestamps[timestamps.length - 1] - timestamps[0]) / 1000
-    : samples.length * 0.05; // Estimate 50ms per sample at 20Hz
-  
-  if (duration <= 0) return 70;
-  
-  const dt = duration / (timestamps.length - 1);
-  
-  // Range of motion
-  const rom = Math.max(...signal) - Math.min(...signal);
-  const safeRom = rom < 0.1 ? 0.1 : rom;
-  
-  // METRIC 1: Normalized Jerk (derivative of acceleration)
-  const velocity = [];
-  for (let i = 1; i < signal.length; i++) {
-    velocity.push((signal[i] - signal[i - 1]) / dt);
-  }
-  
-  const jerk = [];
-  for (let i = 1; i < velocity.length; i++) {
-    jerk.push(Math.abs((velocity[i] - velocity[i - 1]) / dt));
-  }
-  
-  const meanJerk = jerk.length > 0 ? jerk.reduce((a, b) => a + b, 0) / jerk.length : 0;
-  const normalizedJerk = meanJerk / safeRom;
-  
-  // METRIC 2: Direction Changes
-  let directionChanges = 0;
-  for (let i = 1; i < velocity.length; i++) {
-    if ((velocity[i] > 0 && velocity[i - 1] < 0) || (velocity[i] < 0 && velocity[i - 1] > 0)) {
-      directionChanges++;
-    }
-  }
-  const directionRate = directionChanges / duration;
-  
-  // METRIC 3: Peak Count (excess peaks indicate irregular movement)
-  let peakCount = 0;
-  for (let i = 1; i < signal.length - 1; i++) {
-    if ((signal[i] > signal[i-1] && signal[i] > signal[i+1]) ||
-        (signal[i] < signal[i-1] && signal[i] < signal[i+1])) {
-      peakCount++;
-    }
-  }
-  const excessPeaks = Math.max(0, peakCount - 2); // Expected: 1 peak and 1 valley
-  
-  // Combine into irregularity score (calibrated weights)
-  const jerkContrib = Math.min(40, Math.max(0, normalizedJerk - 1.5) * 13.3);
-  const dirContrib = Math.min(35, Math.max(0, directionRate - 0.5) * 10);
-  const peakContrib = Math.min(25, excessPeaks * 3.3);
-  
-  const irregularityScore = jerkContrib + dirContrib + peakContrib;
-  const smoothnessScore = Math.max(0, Math.min(100, 100 - irregularityScore));
-  
-  return Math.round(smoothnessScore);
-}
 
 /**
  * Compute velocity metrics from rep samples using accelerometer integration
@@ -88,20 +20,67 @@ function computeLocalSmoothnessScore(samples) {
  *   mean = Mean Propulsive Velocity (MPV) — primary metric for fatigue detection
  *         MPV only includes the propulsive phase (net accel > 0), excluding deceleration
  */
-function computeLocalVelocity(samples) {
+function computeLocalVelocity(samples, isFirstRepInSet = false) {
   if (!samples || samples.length < 3) return { peak: 0, mean: 0 };
   
   const accelMag = samples.map(s => s.accelMag || s.filteredMagnitude || 0);
   const timestamps = samples.map(s => s.relativeTime ?? s.timestamp ?? 0);
   
-  // Estimate gravity baseline from first few samples
-  const baselineSamples = Math.min(3, Math.floor(accelMag.length / 4));
-  const gravityBaseline = baselineSamples > 0 
-    ? accelMag.slice(0, baselineSamples).reduce((a, b) => a + b, 0) / baselineSamples
-    : 9.81;
+  // ── Robust gravity baseline estimation ──────────────────────────────────
+  // Use MEDIAN of all samples instead of just first 3.
+  // During a rep, the accelerometer reads near gravity for most of the time
+  // (at rest positions, transitions). The median is robust against the
+  // concentric/eccentric acceleration spikes.
+  // This prevents the first rep from getting an inflated velocity when the
+  // backward scan includes extra pre-movement resting samples.
+  const sorted = [...accelMag].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const gravityBaseline = sorted.length % 2 === 0
+    ? (sorted[mid - 1] + sorted[mid]) / 2
+    : sorted[mid];
   
   // Net acceleration (subtract gravity)
   const netAccel = accelMag.map(a => a - gravityBaseline);
+  
+  // ── First-rep startup transient correction ──────────────────────────────
+  // Problem: The first rep of each set starts from dead rest. There is nothing
+  // canceling gravity initially — no eccentric momentum from a previous rep.
+  // The sudden rest→motion transition creates an artificially high acceleration
+  // spike that, when integrated, inflates the velocity reading for rep 1.
+  // This makes ALL other reps appear to have high velocity loss (>20%) and
+  // get classified as "ineffective" when they are actually performing normally.
+  //
+  // Fix: Detect the initial transient spike in the first ~25% of samples.
+  // If the peak acceleration in that window is significantly higher than the
+  // steady-state acceleration of the rest of the rep, cap it to remove the
+  // artifact and recover the true rep velocity.
+  if (isFirstRepInSet && netAccel.length > 10) {
+    const absNetAccel = netAccel.map(Math.abs);
+    const quarterLen = Math.ceil(netAccel.length * 0.25);
+    
+    // Peak acceleration in startup region (first 25% of samples)
+    const initialMax = Math.max(...absNetAccel.slice(0, quarterLen));
+    
+    // Median acceleration in the rest of the rep (true working level)
+    const restSlice = absNetAccel.slice(quarterLen);
+    const restSorted = [...restSlice].sort((a, b) => a - b);
+    const restMedian = restSorted[Math.floor(restSorted.length / 2)] || 0;
+    
+    // If initial spike is >1.5x the steady-state level, it's a startup artifact
+    // The dead-start gravity transition inflates the acceleration reading.
+    // But rep 1 IS legitimately slightly faster (freshest muscles), so we don't
+    // want to flatten it completely — just remove the sensor artifact.
+    if (restMedian > 0 && initialMax > restMedian * 1.5) {
+      // Cap at 1.5x steady-state: removes the artifact while preserving
+      // the real first-rep velocity advantage (~5-15% faster is normal in VBT)
+      const capValue = restMedian * 1.5;
+      for (let i = 0; i < quarterLen; i++) {
+        if (Math.abs(netAccel[i]) > capValue) {
+          netAccel[i] = Math.sign(netAccel[i]) * capValue;
+        }
+      }
+    }
+  }
   
   // Duration estimate
   const duration = timestamps.length > 1 && timestamps.some(t => t > 0)
@@ -1011,9 +990,9 @@ export function useWorkoutSession({
           // Pass rep info with peakIndex for accurate turning point detection
           const phaseTimings = computeLocalPhaseTimings(repSamples, rep);
           
-          // Compute local smoothness and velocity metrics immediately
-          const localSmoothnessScore = computeLocalSmoothnessScore(repSamples);
-          const localVelocity = computeLocalVelocity(repSamples);
+          // Compute local velocity metrics immediately
+          const isFirstRepInSet = rep.repNumber === 1;
+          const localVelocity = computeLocalVelocity(repSamples, isFirstRepInSet);
           
           return {
             repNumber: rep.repNumber,
@@ -1025,7 +1004,6 @@ export function useWorkoutSession({
             romUnit: romComputerRef.current?.getUnit() || '°',
             peakVelocity: localVelocity.peak || rep.peakVelocity || rep.peakAcceleration / 2,
             meanVelocity: localVelocity.mean || rep.meanVelocity || 0,
-            smoothnessScore: localSmoothnessScore, // NEW: Local computation
             isClean: rep.duration >= 2.0 && rep.duration <= 4.0,
             chartData: repChartData,
             liftingTime: phaseTimings.liftingTime,
@@ -1034,6 +1012,39 @@ export function useWorkoutSession({
             samples: repSamples
           };
         });
+        
+        // ── First-rep velocity compensation ────────────────────────────────
+        // Rep 1 starts from dead rest (no eccentric momentum), causing accelerometer
+        // velocity to be inflated by gravity transition. Compare Rep 1 to median of
+        // reps 2+; if >1.25x, cap at 1.10x median (allows ~10% first-rep freshness).
+        // Applied ONCE here so the corrected value is saved to Firestore.
+        if (setRepsData.length >= 3) {
+          const MIN_VELOCITY = 0.02;
+          const rep1 = setRepsData[0];
+          const vel1 = rep1.meanVelocity > MIN_VELOCITY ? rep1.meanVelocity : rep1.peakVelocity;
+          
+          if (vel1 > MIN_VELOCITY) {
+            const otherVels = setRepsData.slice(1)
+              .map(r => r.meanVelocity > MIN_VELOCITY ? r.meanVelocity : r.peakVelocity)
+              .filter(v => v > MIN_VELOCITY);
+            
+            if (otherVels.length >= 2) {
+              const sorted = [...otherVels].sort((a, b) => a - b);
+              const median = sorted[Math.floor(sorted.length / 2)];
+              
+              if (median > 0 && vel1 > median * 1.25) {
+                const corrected = Math.round(median * 1.10 * 1000) / 1000;
+                // Update whichever velocity field was used
+                if (rep1.meanVelocity > MIN_VELOCITY) {
+                  setRepsData[0] = { ...rep1, meanVelocity: corrected };
+                } else {
+                  setRepsData[0] = { ...rep1, peakVelocity: corrected };
+                }
+                console.log(`[useWorkoutSession] Rep 1 velocity corrected: ${vel1.toFixed(3)} → ${corrected.toFixed(3)} (median: ${median.toFixed(3)})`);
+              }
+            }
+          }
+        }
         
         // Store this set's data
         const currentSetData = {
@@ -1420,9 +1431,9 @@ export function useWorkoutSession({
       // Pass rep info with peakIndex for accurate turning point detection
       const phaseTimings = computeLocalPhaseTimings(repSamples, rep);
       
-      // Compute local smoothness and velocity metrics immediately
-      const localSmoothnessScore = computeLocalSmoothnessScore(repSamples);
-      const localVelocity = computeLocalVelocity(repSamples);
+      // Compute local velocity metrics immediately
+      const isFirstRepInSet = rep.repNumber === 1;
+      const localVelocity = computeLocalVelocity(repSamples, isFirstRepInSet);
 
       return {
         repNumber: rep.repNumber,
@@ -1434,7 +1445,6 @@ export function useWorkoutSession({
         romUnit: romComputerRef.current?.getUnit() || '°',
         peakVelocity: localVelocity.peak || rep.peakVelocity || rep.peakAcceleration / 2,
         meanVelocity: localVelocity.mean || rep.meanVelocity || 0,
-        smoothnessScore: localSmoothnessScore, // NEW: Local computation
         isClean: rep.duration >= 2.0 && rep.duration <= 4.0,
         chartData: repChartData,
         liftingTime: phaseTimings.liftingTime,
@@ -1442,6 +1452,38 @@ export function useWorkoutSession({
         samples: repSamples
       };
     });
+
+    // ── First-rep velocity compensation (same as main path) ──────────────
+    // Rep 1 starts from dead rest (no eccentric momentum), causing accelerometer
+    // velocity to be inflated by gravity transition. Compare Rep 1 to median of
+    // reps 2+; if >1.25x, cap at 1.10x median (allows ~10% first-rep freshness).
+    if (setRepsData.length >= 3) {
+      const MIN_VELOCITY = 0.02;
+      const rep1 = setRepsData[0];
+      const vel1 = rep1.meanVelocity > MIN_VELOCITY ? rep1.meanVelocity : rep1.peakVelocity;
+      
+      if (vel1 > MIN_VELOCITY) {
+        const otherVels = setRepsData.slice(1)
+          .map(r => r.meanVelocity > MIN_VELOCITY ? r.meanVelocity : r.peakVelocity)
+          .filter(v => v > MIN_VELOCITY);
+        
+        if (otherVels.length >= 2) {
+          const sorted = [...otherVels].sort((a, b) => a - b);
+          const median = sorted[Math.floor(sorted.length / 2)];
+          
+          if (median > 0 && vel1 > median * 1.25) {
+            const corrected = Math.round(median * 1.10 * 1000) / 1000;
+            // Update whichever velocity field was used
+            if (rep1.meanVelocity > MIN_VELOCITY) {
+              setRepsData[0] = { ...rep1, meanVelocity: corrected };
+            } else {
+              setRepsData[0] = { ...rep1, peakVelocity: corrected };
+            }
+            console.log(`[useWorkoutSession:incomplete] Rep 1 velocity corrected: ${vel1.toFixed(3)} → ${corrected.toFixed(3)} (median: ${median.toFixed(3)})`);
+          }
+        }
+      }
+    }
 
     // Build set data with incomplete flag
     const currentSetData = {

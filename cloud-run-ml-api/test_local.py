@@ -137,7 +137,7 @@ def main():
     # Test 2: Model info
     print("\n" + "=" * 60)
     print("TEST 2: Model Info")
-    for exercise in ["CONCENTRATION_CURLS", "LATERAL_PULLDOWN", "OVERHEAD_EXTENSIONS", "LEG_EXTENSION"]:
+    for exercise in ["CONCENTRATION_CURLS", "LATERAL_PULLDOWN", "OVERHEAD_EXTENSIONS", "LEG_EXTENSION", "BENCH_PRESS", "BACK_SQUATS"]:
         info = api_request("GET", f"/model-info/{exercise}")
         print(f"\n  {exercise}:")
         print(f"    Classes: {info['class_names']}")
@@ -159,7 +159,7 @@ def main():
     # Test 4: All 4 available models
     print("\n" + "=" * 60)
     print("TEST 4: Classify Across All Available Models")
-    exercises = ["CONCENTRATION_CURLS", "LATERAL_PULLDOWN", "OVERHEAD_EXTENSIONS", "LEG_EXTENSION"]
+    exercises = ["CONCENTRATION_CURLS", "LATERAL_PULLDOWN", "OVERHEAD_EXTENSIONS", "LEG_EXTENSION", "BENCH_PRESS", "BACK_SQUATS"]
     for ex in exercises:
         features = generate_realistic_features()
         result = api_request("POST", "/classify", {

@@ -260,6 +260,13 @@ export default function SharedWorkoutPage() {
           {/* Fatigue + Velocity Loss — swipeable carousel */}
           <FatigueCarousel
             setsData={s.setsData || []}
+            smoothnessData={(s.setsData || []).flatMap(set =>
+              (set.repsData || []).map(r => ({
+                repNumber: r.repNumber,
+                setNumber: set.setNumber,
+                smoothnessScore: r.smoothnessScore ?? 50,
+              }))
+            )}
             fatigueScore={s.fatigueScore}
             fatigueLevel={s.fatigueLevel}
             fatigueComponents={s.fatigueComponents}

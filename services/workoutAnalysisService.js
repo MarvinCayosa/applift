@@ -334,86 +334,6 @@ export const computeROMDegrees = (accelX, accelY, accelZ) => {
 };
 
 /**
- * Compute smoothness metrics (LDLJ-inspired)
- * Returns irregularity score and smoothness score
- * 
- * Key insight: Uses normalized jerk + direction changes + peak count
- */
-export const computeSmoothnessMetrics = (accelX, accelY, accelZ, timestamps, filteredMag = null) => {
-  if (!accelX || accelX.length < 4) {
-    return { irregularityScore: 0, smoothnessScore: 50 };
-  }
-  
-  // Duration in seconds
-  const duration = (timestamps[timestamps.length - 1] - timestamps[0]) / 1000;
-  if (duration <= 0) {
-    return { irregularityScore: 0, smoothnessScore: 50 };
-  }
-  
-  // Time step
-  const dt = duration / (timestamps.length - 1);
-  
-  // Compute signal (use filtered mag if available, else compute magnitude)
-  let signal;
-  if (filteredMag && filteredMag.length === accelX.length) {
-    signal = filteredMag;
-  } else {
-    signal = accelX.map((x, i) => Math.sqrt(x * x + accelY[i] * accelY[i] + accelZ[i] * accelZ[i]));
-  }
-  
-  // Range of motion
-  const rom = Math.max(...signal) - Math.min(...signal);
-  const safeRom = rom < 0.1 ? 0.1 : rom;
-  
-  // === METRIC 1: Normalized Jerk ===
-  const velocity = [];
-  for (let i = 1; i < signal.length; i++) {
-    velocity.push((signal[i] - signal[i - 1]) / dt);
-  }
-  
-  const jerk = [];
-  for (let i = 1; i < velocity.length; i++) {
-    jerk.push(Math.abs((velocity[i] - velocity[i - 1]) / dt));
-  }
-  
-  const meanJerk = jerk.length > 0 ? mean(jerk) : 0;
-  const normalizedJerk = meanJerk / safeRom;
-  
-  // === METRIC 2: Direction Changes ===
-  let directionChanges = 0;
-  for (let i = 1; i < velocity.length; i++) {
-    if ((velocity[i] > 0 && velocity[i - 1] < 0) || (velocity[i] < 0 && velocity[i - 1] > 0)) {
-      directionChanges++;
-    }
-  }
-  const directionRate = directionChanges / duration;
-  
-  // === METRIC 3: Peak Detection ===
-  const { peaks, valleys } = findPeaks(signal, 0.05);
-  const totalPeaks = peaks.length + valleys.length;
-  const excessPeaks = Math.max(0, totalPeaks - 2);
-  
-  // === COMBINE INTO IRREGULARITY SCORE ===
-  // Calibrated from real IMU data
-  const jerkContrib = Math.min(40, Math.max(0, normalizedJerk - 1.5) * 13.3);
-  const dirContrib = Math.min(35, Math.max(0, directionRate - 0.5) * 10);
-  const peaksContrib = Math.min(25, excessPeaks * 3.3);
-  
-  const irregularityScore = jerkContrib + dirContrib + peaksContrib;
-  const smoothnessScore = Math.max(0, Math.min(100, 100 - irregularityScore));
-  
-  return {
-    irregularityScore: Math.round(irregularityScore * 100) / 100,
-    smoothnessScore: Math.round(smoothnessScore * 100) / 100,
-    normalizedJerk,
-    directionChanges,
-    directionRate,
-    totalPeaks,
-    meanJerk
-  };
-};
-
-/**
  * Compute Range of Motion metrics from signal
  */
 export const computeROM = (signal) => {
@@ -538,9 +458,6 @@ export const computeRepMetrics = (repData) => {
   const romFromOrientation = hasOrientationData 
     ? computeROMFromOrientation(roll, pitch, yaw)
     : { romDegrees: 0, primaryAxis: 'unknown', rollRange: 0, pitchRange: 0, yawRange: 0 };
-  
-  // Smoothness metrics
-  const smoothnessMetrics = computeSmoothnessMetrics(accelX, accelY, accelZ, timestamps, filteredMag);
   
   // Gyroscope metrics - use for angular velocity reference
   const gyroMag = gyroX.map((x, i) => Math.sqrt(x * x + gyroY[i] * gyroY[i] + gyroZ[i] * gyroZ[i]));
@@ -717,12 +634,6 @@ export const computeRepMetrics = (repData) => {
     romYawRange: romDegrees.yawRange,
     hasOrientationData,
     hasQuaternionData,
-    
-    // Smoothness metrics
-    smoothnessScore: smoothnessMetrics.smoothnessScore,
-    meanJerk: smoothnessMetrics.irregularityScore,
-    normalizedJerk: smoothnessMetrics.normalizedJerk,
-    directionChanges: smoothnessMetrics.directionChanges,
     
     // Gyroscope metrics (baseline-compensated for better velocity detection)
     gyroPeak, // Angular velocity change from baseline (rad/s)
@@ -1040,58 +951,41 @@ export const computeFatigueIndicators = (repMetricsList, mlClassification = null
   const smoothnessValues = repMetricsList.map(m => m.smoothnessScore || 50);
   const peaks = repMetricsList.map(m => m.peak || 0);
   
-  // === D_ω: Peak Angular Velocity Change (35%) ===
-  // Penalize BOTH velocity drops AND significant surges:
-  // - Velocity DROP = muscles too tired to move fast (classic fatigue)
-  // - Velocity SURGE (>20%) = compensatory swinging/momentum (form breakdown from fatigue)
-  // Small velocity increases (<20%) are allowed for warming up
-  // Both large drops and surges are signs of fatigue
+  // === D_ω: Velocity Loss using Best Rep vs Mean Last 3 (González-Badillo et al.) ===
+  // Benefits:
+  //   • Avoids slow/cold first rep issues
+  //   • Avoids noisy last-rep compensation
+  //   • Best rep represents actual peak neuromuscular output
   let D_omega, gyroDirection;
   let rawVelocityChangePct = 0; // For display purposes (show full change)
-  const SURGE_THRESHOLD = 0.20; // Allow 20% velocity increase for warmup
   
   if (hasGyro) {
-    const avgGyroFirst = mean(gyroPeaks.slice(0, third));
-    const avgGyroLast = mean(gyroPeaks.slice(-third));
-    const velocityChange = avgGyroFirst > 0 ? (avgGyroFirst - avgGyroLast) / avgGyroFirst : 0;
-    rawVelocityChangePct = velocityChange * 100; // Store for display
-    
-    if (velocityChange >= 0) {
-      // Velocity dropped (normal fatigue pattern)
-      D_omega = velocityChange;
-      gyroDirection = 'drop';
+    const validGyros = gyroPeaks.filter(g => g > 0);
+    if (validGyros.length >= 3) {
+      const bestGyro = Math.max(...validGyros);
+      const lastN = Math.min(3, validGyros.length);
+      const avgLastGyro = mean(gyroPeaks.slice(-lastN).filter(g => g > 0));
+      const velocityChange = bestGyro > 0 ? (bestGyro - avgLastGyro) / bestGyro : 0;
+      rawVelocityChangePct = velocityChange * 100; // VL%
+      D_omega = Math.max(0, velocityChange); // Only count drops (0 if negative/no drop)
+      gyroDirection = velocityChange >= 0 ? 'drop' : 'warmup';
     } else {
-      // Velocity increased (potential momentum compensation)
-      // Only penalize if surge exceeds warmup threshold
-      const surgeAmount = Math.abs(velocityChange);
-      if (surgeAmount > SURGE_THRESHOLD) {
-        // Compensatory momentum detected — penalize the excess beyond warmup threshold
-        D_omega = surgeAmount - SURGE_THRESHOLD;
-        gyroDirection = 'surge';
-      } else {
-        // Minor increase — probably just warming up, don't penalize
-        D_omega = 0;
-        gyroDirection = 'warmup';
-      }
+      D_omega = 0;
+      gyroDirection = 'stable';
     }
   } else {
-    const avgPeakFirst = mean(peaks.slice(0, third));
-    const avgPeakLast = mean(peaks.slice(-third));
-    const velocityChange = avgPeakFirst > 0 ? (avgPeakFirst - avgPeakLast) / avgPeakFirst : 0;
-    rawVelocityChangePct = velocityChange * 100;
-    
-    if (velocityChange >= 0) {
-      D_omega = velocityChange;
-      gyroDirection = 'drop';
+    const validPeaks = peaks.filter(p => p > 0);
+    if (validPeaks.length >= 3) {
+      const bestPeak = Math.max(...validPeaks);
+      const lastN = Math.min(3, validPeaks.length);
+      const avgLastPeak = mean(peaks.slice(-lastN).filter(p => p > 0));
+      const velocityChange = bestPeak > 0 ? (bestPeak - avgLastPeak) / bestPeak : 0;
+      rawVelocityChangePct = velocityChange * 100;
+      D_omega = Math.max(0, velocityChange);
+      gyroDirection = velocityChange >= 0 ? 'drop' : 'warmup';
     } else {
-      const surgeAmount = Math.abs(velocityChange);
-      if (surgeAmount > SURGE_THRESHOLD) {
-        D_omega = surgeAmount - SURGE_THRESHOLD;
-        gyroDirection = 'surge';
-      } else {
-        D_omega = 0;
-        gyroDirection = 'warmup';
-      }
+      D_omega = 0;
+      gyroDirection = 'stable';
     }
   }
   
@@ -1523,7 +1417,6 @@ export const analyzeWorkout = (workoutData) => {
       inconsistentRepIndex: setConsistency.inconsistentRepIndex,
       avgDuration: mean(setRepMetrics.map(m => m.durationMs)),
       avgROM: mean(setRepMetrics.map(m => m.romDegrees || m.rom)),
-      avgSmoothness: mean(setRepMetrics.map(m => m.smoothnessScore)),
       totalTime: setRepMetrics.reduce((sum, m) => sum + (m.durationMs || 0), 0)
     });
   }
@@ -1586,7 +1479,6 @@ export const analyzeWorkout = (workoutData) => {
   const avgConcentric = mean(allRepMetrics.map(m => m.liftingTime || 0));
   const avgEccentric = mean(allRepMetrics.map(m => m.loweringTime || 0));
   const avgROMDegrees = mean(allRepMetrics.map(m => m.romDegrees || 0));
-  const avgSmoothness = mean(allRepMetrics.map(m => m.smoothnessScore || 50));
   const avgDuration = mean(allRepMetrics.map(m => m.durationMs || 0));
   const totalDuration = allRepMetrics.reduce((sum, m) => sum + (m.durationMs || 0), 0);
   
@@ -1611,7 +1503,6 @@ export const analyzeWorkout = (workoutData) => {
       totalDurationMs: totalDuration,
       avgDurationMs: avgDuration,
       avgROMDegrees,
-      avgSmoothness,
       avgConcentric,
       avgEccentric,
       concentricPercent: avgConcentric + avgEccentric > 0 
@@ -1725,7 +1616,6 @@ export default {
   computeRepMetrics,
   computeFatigueIndicators,
   computeRepConsistency,
-  computeSmoothnessMetrics,
   computeROMDegrees,
   computeROMFromOrientation,
   extractMLFeatures,

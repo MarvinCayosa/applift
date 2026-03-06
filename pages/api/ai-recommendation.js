@@ -100,6 +100,18 @@ LOAD DECISIONS (based on ML data — STRICTLY ENFORCED):
 - Decrease: cleanRepPct <60%, OR fatigue >40%, OR consistency <60%
 CRITICAL: cleanRepPct is the percentage of reps classified as "Clean" by our ML model. If cleanRepPct < 60%, you MUST recommend the SAME or LOWER load than last session. NEVER increase load when form quality is poor. Reference the actual cleanRepPct value in your rationale.
 
+VELOCITY LOSS & SMOOTHNESS METRICS:
+- Velocity Loss (VL%): Measures fatigue accumulation within a set. Calculated as (firstRepVelocity - lastRepVelocity) / firstRepVelocity × 100.
+  - VL < 20%: Effective training zone with minimal fatigue accumulation
+  - VL 20-30%: Moderate fatigue, acceptable for hypertrophy
+  - VL > 30%: High fatigue, may indicate load is too heavy or insufficient rest
+- Smoothness (Mean Jerk Magnitude): Measures movement quality/control. Score 0-100 where higher = smoother movement.
+  - 80-100: Excellent control, smooth execution
+  - 60-79: Good control, minor irregularities
+  - 40-59: Moderate control issues, consider technique focus
+  - <40: Poor control, likely compensating or struggling with load
+- Use these metrics alongside cleanRepPct to assess readiness for progression.
+
 OUTPUT FORMAT (JSON only, no markdown):
 {
   "recommendedLoad": <kg total>,
@@ -233,6 +245,9 @@ function buildUserPrompt({ userProfile, equipment, exerciseName, pastSessions, s
       if (s.cleanRepPct != null) prompt += `, cleanRepPct: ${s.cleanRepPct}%`;
       if (s.fatigueScore != null) prompt += `, fatigue: ${s.fatigueScore}%`;
       if (s.consistencyScore != null) prompt += `, consistency: ${s.consistencyScore}%`;
+      // Velocity Loss and Smoothness metrics
+      if (s.avgVelocityLoss != null) prompt += `, VL: ${s.avgVelocityLoss.toFixed(1)}%`;
+      if (s.avgSmoothness != null) prompt += `, smoothness: ${s.avgSmoothness.toFixed(0)}`;
       if (s.mlClassification) prompt += `, ML: ${s.mlClassification}`;
       if (s.date) prompt += ` (${s.date})`;
       prompt += `\n`;
@@ -244,6 +259,33 @@ function buildUserPrompt({ userProfile, equipment, exerciseName, pastSessions, s
       prompt += `\n⚠️ FORM WARNING: Most recent session had only ${mostRecent.cleanRepPct}% clean reps. Per LOAD DECISIONS rules, you MUST decrease or maintain load. DO NOT increase load.\n`;
     } else if (mostRecent?.cleanRepPct != null && mostRecent.cleanRepPct < 80) {
       prompt += `\n⚠️ FORM NOTE: Most recent session had ${mostRecent.cleanRepPct}% clean reps. Per LOAD DECISIONS rules, maintain current load — do not increase.\n`;
+    }
+
+    // Velocity Loss and Smoothness trend analysis for most recent session
+    if (mostRecent?.avgVelocityLoss != null || mostRecent?.avgSmoothness != null) {
+      prompt += `\nMOVEMENT QUALITY TRENDS (last session):\n`;
+      if (mostRecent.avgVelocityLoss != null) {
+        const vl = mostRecent.avgVelocityLoss;
+        if (vl > 30) {
+          prompt += `⚠️ HIGH VELOCITY LOSS (${vl.toFixed(1)}%): Significant fatigue detected. Consider reducing load or adding rest.\n`;
+        } else if (vl > 20) {
+          prompt += `→ MODERATE VELOCITY LOSS (${vl.toFixed(1)}%): Acceptable fatigue for hypertrophy training.\n`;
+        } else {
+          prompt += `✓ LOW VELOCITY LOSS (${vl.toFixed(1)}%): Good fatigue management, may be ready for progression.\n`;
+        }
+      }
+      if (mostRecent.avgSmoothness != null) {
+        const sm = mostRecent.avgSmoothness;
+        if (sm < 40) {
+          prompt += `⚠️ LOW SMOOTHNESS (${sm.toFixed(0)}): Poor movement control. Reduce load to improve form.\n`;
+        } else if (sm < 60) {
+          prompt += `→ MODERATE SMOOTHNESS (${sm.toFixed(0)}): Some control issues. Maintain load, focus on technique.\n`;
+        } else if (sm < 80) {
+          prompt += `✓ GOOD SMOOTHNESS (${sm.toFixed(0)}): Acceptable movement quality.\n`;
+        } else {
+          prompt += `✓ EXCELLENT SMOOTHNESS (${sm.toFixed(0)}): Great movement control, ready for progression.\n`;
+        }
+      }
     }
   } else {
     prompt += `FIRST TIME: No past data. Use conservative starting weights.\n`;

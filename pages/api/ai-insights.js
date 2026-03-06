@@ -73,6 +73,12 @@ const SYSTEM_PROMPT = `You are AppLift's AI performance analyst. Analyze the wor
 SYSTEM CONTEXT:
 AppLift uses a single IMU (Inertial Measurement Unit) sensor attached to the equipment (dumbbell, barbell, or machine) to track movement. There is NO camera. All movement quality data (classification labels, velocity, ROM, phase timing) comes from IMU sensor readings: accelerometer, gyroscope, magnetometer, and derived orientation data.
 
+KEY METRICS TO INTERPRET:
+- Velocity Loss: Compares best rep speed to average of last 3 reps per set. Higher velocity loss = more fatigue. <10% minimal, 10-20% low, 20-30% moderate, 30-40% high, >40% near failure. Velocity loss helps assess if the set was challenging enough for growth.
+- Effective Reps: Reps within 20% of the best rep speed — these are the "growth" reps that stimulate adaptation. More effective reps = better training stimulus.
+- ROM (Range of Motion): Consistency of movement depth across reps. Shortened ROM may indicate fatigue or poor form.
+- Smoothness (Mean Jerk): Measures movement control using jerk (rate of acceleration change). Lower jerk = smoother, more controlled movement. Score 75-100 = excellent control, 45-60 = moderate (check form), <30 = jerky/uncontrolled. Based on Flash & Hogan (1985) minimum-jerk model.
+
 APPLIFT EXERCISE CATALOG & ML QUALITY LABELS:
 - Concentration Curls (Dumbbell, biceps): Clean, Uncontrolled Movement, Abrupt Initiation
 - Overhead Extension (Dumbbell, triceps): Clean, Uncontrolled Movement, Abrupt Initiation
@@ -83,14 +89,13 @@ APPLIFT EXERCISE CATALOG & ML QUALITY LABELS:
 
 SUMMARY — Session Interpretation:
 - Start with execution quality: lead with the clean-to-mistake ratio (e.g. "67% clean reps with 3 flagged as Uncontrolled Movement").
-- Explain WHAT the numbers mean and WHY it matters (e.g. "Uncontrolled Movement means the IMU detected excessive momentum — this reduces muscle activation and increases injury risk").
-- Mention fatigue and consistency scores as context (e.g. "fatigue at 38% suggests the load was appropriate for today").
+- Interpret velocity loss and effective reps context (e.g. "Velocity loss of 25% with 6/10 effective reps suggests you pushed appropriately close to failure").
 - 2-3 sentences maximum. Be direct, not generic.
 
 BULLETS — What to Improve (Tips for Next Session):
 - Each bullet must be a concrete improvement tip derived directly from the session data.
-- Reference the specific metric that triggered the tip (e.g. "Your Set 2 velocity of 1.82 m/s was significantly higher than Set 1 — slow down the concentric phase to stay in control").
-- Prioritize fixing form mistakes first, then fatigue/consistency issues, then fine-tuning metrics.
+- Reference the specific metric that triggered the tip (e.g. "Velocity loss of 45% indicates near-failure — consider reducing weight slightly to maintain better form").
+- Prioritize fixing form mistakes first, then velocity loss-related fatigue management.
 - 3-5 tips total. Each 1 short sentence. No generic advice — every tip must trace back to a real number in the data.
 - NEVER mention cameras, video, or visual analysis. All data comes from the IMU sensor.
 
@@ -152,7 +157,6 @@ function buildMetricsPrompt(data) {
         .join(', ');
 
       const avgVel = reps.reduce((s, r) => s + (r.peakVelocity || 0), 0) / reps.length;
-      const avgSmooth = reps.reduce((s, r) => s + (r.smoothnessScore || 0), 0) / reps.length;
       const avgROM = reps.reduce((s, r) => s + (r.rom || 0), 0) / reps.length;
       const romUnit = reps[0]?.romUnit || '°';
       const avgLift = reps.reduce((s, r) => s + (r.liftingTime || 0), 0) / reps.length;
@@ -160,7 +164,6 @@ function buildMetricsPrompt(data) {
 
       let line = `  Set${i + 1}: ${reps.length} reps [${distStr}]`;
       if (avgVel > 0) line += `, vel ${avgVel.toFixed(2)}m/s`;
-      if (avgSmooth > 0) line += `, smooth ${avgSmooth.toFixed(1)}`;
       if (avgROM > 0) line += `, ROM ${avgROM.toFixed(1)}${romUnit}`;
       if (avgLift > 0) line += `, conc ${avgLift.toFixed(2)}s ecc ${avgLower.toFixed(2)}s`;
       prompt += line + '\n';
@@ -209,6 +212,31 @@ function buildMetricsPrompt(data) {
   // Fatigue & consistency scores
   if (fatigueScore != null) prompt += `FATIGUE SCORE: ${fatigueScore}%\n`;
   if (consistencyScore != null) prompt += `CONSISTENCY SCORE: ${consistencyScore}%\n`;
+
+  // Velocity Loss Analysis per set
+  if (setsData?.length) {
+    let vlSummary = [];
+
+    setsData.forEach((set, i) => {
+      const reps = set.repsData || [];
+      if (!reps.length) return;
+
+      // VL calculation - Best Rep vs Mean Last 3
+      const velocities = reps.map(r => r.meanVelocity || r.peakVelocity || 0).filter(v => v > 0);
+      if (velocities.length >= 3) {
+        const baseline = Math.max(...velocities);
+        const lastN = Math.min(3, velocities.length);
+        const avgLast = velocities.slice(-lastN).reduce((s, v) => s + v, 0) / lastN;
+        const vl = baseline > 0 ? Math.round(((baseline - avgLast) / baseline) * 100) : 0;
+        const effective = velocities.filter(v => v >= baseline * 0.8).length;
+        vlSummary.push(`Set${i + 1}: Velocity Loss ${vl}%, ${effective}/${velocities.length} effective`);
+      }
+    });
+
+    if (vlSummary.length > 0) {
+      prompt += `\nVELOCITY LOSS ANALYSIS:\n  ${vlSummary.join('\n  ')}\n`;
+    }
+  }
 
   prompt += `\nGenerate the session summary JSON.`;
   return prompt;

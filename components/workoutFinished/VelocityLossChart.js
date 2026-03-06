@@ -11,7 +11,7 @@
  * 
  * Key metrics:
  * - Velocity per rep (bar chart, MPV in m/s)
- * - Baseline velocity (max of first 3 valid MPVs)
+ * - Baseline velocity (Best Rep MPV — highest velocity in the set)
  * - Velocity loss threshold line (industry standard: 10-20%)
  * - Color coding: effective reps (cyan) vs fatigued reps (gray)
  */
@@ -37,7 +37,6 @@ export default function VelocityLossChart({
     filteredSets.forEach(set => {
       if (set.repsData && Array.isArray(set.repsData)) {
         set.repsData.forEach((rep, idx) => {
-          // Prefer MPV (meanVelocity) as primary; fall back to peakVelocity
           const mcv = parseFloat(rep.meanVelocity) || 0;
           const pv = parseFloat(rep.peakVelocity) || 0;
           let velocity = mcv > 0 ? mcv : pv;
@@ -47,7 +46,8 @@ export default function VelocityLossChart({
             setNumber: set.setNumber,
             velocity: Math.round(velocity * 1000) / 1000,
             duration: parseFloat(rep.time) || 0,
-            smoothness: rep.smoothnessScore || 50
+            smoothness: rep.smoothnessScore || 50,
+            isFirstInSet: (rep.repNumber || idx + 1) === 1
           });
         });
       }
@@ -65,14 +65,19 @@ export default function VelocityLossChart({
       };
     }
 
-    // Data quality: filter valid reps (velocity > 0.02 m/s noise floor)
+    // ── Best Rep vs Mean Last 3 methodology (González-Badillo et al.) ──────
+    // Baseline = Best Rep (highest MPV) — true peak neuromuscular output
+    // Final = Mean of last 3 reps — robust measure of fatigued state
+    // Benefits:
+    //   • Avoids slow/cold first rep issues
+    //   • Avoids noisy single-rep compensation at end
+    //   • Best rep represents actual capability that set
     const MIN_VELOCITY = 0.02;
     const validVelocities = velocities.filter(v => v.velocity > MIN_VELOCITY);
 
-    // Baseline: fastest (max) of first 3 valid reps — more robust than avg-of-2
-    const baselineSampleSize = Math.min(3, validVelocities.length);
-    const baselineVelocity = baselineSampleSize > 0
-      ? Math.max(...validVelocities.slice(0, baselineSampleSize).map(v => v.velocity))
+    // ── Baseline = Best Rep (max velocity) ─────────────────────────────────
+    const baselineVelocity = validVelocities.length > 0 
+      ? Math.max(...validVelocities.map(v => v.velocity))
       : 0;
 
     const thresholdVelocity = baselineVelocity * (1 - thresholdPercent / 100);
@@ -87,20 +92,25 @@ export default function VelocityLossChart({
 
     let fatigueOnsetRep = -1;
     const enrichedVelocities = velocities.map((v, idx) => {
+      const velocityLossPercent = baselineVelocity > 0
+        ? ((baselineVelocity - v.velocity) / baselineVelocity) * 100
+        : 0;
+      const isBestRep = Math.abs(v.velocity - baselineVelocity) < 0.001;
       const isEffective = v.velocity >= thresholdVelocity;
       if (fatigueOnsetRep === -1 && !isEffective && idx > 0) {
         fatigueOnsetRep = idx;
       }
-      const velocityLossPercent = baselineVelocity > 0
-        ? ((baselineVelocity - v.velocity) / baselineVelocity) * 100
-        : 0;
-      return { ...v, isEffective, velocityLossPercent: Math.round(velocityLossPercent * 10) / 10 };
+      return { ...v, isEffective, isSurge: false, isBestRep, velocityLossPercent: Math.round(velocityLossPercent * 10) / 10 };
     });
 
     const effectiveReps = enrichedVelocities.filter(v => v.isEffective).length;
-    const lastVelocity = velocities[velocities.length - 1]?.velocity || 0;
+
+    // ── VL = (Best - Mean Last 3) / Best × 100 ─────────────────────────────
+    const lastN = Math.min(3, allVelocityValues.length);
+    const lastReps = allVelocityValues.slice(-lastN);
+    const avgLast = lastReps.length > 0 ? lastReps.reduce((s, v) => s + v, 0) / lastReps.length : 0;
     const velocityLoss = baselineVelocity > 0
-      ? ((baselineVelocity - lastVelocity) / baselineVelocity) * 100
+      ? ((baselineVelocity - avgLast) / baselineVelocity) * 100
       : 0;
 
     return {
@@ -210,12 +220,18 @@ export default function VelocityLossChart({
           <line
             x1={padding.left} y1={thresholdY}
             x2={Math.max(chartWidth, chartMetrics.velocities.length * 36 + 30) - padding.right} y2={thresholdY}
-            stroke="#22d3ee" strokeWidth="1.5" strokeDasharray="6,3" opacity="0.8"
+            stroke="#a78bfa" strokeWidth="1.5" strokeDasharray="6,3" opacity="0.8"
           />
-          {/* Threshold label — small, right-aligned */}
+          {/* Threshold label — shows −20% on the left, absolute value on the right */}
+          <text
+            x={padding.left + 4} y={thresholdY - 6}
+            fill="#a78bfa" fontSize="10" fontWeight="600" textAnchor="start" opacity="0.9"
+          >
+            −{thresholdPercent}%
+          </text>
           <text
             x={Math.max(chartWidth, chartMetrics.velocities.length * 36 + 30) - padding.right - 4} y={thresholdY - 6}
-            fill="#22d3ee" fontSize="9" textAnchor="end" opacity="0.8"
+            fill="#a78bfa" fontSize="9" textAnchor="end" opacity="0.7"
           >
             {chartMetrics.thresholdVelocity.toFixed(2)}
           </text>
@@ -229,8 +245,8 @@ export default function VelocityLossChart({
             const x = startX + idx * (barWidth + barGap);
             const y = getY(data.velocity);
             
-            const barColor = data.isEffective ? '#22d3ee' : '#64748b';
-            const barOpacity = data.isEffective ? 1 : 0.6;
+            const barColor = data.isSurge ? '#f97316' : data.isEffective ? '#22d3ee' : '#64748b';
+            const barOpacity = data.isSurge ? 1 : data.isEffective ? 1 : 0.6;
             const isHovered = hoveredBar === idx;
             
             return (
@@ -249,7 +265,7 @@ export default function VelocityLossChart({
                 
                 {/* Velocity label on top of bar (always visible) */}
                 <text x={x + barWidth / 2} y={y - 5}
-                  fill={data.isEffective ? '#22d3ee' : '#94a3b8'} fontSize="9" fontWeight="600" textAnchor="middle"
+                  fill={data.isSurge ? '#f97316' : data.isEffective ? '#22d3ee' : '#94a3b8'} fontSize="9" fontWeight="600" textAnchor="middle"
                 >
                   {data.velocity.toFixed(2)}
                 </text>
@@ -277,18 +293,6 @@ export default function VelocityLossChart({
             );
           })}
         </svg>
-        </div>
-
-        {/* Legend — overlaid bottom-right */}
-        <div className="absolute bottom-2 right-3 flex items-center gap-3 text-[10px]">
-          <div className="flex items-center gap-1">
-            <div className="w-2.5 h-2.5 rounded-sm bg-cyan-400"></div>
-            <span className="text-gray-400">Effective</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="w-2.5 h-2.5 rounded-sm bg-slate-500 opacity-60"></div>
-            <span className="text-gray-400">Fatigued</span>
-          </div>
         </div>
       </div>
 

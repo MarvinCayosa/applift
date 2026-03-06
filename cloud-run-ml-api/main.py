@@ -24,10 +24,17 @@ logger = logging.getLogger(__name__)
 # Lifespan handler (replaces deprecated @app.on_event)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Preload common models on startup."""
+    """Preload all models on startup."""
     logger.info("Starting ML Classification API...")
-    common_exercises = ["CONCENTRATION_CURLS", "LATERAL_PULLDOWN", "OVERHEAD_EXTENSIONS"]
-    for exercise in common_exercises:
+    all_exercises = [
+        "CONCENTRATION_CURLS",
+        "OVERHEAD_EXTENSIONS",
+        "BENCH_PRESS",
+        "BACK_SQUATS",
+        "LATERAL_PULLDOWN",
+        "LEG_EXTENSION",
+    ]
+    for exercise in all_exercises:
         try:
             load_model_if_needed(exercise)
             logger.info(f"Preloaded model: {exercise}")

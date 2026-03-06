@@ -163,7 +163,7 @@ export default function WorkoutFinished() {
         classification: analysisSet.classification || localSet.classification || null,
       };
 
-      // Merge rep-level enrichments (classification, smoothnessScore) if rep counts match
+      // Merge rep-level enrichments (classification, smoothnessScore, meanJerk) if rep counts match
       if (localSet.repsData && analysisSet.repsData && localSet.repsData.length === analysisSet.repsData.length) {
         mergedSet.repsData = localSet.repsData.map((localRep, repIdx) => {
           const analysisRep = analysisSet.repsData[repIdx];
@@ -171,6 +171,7 @@ export default function WorkoutFinished() {
             ...localRep,
             classification: analysisRep?.classification || localRep.classification || null,
             smoothnessScore: analysisRep?.smoothnessScore ?? localRep.smoothnessScore,
+            meanJerk: analysisRep?.meanJerk ?? localRep.meanJerk,
             quality: analysisRep?.quality || localRep.quality,
             // Merge phase timing data from analysis
             liftingTime: analysisRep?.liftingTime ?? localRep.liftingTime ?? 0,
@@ -238,7 +239,9 @@ export default function WorkoutFinished() {
         romFulfillment: rep.romFulfillment ?? null,
         romUnit: rep.romUnit ?? '°',
         peakVelocity: rep.peakVelocity ?? null,
+        meanVelocity: rep.meanVelocity ?? null,
         smoothnessScore: rep.smoothnessScore ?? null,
+        meanJerk: rep.meanJerk ?? null,
         isClean: rep.isClean ?? null,
         quality: rep.quality ?? null,
         liftingTime: rep.liftingTime ?? 0,
@@ -811,6 +814,12 @@ export default function WorkoutFinished() {
           {/* Fatigue + Velocity Loss — swipeable carousel */}
           <FatigueCarousel
             setsData={mergedSetsData}
+            smoothnessData={analysisData?.repsData?.map(r => ({
+              repNumber: r.repNumber,
+              setNumber: r.setNumber,
+              smoothnessScore: r.smoothnessScore ?? 50,
+              meanJerk: r.meanJerk ?? null,
+            }))}
             fatigueScore={analysisData?.fatigueScore}
             fatigueLevel={analysisData?.fatigueLevel}
             fatigueComponents={analysisData?.fatigueComponents}

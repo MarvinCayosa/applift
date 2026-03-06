@@ -335,6 +335,7 @@ export default function useSessionDetailsData({ logId, equipment, exercise }) {
               loweringTime: ar?.loweringTime ?? lr.loweringTime ?? 0,
               peakTimePercent: ar?.peakTimePercent ?? lr.peakTimePercent ?? null,
               peakVelocity: ar?.peakVelocity ?? lr.peakVelocity,
+              meanVelocity: ar?.meanVelocity ?? lr.meanVelocity,
               // For ROM: prefer local ROMComputer value (retroCorrect) for stroke exercises.
               // The analysis service computes ROM from accel magnitude (inaccurate for displacement).
               // localRep.rom comes from ROMComputer.getROMForRep() which uses retroCorrect.
@@ -417,6 +418,13 @@ export default function useSessionDetailsData({ logId, equipment, exercise }) {
       fatigueScore: analysisUI?.fatigueScore || 0,
       fatigueLevel: analysisUI?.fatigueLevel || 'Low',
       fatigueComponents: analysisUI?.fatigueComponents || null,
+
+      // Smoothness data (LDLJ-based, fetched from analytics)
+      smoothnessData: analysisUI?.repsData?.map(r => ({
+        repNumber: r.repNumber,
+        setNumber: r.setNumber,
+        smoothnessScore: r.smoothnessScore ?? 50,
+      })) || [],
 
       // Consistency
       consistencyScore: analysisUI?.consistencyScore || 0,
