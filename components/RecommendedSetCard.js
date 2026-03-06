@@ -104,20 +104,29 @@ export default function RecommendedSetCard({
     onCustomFieldClick(field);
   };
 
-  // Calculate total display weight for custom set (plate weight + bar/handle weight)
-  // For barbell/dumbbell, add bar weight to the user's plate selection
+  // Equipment type detection
   const isBarbell = equipment?.toLowerCase() === 'barbell';
   const isDumbbell = equipment?.toLowerCase() === 'dumbbell';
   const hasBaseWeight = isBarbell || isDumbbell;
+
+  // For dumbbell: show plate weight only (subtract 2kg handle)
+  // For barbell: show total weight as-is (bar is heavy, keep included)
+  // For others: show as-is
+  const DUMBBELL_HANDLE_WEIGHT = 2;
+  const recommendedDisplayWeight = isDumbbell
+    ? Math.max(0, weight - DUMBBELL_HANDLE_WEIGHT)
+    : weight;
+
+  // Custom set: barbell adds bar weight to plates, dumbbell shows plates only, others as-is
   const customDisplayWeight = customWeight != null 
-    ? (hasBaseWeight ? customWeight + customBarWeight : customWeight)
+    ? (isBarbell ? customWeight + customBarWeight : customWeight)
     : null;
 
   const cards = [
     // Only include recommended card when AI is enabled
     ...(aiEnabled ? [{
       type: 'recommended',
-      weight,
+      weight: recommendedDisplayWeight,
       weightUnit,
       sets: recommendedSets,
       reps: recommendedReps,
@@ -277,6 +286,9 @@ export default function RecommendedSetCard({
                                 </p>
                                 <p className="text-xs text-white/70 leading-none">{card.weightUnit}</p>
                               </div>
+                              {isDumbbell && customDisplayWeight != null && (
+                                <p className="text-[9px] text-white/40 mt-0.5">plates only</p>
+                              )}
                             </button>
                             <span className="text-white/50 text-xl font-light">|</span>
                             <button
@@ -335,9 +347,11 @@ export default function RecommendedSetCard({
                                 </p>
                                 <p className="text-xs text-white/70 leading-none">{card.weightUnit}</p>
                               </div>
-                              {card.weightBreakdown && (
+                              {isDumbbell && card.type === 'recommended' ? (
+                                <p className="text-[9px] text-white/40 mt-0.5 leading-tight">plates only</p>
+                              ) : card.weightBreakdown ? (
                                 <p className="text-[9px] text-white/40 mt-0.5 leading-tight">{card.weightBreakdown}</p>
-                              )}
+                              ) : null}
                             </div>
                             <span className="text-white/50 text-xl font-light">|</span>
                             <div className="flex-1 py-0.5 text-center">
@@ -527,6 +541,9 @@ export default function RecommendedSetCard({
                                 </p>
                                 <p className="text-xs text-white/70 leading-none">{card.weightUnit}</p>
                               </div>
+                              {isDumbbell && customDisplayWeight != null && (
+                                <p className="text-[9px] text-white/40 mt-0.5">plates only</p>
+                              )}
                             </button>
                             <span className="text-white/50 text-3xl font-light">|</span>
                             <button
@@ -585,9 +602,11 @@ export default function RecommendedSetCard({
                                 </p>
                                 <p className="text-xs text-white/70 leading-none">{card.weightUnit}</p>
                               </div>
-                              {card.weightBreakdown && (
+                              {isDumbbell && card.type === 'recommended' ? (
+                                <p className="text-[10px] text-white/40 mt-1 leading-tight">plates only</p>
+                              ) : card.weightBreakdown ? (
                                 <p className="text-[10px] text-white/40 mt-1 leading-tight">{card.weightBreakdown}</p>
-                              )}
+                              ) : null}
                             </div>
                             <span className="text-white/50 text-3xl font-light">|</span>
                             <div className="flex-1 py-1 text-center">

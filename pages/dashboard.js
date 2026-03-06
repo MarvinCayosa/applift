@@ -10,6 +10,7 @@ import LoadingScreen from '../components/LoadingScreen';
 import LoadTrendIndicator from '../components/LoadTrendIndicator';
 import EquipmentDistributionCard from '../components/EquipmentDistributionCard';
 import TotalCaloriesCard from '../components/TotalCaloriesCard';
+import TotalVolumeCard from '../components/TotalVolumeCard';
 import { ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useUserProfile } from '../utils/userProfileStore';
 import { useWorkoutStreak } from '../utils/useWorkoutStreak';
@@ -1167,8 +1168,11 @@ export default function Dashboard() {
                   logs={logs}
                   hasData={logs.length > 0}
                 />
-                {/* Placeholder card */}
-                <div className="rounded-2xl bg-white/[0.07] flex-1" style={{ minHeight: '100px' }} />
+                {/* Volume Lifted card */}
+                <TotalVolumeCard
+                  logs={logs}
+                  hasData={logs.length > 0}
+                />
               </div>
             </div>
           </section>
