@@ -260,15 +260,16 @@ async function fetchLogsROMData(workoutId, userId, equipment, exercise) {
       return null;
     }
     
-    // Check if this is stroke ROM (cm) - only merge for stroke exercises
-    // Note: romUnit may have leading/trailing whitespace from real-time calculation
-    const hasStrokeROM = setData.some(set => (set.romUnit || '').trim().toLowerCase() === 'cm');
-    if (!hasStrokeROM) {
-      console.log('[Analyze API] Logs not using stroke ROM (cm), skipping merge. Units found:', setData.map(s => s.romUnit));
+    // Check if the logs have ROM data - merge for both stroke (cm) and angle (°) exercises
+    const hasROMData = setData.some(set => 
+      set.repsData?.some(rep => rep.rom != null)
+    );
+    if (!hasROMData) {
+      console.log('[Analyze API] No ROM data in logs repsData, skipping merge');
       return null;
     }
     
-    console.log('[Analyze API] Found stroke ROM data in logs for merge');
+    console.log('[Analyze API] Found ROM data in logs for merge');
     return setData;
   } catch (error) {
     console.error('[Analyze API] Error fetching logs ROM data:', error);
@@ -286,17 +287,17 @@ function mergeRealTimeROM(analysis, logsSetData) {
     return analysis;
   }
   
-  console.log('[Analyze API] Merging real-time stroke ROM into analytics...');
+  console.log('[Analyze API] Merging real-time ROM into analytics...');
   
   // Build a map of (setNumber, repNumber) -> ROM data from logs
   const romMap = new Map();
   let targetROM = null;
-  let romUnit = 'cm';
+  let romUnit = '°'; // Default to degrees
   let romCalibrated = false;
   
   for (const set of logsSetData) {
     if (set.targetROM) targetROM = set.targetROM;
-    if (set.romUnit) romUnit = (set.romUnit || '').trim() || 'cm';
+    if (set.romUnit) romUnit = (set.romUnit || '').trim() || '°';
     if (set.romCalibrated) romCalibrated = set.romCalibrated;
     
     if (set.repsData) {
@@ -305,7 +306,7 @@ function mergeRealTimeROM(analysis, logsSetData) {
         romMap.set(key, {
           rom: rep.rom,
           romFulfillment: rep.romFulfillment,
-          romUnit: ((rep.romUnit || set.romUnit || '').trim()) || 'cm'
+          romUnit: ((rep.romUnit || set.romUnit || '').trim()) || '°'
         });
       }
     }
@@ -342,20 +343,39 @@ function mergeRealTimeROM(analysis, logsSetData) {
     }
   }
   
-  // Update summary with ROM metrics from logs
-  if (analysis.summary && mergeCount > 0) {
+  // Update summary with ROM metrics
+  // Compute from all repMetrics (either from logs merge or from fallback calculation)
+  if (analysis.summary) {
     const allROMs = analysis.repMetrics
       .map(r => r.rom)
-      .filter(r => r != null);
+      .filter(r => r != null && r > 0);
     if (allROMs.length > 0) {
       analysis.summary.avgROM = allROMs.reduce((a, b) => a + b, 0) / allROMs.length;
       analysis.summary.romUnit = romUnit;
-      analysis.summary.targetROM = targetROM;
-      analysis.summary.romCalibrated = romCalibrated;
+      // Only set targetROM/romCalibrated if from logs (mergeCount > 0)
+      if (mergeCount > 0) {
+        analysis.summary.targetROM = targetROM;
+        analysis.summary.romCalibrated = romCalibrated;
+      }
     }
   }
   
-  console.log(`[Analyze API] Merged ${mergeCount} rep ROM values from logs`);
+  // Also update setsAnalysis avgROM even if it wasn't set from logs
+  if (analysis.setsAnalysis) {
+    for (const setAnalysis of analysis.setsAnalysis) {
+      if (setAnalysis.repMetrics && !setAnalysis.avgROM) {
+        const setROMs = setAnalysis.repMetrics
+          .map(r => r.rom)
+          .filter(r => r != null && r > 0);
+        if (setROMs.length > 0) {
+          setAnalysis.avgROM = setROMs.reduce((a, b) => a + b, 0) / setROMs.length;
+          setAnalysis.romUnit = romUnit;
+        }
+      }
+    }
+  }
+  
+  console.log(`[Analyze API] Merged ${mergeCount} rep ROM values from logs, computed avgROM from ${analysis.repMetrics?.filter(r => r.rom > 0).length || 0} reps`);
   return analysis;
 }
 
@@ -812,8 +832,13 @@ function computeRepMetrics(repData) {
   const { liftingTime, loweringTime } = 
     computePhaseTimingsFromPrimaryAxis(accelX, accelY, accelZ, timestamps);
   
-  // Return only essential metrics - ROM will be merged from logs later
-  // ROM is computed by ROMComputer during real-time workout and stored in logs
+  // Simple ROM calculation from filtered magnitude (peak-to-trough)
+  // This is a fallback if logs don't have ROM from ROMComputer
+  // Convert to degrees by treating magnitude range as angular displacement
+  const filteredMax = Math.max(...filteredMag);
+  const filteredMin = Math.min(...filteredMag);
+  const romFromSignal = (filteredMax - filteredMin) * 10; // Scale to reasonable degree range
+  
   return {
     repNumber,
     setNumber,
@@ -824,7 +849,10 @@ function computeRepMetrics(repData) {
     liftingTime,
     loweringTime,
     peakVelocity: gyroPeak,
-    chartData: filteredMag
+    chartData: filteredMag,
+    // ROM fallback - will be overwritten by logs merge if logs have better ROM data
+    rom: Math.round(romFromSignal * 10) / 10,
+    romUnit: '°'
   };
 }
 
@@ -850,6 +878,8 @@ function computeFatigueIndicators(repMetricsList, mlClassification = null) {
   const hasGyro = gyroPeaks.some(g => g > 0);
   const durations = repMetricsList.map(m => m.durationMs || 0);
   const smoothnessValues = repMetricsList.map(m => m.smoothnessScore || 50);
+  const roms = repMetricsList.map(m => m.rom || 0);
+  const peaks = gyroPeaks; // Use gyroPeaks for consistency calculation
   
   // D_omega — velocity drop indicator (fatigue indicator)
   let D_omega, gyroDirection;
