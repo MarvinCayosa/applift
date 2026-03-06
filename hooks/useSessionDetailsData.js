@@ -285,7 +285,9 @@ export default function useSessionDetailsData({ logId, equipment, exercise }) {
                   liftingTime: gcsRep.liftingTime ?? 0,
                   loweringTime: gcsRep.loweringTime ?? 0,
                   peakVelocity: gcsRep.peakVelocity,
-                  rom: gcsRep.rom || gcsRep.romDegrees,
+                  rom: gcsRep.rom,
+                  romUnit: gcsRep.romUnit,
+                  romFulfillment: gcsRep.romFulfillment,
                 })),
               };
             }

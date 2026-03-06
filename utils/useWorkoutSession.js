@@ -660,18 +660,21 @@ export function useWorkoutSession({
           pendingRepCallbackRef.current = null;
         }
 
+        // Get the precise boundary info from RepCounter FIRST
+        // We need the samples to pass to ROMComputer for accurate ROM calculation
+        const repData = repCounterRef.current.exportData();
+        const lastRep = repData.reps[repData.reps.length - 1];
+        const currentRepSamples = repData.samples.filter(s => s.repNumber === newStats.repCount);
+
         // Complete the rep in ROMComputer to get real ROM value
+        // Pass the actual rep samples for accurate per-rep ROM (matches calibration behavior)
         let repROMResult = null;
         if (romComputerRef.current) {
-          repROMResult = romComputerRef.current.completeRep();
+          repROMResult = romComputerRef.current.completeRep(currentRepSamples);
           if (repROMResult) {
             console.log(`[WorkoutSession] Rep ${newStats.repCount} ROM: ${repROMResult.romValue.toFixed(1)}${repROMResult.unit === 'deg' ? '°' : ' cm'}${repROMResult.fulfillment ? ` (${repROMResult.fulfillment.toFixed(0)}% of target)` : ''}`);
           }
         }
-
-        // Get the precise boundary info from RepCounter
-        const repData = repCounterRef.current.exportData();
-        const lastRep = repData.reps[repData.reps.length - 1];
         const countDirection = repCounterRef.current?.countDirection || 'both';
 
         // For BOTH, FULL-CYCLE, PEAK-TO-VALLEY, and ORIENTATION-VALLEY modes: 
@@ -716,43 +719,118 @@ export function useWorkoutSession({
         }
       }
 
-      // ── Pitch-return check: fire deferred onRepDetected ─────────────────────
-      // Every sample, check if orientation has returned close enough to the start
-      // of the pending rep, signalling the end of the eccentric phase.
-      if (pendingRepCallbackRef.current && data.pitch !== undefined) {
+      // ── Return-to-rest check: fire deferred onRepDetected ─────────────────────
+      // Every sample, check if the sensor has returned close enough to the start
+      // position, signalling the end of the eccentric phase.
+      // 
+      // For DUMBBELL exercises: Use pitch-based detection (sensor rotates 40°+)
+      // For BARBELL exercises: Use accel magnitude return-to-baseline (pitch change is minimal ~2-3°)
+      if (pendingRepCallbackRef.current) {
         const pending = pendingRepCallbackRef.current;
         const timeSinceDetection = relativeTime - pending.detectedAtTime;
-        const pitchDiff = Math.abs(data.pitch - pending.startPitch);
         
-        // Track peak pitch during eccentric phase for better return detection
-        if (!pending.peakPitchDiff || pitchDiff > pending.peakPitchDiff) {
-          pending.peakPitchDiff = pitchDiff;
+        // Detect if this is a stroke exercise (barbell/weight stack) vs angle exercise (dumbbell)
+        const isStrokeExercise = romComputerRef.current && 
+          romComputerRef.current.getROMType(romComputerRef.current.exerciseType) === 'stroke';
+        
+        let repComplete = false;
+        let completionReason = '';
+        
+        if (isStrokeExercise) {
+          // *** BARBELL/WEIGHT STACK: Accel-based return detection ***
+          // Track accel magnitude deviation from gravity baseline (~9.81 m/s²)
+          const accelMag = data.filteredMagnitude || data.accelMag || data.rawMagnitude || 9.81;
+          const baselineAccel = pending.baselineAccel ?? accelMag;
+          const accelDev = Math.abs(accelMag - baselineAccel);
+          
+          // Initialize baseline from first sample after detection
+          if (!pending.baselineAccel) {
+            pending.baselineAccel = 9.81; // Gravity baseline
+          }
+          
+          // Track peak deviation during motion
+          if (!pending.peakAccelDev || accelDev > pending.peakAccelDev) {
+            pending.peakAccelDev = accelDev;
+          }
+          
+          // Also track gyro for stillness detection
+          const gyroMag = Math.sqrt((data.gyroX || 0)**2 + (data.gyroY || 0)**2 + (data.gyroZ || 0)**2);
+          const gyroMagRad = gyroMag * (Math.PI / 180); // Assume degrees
+          
+          // Stillness thresholds (relaxed for hand vibration)
+          const STILL_ACCEL_DEV = 0.3; // m/s² from baseline
+          const STILL_GYRO_RAD = 0.15; // rad/s
+          const isCurrentlyStill = accelDev < STILL_ACCEL_DEV && gyroMagRad < STILL_GYRO_RAD;
+          
+          // Track consecutive still samples
+          if (isCurrentlyStill) {
+            pending.stillCounter = (pending.stillCounter || 0) + 1;
+          } else {
+            pending.stillCounter = 0;
+          }
+          
+          // Debug: Log status every second
+          if (!pending.lastDebugLog || timeSinceDetection - (pending.lastDebugLog || 0) > 1000) {
+            console.log(`[WorkoutSession] Rep ${pending.repNumber} waiting (stroke): accelDev=${accelDev.toFixed(2)}, peakDev=${(pending.peakAccelDev || 0).toFixed(2)}, stillCount=${pending.stillCounter || 0}, elapsed=${timeSinceDetection.toFixed(0)}ms`);
+            pending.lastDebugLog = timeSinceDetection;
+          }
+          
+          // Complete when: enough time passed + sensor is still + had significant motion
+          const MIN_ECCENTRIC_MS = 1200; // Slightly shorter for stroke exercises
+          const STILL_SAMPLES_NEEDED = 4; // ~200ms at 20Hz, ~400ms at 10Hz
+          const MIN_PEAK_ACCEL_DEV = 0.5; // Must have seen at least 0.5 m/s² deviation during rep
+          
+          const hasMovedEnough = (pending.peakAccelDev || 0) >= MIN_PEAK_ACCEL_DEV;
+          if (timeSinceDetection > MIN_ECCENTRIC_MS && 
+              (pending.stillCounter || 0) >= STILL_SAMPLES_NEEDED && 
+              hasMovedEnough) {
+            repComplete = true;
+            completionReason = `accel returned (stillCount=${pending.stillCounter}, peakDev=${(pending.peakAccelDev || 0).toFixed(2)})`;
+          }
+        } else {
+          // *** DUMBBELL: Pitch-based return detection ***
+          const pitchDiff = Math.abs((data.pitch ?? 0) - pending.startPitch);
+          
+          // Track peak pitch during eccentric phase
+          if (!pending.peakPitchDiff || pitchDiff > pending.peakPitchDiff) {
+            pending.peakPitchDiff = pitchDiff;
+          }
+          
+          // Debug: Log status every second
+          if (!pending.lastDebugLog || timeSinceDetection - (pending.lastDebugLog || 0) > 1000) {
+            console.log(`[WorkoutSession] Rep ${pending.repNumber} waiting (angle): pitchDiff=${pitchDiff.toFixed(1)}°, peakSoFar=${(pending.peakPitchDiff || 0).toFixed(1)}°, elapsed=${timeSinceDetection.toFixed(0)}ms`);
+            pending.lastDebugLog = timeSinceDetection;
+          }
+          
+          const MIN_ECCENTRIC_MS = 1500;
+          const PITCH_RETURN_THRESHOLD = 15; // degrees
+          const MIN_PEAK_MOVEMENT = 40; // degrees
+          
+          const hasMovedEnough = (pending.peakPitchDiff || 0) >= MIN_PEAK_MOVEMENT;
+          if (timeSinceDetection > MIN_ECCENTRIC_MS && 
+              pitchDiff < PITCH_RETURN_THRESHOLD && 
+              hasMovedEnough) {
+            repComplete = true;
+            completionReason = `pitch returned (diff=${pitchDiff.toFixed(1)}°, peak=${(pending.peakPitchDiff || 0).toFixed(1)}°)`;
+          }
         }
-
-        // Debug: Log pitch status every second while waiting
-        if (!pending.lastDebugLog || timeSinceDetection - (pending.lastDebugLog || 0) > 1000) {
-          console.log(`[WorkoutSession] Rep ${pending.repNumber} waiting: pitchDiff=${pitchDiff.toFixed(1)}°, peakSoFar=${(pending.peakPitchDiff || 0).toFixed(1)}°, elapsed=${timeSinceDetection.toFixed(0)}ms`);
-          pending.lastDebugLog = timeSinceDetection;
+        
+        // *** TIMEOUT FALLBACK: Fire after max expected eccentric duration ***
+        // If neither accel nor pitch detection works, use time-based fallback
+        const MAX_ECCENTRIC_MS = 3500; // 3.5 seconds max for eccentric phase
+        if (!repComplete && timeSinceDetection > MAX_ECCENTRIC_MS) {
+          repComplete = true;
+          completionReason = `timeout (${timeSinceDetection.toFixed(0)}ms)`;
         }
-
-        // Thresholds: 
-        // - Minimum 1500ms after detection (a real rep eccentric takes 1.5-3s)
-        // - Pitch must return within 15° of starting position
-        // - Must have seen significant movement (peak > 40°) to avoid false triggers
-        const MIN_ECCENTRIC_MS = 1500;
-        const PITCH_RETURN_THRESHOLD = 15; // degrees - tighter threshold
-        const MIN_PEAK_MOVEMENT = 40; // must have moved at least 40° during rep
-
-        const hasMovedEnough = pending.peakPitchDiff >= MIN_PEAK_MOVEMENT;
-        if (timeSinceDetection > MIN_ECCENTRIC_MS && pitchDiff < PITCH_RETURN_THRESHOLD && hasMovedEnough) {
+        
+        if (repComplete) {
           const allRepData = repCounterRef.current.exportData();
           const repSamples = allRepData.samples.filter(s => s.repNumber === pending.repNumber);
-
-          console.log(`[WorkoutSession] Rep ${pending.repNumber} complete — pitch returned (diff=${pitchDiff.toFixed(1)}°, peakMovement=${pending.peakPitchDiff.toFixed(1)}°, eccentric=${timeSinceDetection.toFixed(0)}ms), ${repSamples.length} samples`);
-
+          
+          console.log(`[WorkoutSession] Rep ${pending.repNumber} complete — ${completionReason}, eccentric=${timeSinceDetection.toFixed(0)}ms, ${repSamples.length} samples`);
+          
           if (onRepDetectedRef.current && repSamples.length > 0) {
             const startTime = pending.lastRepMeta?.actualStartTime ?? 0;
-            // Get actual sample indices for proper data extraction
             const startIndex = repSamples[0]?.sampleIndex ?? pending.lastRepMeta?.actualStartIndex;
             const endIndex = repSamples[repSamples.length - 1]?.sampleIndex ?? pending.lastRepMeta?.actualEndIndex;
             

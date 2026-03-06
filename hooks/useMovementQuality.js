@@ -145,8 +145,9 @@ export function useMovementQuality(logs = [], hasWorkouts = false) {
               const fatigueScore = Math.max(0, 100 - velocityLossPercent * 5) * formQuality;
               fatigueSum += fatigueScore;
               
-              // Consistency: Based on ROM and timing consistency
-              const romScore = rep.romDegrees ? Math.min(100, rep.romDegrees) : 75;
+              // Consistency: Based on ROM fulfillment and timing consistency
+              // romFulfillment is percentage of target ROM (0-100%), use it directly as score
+              const romScore = rep.romFulfillment ? Math.min(100, rep.romFulfillment) : 75;
               const timingScore = rep.durationMs ? Math.min(100, Math.max(0, 100 - Math.abs(rep.durationMs - 2500) / 50)) : 75;
               const consistencyScore = (romScore + timingScore) / 2;
               consistencySum += consistencyScore;

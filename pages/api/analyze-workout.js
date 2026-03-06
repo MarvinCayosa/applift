@@ -222,6 +222,144 @@ async function storeAnalysis(analysis) {
 }
 
 /**
+ * Fetch real-time ROM data from logs to merge with analytics
+ * The logs contain accurate stroke ROM values from ROMComputer (double integration)
+ * Structure: userWorkouts/{userId}/{equipment}/{exercise}/logs/{workoutId}
+ */
+async function fetchLogsROMData(workoutId, userId, equipment, exercise) {
+  try {
+    const db = getFirestore();
+    
+    if (!userId || !equipment || !exercise || !workoutId) {
+      return null;
+    }
+    
+    const normalizedEquipment = equipment.toLowerCase().replace(/[\s_]+/g, '-');
+    const normalizedExercise = exercise.toLowerCase().replace(/[\s_]+/g, '-');
+    
+    const docRef = db
+      .collection('userWorkouts')
+      .doc(userId)
+      .collection(normalizedEquipment)
+      .doc(normalizedExercise)
+      .collection('logs')
+      .doc(workoutId);
+      
+    const doc = await docRef.get();
+    
+    if (!doc.exists) {
+      console.log('[Analyze API] No logs found for ROM data merge');
+      return null;
+    }
+    
+    const data = doc.data();
+    const setData = data.results?.setData;
+    
+    if (!setData || setData.length === 0) {
+      console.log('[Analyze API] No setData in logs for ROM merge');
+      return null;
+    }
+    
+    // Check if this is stroke ROM (cm) - only merge for stroke exercises
+    // Note: romUnit may have leading/trailing whitespace from real-time calculation
+    const hasStrokeROM = setData.some(set => (set.romUnit || '').trim().toLowerCase() === 'cm');
+    if (!hasStrokeROM) {
+      console.log('[Analyze API] Logs not using stroke ROM (cm), skipping merge. Units found:', setData.map(s => s.romUnit));
+      return null;
+    }
+    
+    console.log('[Analyze API] Found stroke ROM data in logs for merge');
+    return setData;
+  } catch (error) {
+    console.error('[Analyze API] Error fetching logs ROM data:', error);
+    return null;
+  }
+}
+
+/**
+ * Merge real-time ROM values from logs into analytics
+ * This ensures analytics uses the accurate stroke ROM from ROMComputer
+ * instead of the generic filteredMag peak-trough calculation
+ */
+function mergeRealTimeROM(analysis, logsSetData) {
+  if (!logsSetData || !analysis.repMetrics) {
+    return analysis;
+  }
+  
+  console.log('[Analyze API] Merging real-time stroke ROM into analytics...');
+  
+  // Build a map of (setNumber, repNumber) -> ROM data from logs
+  const romMap = new Map();
+  let targetROM = null;
+  let romUnit = 'cm';
+  let romCalibrated = false;
+  
+  for (const set of logsSetData) {
+    if (set.targetROM) targetROM = set.targetROM;
+    if (set.romUnit) romUnit = (set.romUnit || '').trim() || 'cm';
+    if (set.romCalibrated) romCalibrated = set.romCalibrated;
+    
+    if (set.repsData) {
+      for (const rep of set.repsData) {
+        const key = `${set.setNumber || 1}-${rep.repNumber}`;
+        romMap.set(key, {
+          rom: rep.rom,
+          romFulfillment: rep.romFulfillment,
+          romUnit: ((rep.romUnit || set.romUnit || '').trim()) || 'cm'
+        });
+      }
+    }
+  }
+  
+  // Merge into repMetrics
+  let mergeCount = 0;
+  for (const repMetric of analysis.repMetrics) {
+    const key = `${repMetric.setNumber}-${repMetric.repNumber}`;
+    const logsROM = romMap.get(key);
+    
+    if (logsROM && logsROM.rom != null) {
+      // Use real-time ROM from logs (accurate values from ROMComputer)
+      repMetric.rom = logsROM.rom;
+      repMetric.romUnit = logsROM.romUnit;
+      repMetric.romFulfillment = logsROM.romFulfillment;
+      
+      mergeCount++;
+    }
+  }
+  
+  // Update setsAnalysis with ROM from logs
+  if (analysis.setsAnalysis) {
+    for (const setAnalysis of analysis.setsAnalysis) {
+      if (setAnalysis.repMetrics) {
+        const setROMs = setAnalysis.repMetrics
+          .map(r => r.rom)
+          .filter(r => r != null);
+        if (setROMs.length > 0) {
+          setAnalysis.avgROM = setROMs.reduce((a, b) => a + b, 0) / setROMs.length;
+          setAnalysis.romUnit = romUnit;
+        }
+      }
+    }
+  }
+  
+  // Update summary with ROM metrics from logs
+  if (analysis.summary && mergeCount > 0) {
+    const allROMs = analysis.repMetrics
+      .map(r => r.rom)
+      .filter(r => r != null);
+    if (allROMs.length > 0) {
+      analysis.summary.avgROM = allROMs.reduce((a, b) => a + b, 0) / allROMs.length;
+      analysis.summary.romUnit = romUnit;
+      analysis.summary.targetROM = targetROM;
+      analysis.summary.romCalibrated = romCalibrated;
+    }
+  }
+  
+  console.log(`[Analyze API] Merged ${mergeCount} rep ROM values from logs`);
+  return analysis;
+}
+
+/**
  * Get existing analysis from Firestore
  * Structure: userWorkouts/{userId}/{equipment}/{exercise}/analytics/{workoutId}
  */
@@ -486,55 +624,6 @@ function findPeaks(signal, prominenceThreshold = 0.05) {
   return { peaks, valleys };
 }
 
-function computeAngleFromAccelerometer(accelX, accelY, accelZ) {
-  if (!accelX || !accelY || !accelZ || accelX.length === 0) return [];
-  
-  // Compute all three tilt angles (roll, pitch, yaw-proxy)
-  const rollAngles = [];
-  const pitchAngles = [];
-  
-  for (let i = 0; i < accelX.length; i++) {
-    const x = accelX[i];
-    const y = accelY[i];
-    const z = accelZ[i];
-    const magnitude = Math.sqrt(x * x + y * y + z * z);
-    if (magnitude === 0) {
-      rollAngles.push(0);
-      pitchAngles.push(0);
-      continue;
-    }
-    // Pitch: rotation around X-axis (Y vs Z)
-    const pitch = Math.atan2(y, Math.sqrt(x * x + z * z));
-    pitchAngles.push((pitch * 180 / Math.PI) + 90);
-    
-    // Roll: rotation around Y-axis (X vs Z)
-    const roll = Math.atan2(x, Math.sqrt(y * y + z * z));
-    rollAngles.push((roll * 180 / Math.PI) + 90);
-  }
-  
-  // Auto-detect primary rotation axis: use whichever axis has the largest range
-  // This makes ROM computation orientation-independent for dumbbell exercises
-  const pitchRange = Math.max(...pitchAngles) - Math.min(...pitchAngles);
-  const rollRange = Math.max(...rollAngles) - Math.min(...rollAngles);
-  
-  return pitchRange >= rollRange ? pitchAngles : rollAngles;
-}
-
-function computeROMDegrees(accelX, accelY, accelZ) {
-  const angles = computeAngleFromAccelerometer(accelX, accelY, accelZ);
-  if (angles.length === 0) {
-    return { romDegrees: 0, minAngle: 0, maxAngle: 0, meanAngle: 0 };
-  }
-  const minAngle = Math.min(...angles);
-  const maxAngle = Math.max(...angles);
-  return {
-    romDegrees: maxAngle - minAngle,
-    minAngle,
-    maxAngle,
-    meanAngle: mean(angles)
-  };
-}
-
 function computeSmoothnessMetrics(accelX, accelY, accelZ, timestamps, filteredMag = null) {
   if (!accelX || accelX.length < 4) {
     return { irregularityScore: 0, smoothnessScore: 50 };
@@ -712,65 +801,28 @@ function computeRepMetrics(repData) {
   
   const durationMs = duration || (timestamps[timestamps.length - 1] - timestamps[0]);
   
-  // ROM metrics
-  const peak = Math.max(...filteredMag);
-  const trough = Math.min(...filteredMag);
-  const rom = peak - trough;
-  
-  // ROM in degrees
-  const romDegrees = computeROMDegrees(accelX, accelY, accelZ);
-  
   // Smoothness
   const smoothnessMetrics = computeSmoothnessMetrics(accelX, accelY, accelZ, timestamps, filteredMag);
   
-  // Gyro metrics
+  // Gyro metrics (for velocity)
   const gyroMag = gyroX.map((x, i) => Math.sqrt(x * x + gyroY[i] * gyroY[i] + gyroZ[i] * gyroZ[i]));
   const gyroPeak = Math.max(...gyroMag);
-  const gyroRms = Math.sqrt(mean(gyroMag.map(g => g * g)));
-  
-  // Shakiness
-  let shakiness = 0;
-  if (timestamps.length > 2 && durationMs > 0) {
-    const dt = (durationMs / 1000) / (timestamps.length - 1);
-    const angularAccel = [];
-    for (let i = 1; i < gyroMag.length; i++) {
-      angularAccel.push((gyroMag[i] - gyroMag[i - 1]) / dt);
-    }
-    shakiness = Math.sqrt(mean(angularAccel.map(a => a * a)));
-  }
   
   // Phase timings — use primary movement axis method (matching main_csv.py)
-  const { liftingTime, loweringTime, primaryAxis: phaseAxis, peakTimePercent } = 
+  const { liftingTime, loweringTime } = 
     computePhaseTimingsFromPrimaryAxis(accelX, accelY, accelZ, timestamps);
   
-  // Peak acceleration
-  const peakAcceleration = Math.max(...samples.map(s => 
-    s.accelMag || Math.sqrt((s.accelX || 0) ** 2 + (s.accelY || 0) ** 2 + (s.accelZ || 0) ** 2)
-  ));
-  
+  // Return only essential metrics - ROM will be merged from logs later
+  // ROM is computed by ROMComputer during real-time workout and stored in logs
   return {
     repNumber,
     setNumber,
     durationMs,
     sampleCount: samples.length,
-    rom,
-    peak,
-    trough,
-    romDegrees: romDegrees.romDegrees,
-    minAngle: romDegrees.minAngle,
-    maxAngle: romDegrees.maxAngle,
     smoothnessScore: smoothnessMetrics.smoothnessScore,
-    meanJerk: smoothnessMetrics.irregularityScore,
     gyroPeak,
-    gyroRms,
-    shakiness,
     liftingTime,
     loweringTime,
-    totalPhaseTime: liftingTime + loweringTime,
-    liftingPercent: liftingTime + loweringTime > 0 
-      ? (liftingTime / (liftingTime + loweringTime)) * 100 
-      : 50,
-    peakAcceleration,
     peakVelocity: gyroPeak,
     chartData: filteredMag
   };
@@ -794,17 +846,12 @@ function computeFatigueIndicators(repMetricsList, mlClassification = null) {
   const nReps = repMetricsList.length;
   const third = Math.max(1, Math.floor(nReps / 3));
   
-  const gyroPeaks = repMetricsList.map(m => m.gyroPeak || 0);
+  const gyroPeaks = repMetricsList.map(m => m.gyroPeak || m.peakVelocity || 0);
   const hasGyro = gyroPeaks.some(g => g > 0);
-  const shakiness = repMetricsList.map(m => m.shakiness || 0);
-  const hasShakiness = shakiness.some(s => s > 0);
   const durations = repMetricsList.map(m => m.durationMs || 0);
-  const jerkValues = repMetricsList.map(m => m.meanJerk || 0);
-  const roms = repMetricsList.map(m => m.romDegrees || m.rom || 0);
   const smoothnessValues = repMetricsList.map(m => m.smoothnessScore || 50);
-  const peaks = repMetricsList.map(m => m.peak || 0);
   
-  // D_omega — only penalize velocity DROPS (fatigue), not increases (warming up)
+  // D_omega — velocity drop indicator (fatigue indicator)
   let D_omega, gyroDirection;
   if (hasGyro) {
     const avgGyroFirst = mean(gyroPeaks.slice(0, third));
@@ -812,31 +859,24 @@ function computeFatigueIndicators(repMetricsList, mlClassification = null) {
     D_omega = avgGyroFirst > 0 ? Math.max(0, (avgGyroFirst - avgGyroLast) / avgGyroFirst) : 0;
     gyroDirection = avgGyroLast < avgGyroFirst ? 'drop' : 'surge';
   } else {
-    const avgPeakFirst = mean(peaks.slice(0, third));
-    const avgPeakLast = mean(peaks.slice(-third));
-    D_omega = avgPeakFirst > 0 ? Math.max(0, (avgPeakFirst - avgPeakLast) / avgPeakFirst) : 0;
-    gyroDirection = avgPeakLast < avgPeakFirst ? 'drop' : 'surge';
+    // No gyro data - use duration as proxy (slower reps = fatigue)
+    const avgDurFirst = mean(durations.slice(0, third));
+    const avgDurLast = mean(durations.slice(-third));
+    D_omega = avgDurFirst > 0 && avgDurLast > avgDurFirst 
+      ? Math.min(0.3, (avgDurLast - avgDurFirst) / avgDurFirst) 
+      : 0;
+    gyroDirection = avgDurLast > avgDurFirst ? 'drop' : 'surge';
   }
   
-  // I_T
-  const avgDurFirst = mean(durations.slice(0, third));
-  const avgDurLast = mean(durations.slice(-third));
-  const I_T = avgDurFirst > 0 ? (avgDurLast - avgDurFirst) / avgDurFirst : 0;
+  // I_T - timing increase indicator
+  const avgDurFirstT = mean(durations.slice(0, third));
+  const avgDurLastT = mean(durations.slice(-third));
+  const I_T = avgDurFirstT > 0 ? (avgDurLastT - avgDurFirstT) / avgDurFirstT : 0;
   
-  // I_J - Use minimum floor for baseline to prevent extreme ratios when first reps are "too clean"
-  const JERK_FLOOR = 2.0;  // Minimum baseline jerk (rad/s³)
-  const avgJerkFirst = Math.max(JERK_FLOOR, mean(jerkValues.slice(0, third)));
-  const avgJerkLast = mean(jerkValues.slice(-third));
-  const I_J = avgJerkFirst > 0 ? Math.max(0, (avgJerkLast - avgJerkFirst) / avgJerkFirst) : 0;
-  
-  // I_S - Use minimum floor for baseline to prevent extreme ratios when first reps are "too clean"
-  const SHAKINESS_FLOOR = 1.0;  // Minimum baseline shakiness (rad/s²)
-  let I_S = 0;
-  if (hasShakiness) {
-    const avgShakyFirst = Math.max(SHAKINESS_FLOOR, mean(shakiness.slice(0, third)));
-    const avgShakyLast = mean(shakiness.slice(-third));
-    I_S = avgShakyFirst > 0 ? Math.max(0, (avgShakyLast - avgShakyFirst) / avgShakyFirst) : 0;
-  }
+  // I_J and I_S removed - relied on meanJerk/shakiness which aren't computed anymore
+  // These weren't providing useful signal anyway
+  const I_J = 0;
+  const I_S = 0;
   
   // Q_exec: Execution Quality Penalty from ML Classification
   let Q_exec = 0;
@@ -1095,7 +1135,7 @@ function analyzeWorkout(workoutData) {
       consistencyScore: setConsistency.consistencyScore,
       inconsistentRepIndex: setConsistency.inconsistentRepIndex,
       avgDuration: mean(setRepMetrics.map(m => m.durationMs)),
-      avgROM: mean(setRepMetrics.map(m => m.romDegrees || m.rom)),
+      avgROM: mean(setRepMetrics.map(m => m.rom)),
       avgSmoothness: mean(setRepMetrics.map(m => m.smoothnessScore)),
       totalTime: setRepMetrics.reduce((sum, m) => sum + (m.durationMs || 0), 0)
     });
@@ -1155,7 +1195,7 @@ function analyzeWorkout(workoutData) {
   // Phase timings: liftingTime = concentric (lifting), loweringTime = eccentric (lowering)
   const avgConcentric = mean(allRepMetrics.map(m => m.liftingTime || 0));
   const avgEccentric = mean(allRepMetrics.map(m => m.loweringTime || 0));
-  const avgROMDegrees = mean(allRepMetrics.map(m => m.romDegrees || 0));
+  const avgROM = mean(allRepMetrics.map(m => m.rom || 0));
   const avgSmoothness = mean(allRepMetrics.map(m => m.smoothnessScore || 50));
   const avgDuration = mean(allRepMetrics.map(m => m.durationMs || 0));
   const totalDuration = allRepMetrics.reduce((sum, m) => sum + (m.durationMs || 0), 0);
@@ -1172,7 +1212,7 @@ function analyzeWorkout(workoutData) {
       totalReps: allRepMetrics.length,
       totalDurationMs: totalDuration,
       avgDurationMs: avgDuration,
-      avgROMDegrees,
+      avgROM,
       avgSmoothness,
       avgConcentric,
       avgEccentric,
@@ -1276,7 +1316,7 @@ export default async function handler(req, res) {
     } else if (req.method === 'POST') {
       // Analyze workout
       const { workoutId, gcsPath, forceReanalyze = false } = req.body;
-      const ANALYSIS_VERSION = 4; // v4: per-set fatigue aggregation, D_omega direction fix, ROM auto-axis
+      const ANALYSIS_VERSION = 5; // v5: merge real-time stroke ROM from logs for consistent UI/Firebase values
       
       if (!workoutId && !gcsPath) {
         return res.status(400).json({ error: 'workoutId or gcsPath is required' });
@@ -1345,7 +1385,7 @@ export default async function handler(req, res) {
       
       // Run analysis
       console.log('[Analyze API] Running analysis for workout:', workoutData.workoutId);
-      const analysis = analyzeWorkout(workoutData);
+      let analysis = analyzeWorkout(workoutData);
       
       if (analysis.error) {
         return res.status(400).json(analysis);
@@ -1480,6 +1520,25 @@ export default async function handler(req, res) {
           modelAvailable: false,
           mlModelUsed: false
         };
+      }
+      
+      // ============================================================================
+      // MERGE REAL-TIME ROM: For stroke exercises (barbell, etc.), merge the accurate
+      // ROM values from logs (computed by ROMComputer using double integration)
+      // into the analytics. This ensures consistency between UI and Firebase.
+      // ============================================================================
+      try {
+        const logsROMData = await fetchLogsROMData(
+          analysis.workoutId,
+          analysis.userId,
+          analysis.equipment,
+          analysis.exercise
+        );
+        if (logsROMData) {
+          analysis = mergeRealTimeROM(analysis, logsROMData);
+        }
+      } catch (romMergeError) {
+        console.error('[Analyze API] ROM merge error (non-fatal):', romMergeError.message);
       }
       
       // Store in Firestore with version stamp

@@ -159,7 +159,11 @@ export function transformAnalysisForUI(analysis) {
         duration: rep.durationMs ? rep.durationMs / 1000 : (rep.liftingTime || 0) + (rep.loweringTime || 0),
         concentric: rep.liftingTime || 0,
         eccentric: rep.loweringTime || 0,
-        rom: Math.round(rep.romDegrees || rep.rom),
+        // ROM from logs (accurate values from ROMComputer)
+        // Units: 'cm' for stroke exercises (barbell/weight stack), '°' for angle exercises (dumbbell)
+        rom: Math.round(rep.rom || 0),
+        romUnit: rep.romUnit || '°',
+        romFulfillment: rep.romFulfillment, // Percentage of target ROM achieved
         peakVelocity: velocity?.toFixed ? velocity.toFixed(2) : String(velocity || '0'),
         velocityLossPercent: Math.round(velocityLossPercent * 10) / 10,
         isEffective: velocityLossPercent < 10, // Industry standard threshold
@@ -239,8 +243,12 @@ export function transformAnalysisForUI(analysis) {
     // Insights
     insights: insights || [],
     
-    // ROM data
-    avgROM: summary?.avgROMDegrees || 0,
+    // ROM data from logs (accurate values from ROMComputer)
+    // Units: 'cm' for stroke exercises (barbell/weight stack), '°' for angle exercises (dumbbell)
+    avgROM: Math.round(summary?.avgROM || 0),
+    romUnit: summary?.romUnit || '°',
+    targetROM: summary?.targetROM,
+    romCalibrated: summary?.romCalibrated,
     avgSmoothness: summary?.avgSmoothness || 50,
     
     // Velocity metrics for VBT analysis

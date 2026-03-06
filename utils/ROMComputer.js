@@ -670,8 +670,16 @@ export class ROMComputer {
   }
   
   // ---- Rep completion (called by RepCounter) ----
-  completeRep() {
-    if (this.currentRepData.length < 3) return null;
+  /**
+   * Complete a rep and calculate its ROM value.
+   * @param {Array} repSamples - Optional: actual rep samples from RepCounter.
+   *   If provided, these are used for ROM calculation (accurate per-rep tracking).
+   *   If not provided, falls back to strokeRollingBuffer (legacy mode).
+   */
+  completeRep(repSamples = null) {
+    // Use provided samples if available, otherwise use currentRepData
+    const samplesToUse = repSamples && repSamples.length > 0 ? repSamples : this.currentRepData;
+    if (samplesToUse.length < 3) return null;
     
     const romType = this.getROMType(this.exerciseType);
     let romValue = 0;
@@ -685,25 +693,44 @@ export class ROMComputer {
       }
     } else {
       // For stroke ROM during workout:
-      // Use the strokeRollingBuffer (last ~4s of continuous data) instead of
-      // currentRepData (which only has samples since the last rep boundary).
-      // RepCounter detects half-reps (valley→peak or peak→valley), so
-      // currentRepData only contains half the physical motion. The rolling
-      // buffer always spans at least one full up+down cycle, giving
-      // retroCorrect the complete motion + pre-motion rest for anchoring.
-      // This fixes the "first rep ROM always too low" issue because the rolling
-      // buffer includes pre-motion stillness that currentRepData lacks.
-      if (this.strokeRollingBuffer.length >= 10) {
-        const bufferCopy = [...this.strokeRollingBuffer];
-        // Temporarily swap currentRepData for retroCorrect
-        const original = this.currentRepData;
-        this.currentRepData = bufferCopy;
-        romValue = this.computeStrokeROM();
-        this.currentRepData = original;
-        console.log(`[ROMComputer] completeRep: used ${bufferCopy.length} rolling buffer samples (${((bufferCopy[bufferCopy.length-1].ts - bufferCopy[0].ts)/1000).toFixed(1)}s)`);
+      // PRIORITY 1: Use actual rep samples if provided (from RepCounter)
+      // This gives accurate per-rep ROM matching calibration behavior.
+      // PRIORITY 2: Use strokeRollingBuffer as fallback (legacy mode)
+      // Rolling buffer can span multiple reps and inflate ROM values.
+      let dataForROM;
+      if (repSamples && repSamples.length >= 10) {
+        // Convert RepCounter samples to ROMComputer format
+        dataForROM = repSamples.map(s => ({
+          ax: s.accelX ?? 0,
+          ay: s.accelY ?? 0,
+          az: s.accelZ ?? 0,
+          gx: s.gyroX ?? 0,
+          gy: s.gyroY ?? 0,
+          gz: s.gyroZ ?? 0,
+          qw: s.qw,
+          qx: s.qx,
+          qy: s.qy,
+          qz: s.qz,
+          ts: s.relativeTime ?? s.timestamp ?? 0,
+          displacement: s.displacement ?? 0,
+          velocity: s.velocity ?? 0,
+          vertAccel: s.vertAccel ?? 0
+        }));
+        console.log(`[ROMComputer] completeRep: using ${dataForROM.length} actual rep samples (${((dataForROM[dataForROM.length-1].ts - dataForROM[0].ts)/1000).toFixed(2)}s) — accurate mode`);
+      } else if (this.strokeRollingBuffer.length >= 10) {
+        // Fallback to rolling buffer (may span multiple reps)
+        dataForROM = [...this.strokeRollingBuffer];
+        console.log(`[ROMComputer] completeRep: using ${dataForROM.length} rolling buffer samples (${((dataForROM[dataForROM.length-1].ts - dataForROM[0].ts)/1000).toFixed(1)}s) — fallback mode`);
       } else {
-        romValue = this.computeStrokeROM();
+        dataForROM = this.currentRepData;
+        console.log(`[ROMComputer] completeRep: using ${dataForROM.length} currentRepData samples — minimal mode`);
       }
+      
+      // Temporarily swap currentRepData for retroCorrect
+      const original = this.currentRepData;
+      this.currentRepData = dataForROM;
+      romValue = this.computeStrokeROM();
+      this.currentRepData = original;
     }
     
     // Clamp to exercise-specific physical maximum — anything above is sensor drift

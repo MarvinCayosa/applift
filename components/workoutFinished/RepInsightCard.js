@@ -98,11 +98,15 @@ export default function RepInsightCard({ repData, repNumber, targetROM, romUnit:
   const repMeanVelocity = mcv != null && mcv > 0 ? mcv : pv;
   const hasChartData = chartData && chartData.length > 0;
 
-  // ROM target reference - use calibrated targetROM or fallback to 120°
-  const expectedRom = targetROM || 120;
+  // ROM target reference - use calibrated targetROM or unit-appropriate fallback
+  // Angle exercises (dumbbell): ~120° is typical full ROM
+  // Stroke exercises (barbell/weight stack): ~40cm is typical bench press ROM
   const displayRomUnit = propRomUnit || romUnit || '°';
+  const isStrokeROM = displayRomUnit?.trim() === 'cm';
+  const expectedRom = targetROM || (isStrokeROM ? 40 : 120); // 40cm for stroke, 120° for angle
   const hasCalibration = romCalibrated && targetROM;
   // When calibration exists, always compute from achieved/baseline for accuracy
+  // When no calibration: use unit-appropriate fallback reference
   const romProgress = hasCalibration && repRom != null
     ? Math.min(100, (repRom / targetROM) * 100)
     : romFulfillment != null ? Math.min(100, romFulfillment)
