@@ -115,11 +115,8 @@ export default function RepInsightCard({ repData, repNumber, targetROM, romUnit:
   // ROM fulfillment description
   const getRomDescription = () => {
     if (romProgress == null) return null;
-    if (romProgress >= 95) return { text: 'Full ROM', color: '#22c55e' };
-    if (romProgress >= 80) return { text: 'Near Full', color: '#84cc16' };
-    if (romProgress >= 60) return { text: 'Partial', color: '#eab308' };
-    if (romProgress >= 40) return { text: 'Limited', color: '#f97316' };
-    return { text: 'Minimal', color: '#ef4444' };
+    if (romProgress >= 85) return { text: 'Full ROM', color: '#22c55e' };
+    return { text: 'Partial ROM', color: '#eab308' };
   };
   const romDesc = getRomDescription();
 
@@ -692,26 +689,6 @@ export default function RepInsightCard({ repData, repNumber, targetROM, romUnit:
                 <p className="text-[13px] text-white/50 leading-relaxed">
                   By focusing on the active "push" phase, we get a cleaner signal of your true effort. This method is more sensitive to fatigue — you'll see velocity drop sooner when muscles are tiring, helping you train smarter.
                 </p>
-              </div>
-
-              {/* Velocity Zones */}
-              <div className="mb-4">
-                <p className="text-[12px] font-semibold text-white/60 mb-2">Velocity Zones</p>
-                <div className="space-y-1.5">
-                  {[
-                    { range: '> 1.3 m/s', label: 'Power', color: 'bg-cyan-400', desc: 'Explosive, fast movements' },
-                    { range: '0.75-1.3', label: 'Speed-Strength', color: 'bg-green-400', desc: 'Athletic power training' },
-                    { range: '0.5-0.75', label: 'Strength', color: 'bg-yellow-400', desc: 'Moderate, controlled lifts' },
-                    { range: '< 0.5 m/s', label: 'Max Strength', color: 'bg-orange-400', desc: 'Heavy, grinding reps' },
-                  ].map((z, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <div className={`w-2 h-2 rounded-full ${z.color}`} />
-                      <span className="text-[11px] text-white/60 w-16">{z.range}</span>
-                      <span className="text-[11px] text-white/80 font-medium">{z.label}</span>
-                      <span className="text-[10px] text-white/40 ml-auto">{z.desc}</span>
-                    </div>
-                  ))}
-                </div>
               </div>
 
               <div className="rounded-xl bg-green-500/10 border border-green-500/20 p-3">

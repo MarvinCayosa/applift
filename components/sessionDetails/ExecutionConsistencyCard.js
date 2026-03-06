@@ -9,7 +9,7 @@
  * Includes pill selector for All / Set 1 / Set 2 etc.
  */
 
-import { useMemo, useState, useRef, useEffect } from 'react';
+import { useMemo, useState, useRef } from 'react';
 
 const SET_COLORS = {
   1: ['#a855f7', '#c084fc', '#d8b4fe'],
@@ -32,8 +32,12 @@ export default function ExecutionConsistencyCard({
 }) {
   // Carousel state
   const [slideIndex, setSlideIndex] = useState(0);
-  const scrollRef = useRef(null);
   const SLIDE_COUNT = 3;
+  
+  // Touch swipe state for smooth carousel
+  const [swipeStartX, setSwipeStartX] = useState(null);
+  const [swipeX, setSwipeX] = useState(0);
+  const containerRef = useRef(null);
 
   // Pill selector for sets
   const setNumbers = useMemo(() => {
@@ -44,25 +48,30 @@ export default function ExecutionConsistencyCard({
 
   const [selectedSet, setSelectedSet] = useState('all');
 
-  // Sync scroll position to slideIndex
-  useEffect(() => {
-    if (scrollRef.current) {
-      const container = scrollRef.current;
-      const slideWidth = container.offsetWidth;
-      container.scrollTo({ left: slideIndex * slideWidth, behavior: 'smooth' });
+  // Touch swipe handlers for smooth carousel
+  const handleTouchStart = (e) => {
+    setSwipeStartX(e.touches[0].clientX);
+  };
+  
+  const handleTouchMove = (e) => {
+    if (swipeStartX === null) return;
+    const dx = e.touches[0].clientX - swipeStartX;
+    // Dampen at edges
+    if ((slideIndex === 0 && dx > 0) || (slideIndex === SLIDE_COUNT - 1 && dx < 0)) {
+      setSwipeX(dx * 0.25);
+    } else {
+      setSwipeX(dx);
     }
-  }, [slideIndex]);
-
-  // Handle scroll end to update slideIndex
-  const handleScroll = () => {
-    if (scrollRef.current) {
-      const container = scrollRef.current;
-      const slideWidth = container.offsetWidth;
-      const newIdx = Math.round(container.scrollLeft / slideWidth);
-      if (newIdx !== slideIndex) {
-        setSlideIndex(newIdx);
-      }
+  };
+  
+  const handleTouchEnd = () => {
+    // Threshold for snap
+    if (Math.abs(swipeX) > 50) {
+      if (swipeX < 0 && slideIndex < SLIDE_COUNT - 1) setSlideIndex(slideIndex + 1);
+      else if (swipeX > 0 && slideIndex > 0) setSlideIndex(slideIndex - 1);
     }
+    setSwipeX(0);
+    setSwipeStartX(null);
   };
 
   // Build rep charts
@@ -211,15 +220,21 @@ export default function ExecutionConsistencyCard({
         </div>
       )}
 
-      {/* Swipable carousel */}
+      {/* Swipable carousel - transform-based for smooth snapping */}
       <div
-        ref={scrollRef}
-        onScroll={handleScroll}
-        className="flex-1 flex overflow-x-auto snap-x snap-mandatory scrollbar-hide"
-        style={{ scrollSnapType: 'x mandatory' }}
+        ref={containerRef}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        className="flex-1 overflow-hidden"
+        onClick={(e) => e.stopPropagation()} // Prevent set cycling when swiping
       >
+        <div
+          className={`flex h-full ${swipeStartX === null ? 'transition-transform duration-300 ease-out' : ''}`}
+          style={{ transform: `translateX(calc(-${slideIndex * 100}% + ${swipeX}px))` }}
+        >
         {/* Slide 1: Consistency Graph */}
-        <div className="w-full flex-shrink-0 snap-center flex flex-col" style={{ minWidth: '100%' }}>
+        <div className="w-full flex-shrink-0 flex flex-col" style={{ minWidth: '100%' }}>
           <div className="relative flex-1 rounded-xl overflow-hidden" style={{ minHeight: 100 }}>
             {/* Fade masks */}
             <div className="absolute inset-y-0 left-0 w-6 z-10 pointer-events-none"
@@ -256,7 +271,7 @@ export default function ExecutionConsistencyCard({
         </div>
 
         {/* Slide 2: Duration Variability */}
-        <div className="w-full flex-shrink-0 snap-center flex flex-col justify-center items-center px-2" style={{ minWidth: '100%' }}>
+        <div className="w-full flex-shrink-0 flex flex-col justify-center items-center px-2" style={{ minWidth: '100%' }}>
           <div className="text-center">
             <p className="text-[11px] text-gray-400 mb-1">Duration Variability</p>
             <p className={`text-[28px] font-bold leading-none ${durationStyle.color}`}>{durationVariability}%</p>
@@ -269,7 +284,7 @@ export default function ExecutionConsistencyCard({
         </div>
 
         {/* Slide 3: Amplitude Variability */}
-        <div className="w-full flex-shrink-0 snap-center flex flex-col justify-center items-center px-2" style={{ minWidth: '100%' }}>
+        <div className="w-full flex-shrink-0 flex flex-col justify-center items-center px-2" style={{ minWidth: '100%' }}>
           <div className="text-center">
             <p className="text-[11px] text-gray-400 mb-1">Amplitude Variability</p>
             <p className={`text-[28px] font-bold leading-none ${amplitudeStyle.color}`}>{amplitudeVariability}%</p>
@@ -280,6 +295,7 @@ export default function ExecutionConsistencyCard({
             <p className="text-[16px] font-bold text-white">{avgAmplitude}</p>
           </div>
         </div>
+        </div>
       </div>
 
       {/* Dot indicators */}
@@ -287,7 +303,7 @@ export default function ExecutionConsistencyCard({
         {Array.from({ length: SLIDE_COUNT }).map((_, i) => (
           <button
             key={i}
-            onClick={() => setSlideIndex(i)}
+            onClick={(e) => { e.stopPropagation(); setSlideIndex(i); }}
             className={`w-1.5 h-1.5 rounded-full transition-all ${
               i === slideIndex ? 'bg-purple-400 w-3' : 'bg-white/20'
             }`}

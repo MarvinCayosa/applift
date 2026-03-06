@@ -22,7 +22,7 @@ export default function VelocityLossChart({
   setsData, 
   analysisData,
   selectedSet = 'all',
-  thresholdPercent = 10,
+  thresholdPercent = 20,
   showTooltip = true
 }) {
   const [hoveredBar, setHoveredBar] = useState(null);

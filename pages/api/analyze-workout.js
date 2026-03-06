@@ -222,11 +222,13 @@ async function storeAnalysis(analysis) {
 }
 
 /**
- * Fetch real-time ROM data from logs to merge with analytics
- * The logs contain accurate stroke ROM values from ROMComputer (double integration)
+ * Fetch real-time data from logs to merge with analytics
+ * The logs contain:
+ * - Accurate stroke ROM values from ROMComputer (double integration)
+ * - Accurate velocity from accelerometer integration (m/s, not gyro rad/s)
  * Structure: userWorkouts/{userId}/{equipment}/{exercise}/logs/{workoutId}
  */
-async function fetchLogsROMData(workoutId, userId, equipment, exercise) {
+async function fetchLogsData(workoutId, userId, equipment, exercise) {
   try {
     const db = getFirestore();
     
@@ -248,7 +250,7 @@ async function fetchLogsROMData(workoutId, userId, equipment, exercise) {
     const doc = await docRef.get();
     
     if (!doc.exists) {
-      console.log('[Analyze API] No logs found for ROM data merge');
+      console.log('[Analyze API] No logs found for data merge');
       return null;
     }
     
@@ -256,41 +258,46 @@ async function fetchLogsROMData(workoutId, userId, equipment, exercise) {
     const setData = data.results?.setData;
     
     if (!setData || setData.length === 0) {
-      console.log('[Analyze API] No setData in logs for ROM merge');
+      console.log('[Analyze API] No setData in logs for merge');
       return null;
     }
     
-    // Check if the logs have ROM data - merge for both stroke (cm) and angle (°) exercises
+    // Check if the logs have ROM or velocity data
     const hasROMData = setData.some(set => 
       set.repsData?.some(rep => rep.rom != null)
     );
-    if (!hasROMData) {
-      console.log('[Analyze API] No ROM data in logs repsData, skipping merge');
+    const hasVelocityData = setData.some(set => 
+      set.repsData?.some(rep => rep.meanVelocity != null || rep.peakVelocity != null)
+    );
+    
+    if (!hasROMData && !hasVelocityData) {
+      console.log('[Analyze API] No ROM or velocity data in logs repsData, skipping merge');
       return null;
     }
     
-    console.log('[Analyze API] Found ROM data in logs for merge');
+    console.log(`[Analyze API] Found logs data for merge - ROM: ${hasROMData}, Velocity: ${hasVelocityData}`);
     return setData;
   } catch (error) {
-    console.error('[Analyze API] Error fetching logs ROM data:', error);
+    console.error('[Analyze API] Error fetching logs data:', error);
     return null;
   }
 }
 
 /**
- * Merge real-time ROM values from logs into analytics
- * This ensures analytics uses the accurate stroke ROM from ROMComputer
- * instead of the generic filteredMag peak-trough calculation
+ * Merge real-time ROM and velocity values from logs into analytics
+ * This ensures analytics uses:
+ * - Accurate stroke ROM from ROMComputer instead of generic filteredMag peak-trough
+ * - Accurate velocity from accelerometer integration (m/s) instead of gyro magnitude (rad/s)
  */
-function mergeRealTimeROM(analysis, logsSetData) {
+function mergeRealTimeData(analysis, logsSetData) {
   if (!logsSetData || !analysis.repMetrics) {
     return analysis;
   }
   
-  console.log('[Analyze API] Merging real-time ROM into analytics...');
+  console.log('[Analyze API] Merging real-time ROM and velocity into analytics...');
   
-  // Build a map of (setNumber, repNumber) -> ROM data from logs
-  const romMap = new Map();
+  // Build a map of (setNumber, repNumber) -> ROM + velocity data from logs
+  const dataMap = new Map();
   let targetROM = null;
   let romUnit = '°'; // Default to degrees
   let romCalibrated = false;
@@ -303,32 +310,47 @@ function mergeRealTimeROM(analysis, logsSetData) {
     if (set.repsData) {
       for (const rep of set.repsData) {
         const key = `${set.setNumber || 1}-${rep.repNumber}`;
-        romMap.set(key, {
+        dataMap.set(key, {
           rom: rep.rom,
           romFulfillment: rep.romFulfillment,
-          romUnit: ((rep.romUnit || set.romUnit || '').trim()) || '°'
+          romUnit: ((rep.romUnit || set.romUnit || '').trim()) || '°',
+          // Velocity from accelerometer integration (m/s) - the correct metric
+          meanVelocity: rep.meanVelocity,
+          peakVelocity: rep.peakVelocity
         });
       }
     }
   }
   
   // Merge into repMetrics
-  let mergeCount = 0;
+  let romMergeCount = 0;
+  let velocityMergeCount = 0;
   for (const repMetric of analysis.repMetrics) {
     const key = `${repMetric.setNumber}-${repMetric.repNumber}`;
-    const logsROM = romMap.get(key);
+    const logsData = dataMap.get(key);
     
-    if (logsROM && logsROM.rom != null) {
+    if (logsData) {
       // Use real-time ROM from logs (accurate values from ROMComputer)
-      repMetric.rom = logsROM.rom;
-      repMetric.romUnit = logsROM.romUnit;
-      repMetric.romFulfillment = logsROM.romFulfillment;
+      if (logsData.rom != null) {
+        repMetric.rom = logsData.rom;
+        repMetric.romUnit = logsData.romUnit;
+        repMetric.romFulfillment = logsData.romFulfillment;
+        romMergeCount++;
+      }
       
-      mergeCount++;
+      // Use real-time velocity from logs (accurate accelerometer-based m/s)
+      // This overwrites the incorrect gyro-based rad/s values
+      if (logsData.meanVelocity != null) {
+        repMetric.meanVelocity = logsData.meanVelocity;
+        velocityMergeCount++;
+      }
+      if (logsData.peakVelocity != null) {
+        repMetric.peakVelocity = logsData.peakVelocity;
+      }
     }
   }
   
-  // Update setsAnalysis with ROM from logs
+  // Update setsAnalysis with ROM and velocity averages from logs
   if (analysis.setsAnalysis) {
     for (const setAnalysis of analysis.setsAnalysis) {
       if (setAnalysis.repMetrics) {
@@ -339,11 +361,19 @@ function mergeRealTimeROM(analysis, logsSetData) {
           setAnalysis.avgROM = setROMs.reduce((a, b) => a + b, 0) / setROMs.length;
           setAnalysis.romUnit = romUnit;
         }
+        
+        // Update set velocity averages
+        const setVelocities = setAnalysis.repMetrics
+          .map(r => r.meanVelocity)
+          .filter(v => v != null && v > 0);
+        if (setVelocities.length > 0) {
+          setAnalysis.avgVelocity = setVelocities.reduce((a, b) => a + b, 0) / setVelocities.length;
+        }
       }
     }
   }
   
-  // Update summary with ROM metrics
+  // Update summary with ROM and velocity metrics
   // Compute from all repMetrics (either from logs merge or from fallback calculation)
   if (analysis.summary) {
     const allROMs = analysis.repMetrics
@@ -352,11 +382,19 @@ function mergeRealTimeROM(analysis, logsSetData) {
     if (allROMs.length > 0) {
       analysis.summary.avgROM = allROMs.reduce((a, b) => a + b, 0) / allROMs.length;
       analysis.summary.romUnit = romUnit;
-      // Only set targetROM/romCalibrated if from logs (mergeCount > 0)
-      if (mergeCount > 0) {
+      // Only set targetROM/romCalibrated if from logs (romMergeCount > 0)
+      if (romMergeCount > 0) {
         analysis.summary.targetROM = targetROM;
         analysis.summary.romCalibrated = romCalibrated;
       }
+    }
+    
+    // Update summary velocity from merged logs data
+    const allVelocities = analysis.repMetrics
+      .map(r => r.meanVelocity)
+      .filter(v => v != null && v > 0);
+    if (allVelocities.length > 0) {
+      analysis.summary.avgVelocity = allVelocities.reduce((a, b) => a + b, 0) / allVelocities.length;
     }
   }
   
@@ -375,7 +413,7 @@ function mergeRealTimeROM(analysis, logsSetData) {
     }
   }
   
-  console.log(`[Analyze API] Merged ${mergeCount} rep ROM values from logs, computed avgROM from ${analysis.repMetrics?.filter(r => r.rom > 0).length || 0} reps`);
+  console.log(`[Analyze API] Merged ${romMergeCount} ROM + ${velocityMergeCount} velocity values from logs`);
   return analysis;
 }
 
@@ -1346,7 +1384,7 @@ export default async function handler(req, res) {
     } else if (req.method === 'POST') {
       // Analyze workout
       const { workoutId, gcsPath, forceReanalyze = false } = req.body;
-      const ANALYSIS_VERSION = 5; // v5: merge real-time stroke ROM from logs for consistent UI/Firebase values
+      const ANALYSIS_VERSION = 6; // v6: merge velocity (m/s) from logs instead of using gyro magnitude (rad/s)
       
       if (!workoutId && !gcsPath) {
         return res.status(400).json({ error: 'workoutId or gcsPath is required' });
@@ -1553,22 +1591,22 @@ export default async function handler(req, res) {
       }
       
       // ============================================================================
-      // MERGE REAL-TIME ROM: For stroke exercises (barbell, etc.), merge the accurate
-      // ROM values from logs (computed by ROMComputer using double integration)
-      // into the analytics. This ensures consistency between UI and Firebase.
+      // MERGE REAL-TIME DATA: Merge accurate ROM (from ROMComputer) and velocity
+      // (from accelerometer integration in m/s) from logs into analytics.
+      // This ensures analytics uses correct values instead of fallback calculations.
       // ============================================================================
       try {
-        const logsROMData = await fetchLogsROMData(
+        const logsData = await fetchLogsData(
           analysis.workoutId,
           analysis.userId,
           analysis.equipment,
           analysis.exercise
         );
-        if (logsROMData) {
-          analysis = mergeRealTimeROM(analysis, logsROMData);
+        if (logsData) {
+          analysis = mergeRealTimeData(analysis, logsData);
         }
-      } catch (romMergeError) {
-        console.error('[Analyze API] ROM merge error (non-fatal):', romMergeError.message);
+      } catch (mergeError) {
+        console.error('[Analyze API] Data merge error (non-fatal):', mergeError.message);
       }
       
       // Store in Firestore with version stamp

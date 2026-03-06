@@ -338,7 +338,7 @@ export default function FatigueCarousel({ setsData, fatigueScore: propScore, fat
       const d = baseline > 0 ? ((baseline - x.v) / baseline) * 100 : 0;
       const surgePct = baseline > 0 ? ((x.v - baseline) / baseline) * 100 : 0;
       const isSurge = surgePct > SURGE_THRESHOLD;
-      return { ...x, dropPct: Math.round(d * 10) / 10, surgePct: Math.round(surgePct * 10) / 10, isEff: d < 10 && !isSurge, isSurge };
+      return { ...x, dropPct: Math.round(d * 10) / 10, surgePct: Math.round(surgePct * 10) / 10, isEff: d < 20 && !isSurge, isSurge };
     });
 
     return {

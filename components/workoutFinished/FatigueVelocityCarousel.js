@@ -21,7 +21,7 @@ export default function FatigueVelocityCarousel({
   fatigueLevel: propsFatigueLevel,
   analysisData,
   selectedSet = 'all',
-  thresholdPercent = 10
+  thresholdPercent = 20
 }) {
   const [activeSlide, setActiveSlide] = useState(0);
   const [showFatigueInfo, setShowFatigueInfo] = useState(false);
