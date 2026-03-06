@@ -10,6 +10,7 @@
  */
 
 import { useMemo, useState, useRef, useEffect } from 'react';
+import ReactDOM from 'react-dom';
 import { buildChartSegments, buildChartSegmentsFromAnalysis } from '../../utils/sessionDetails/chartMappers';
 
 /* ── Chart dimensions ── */
@@ -319,8 +320,11 @@ export default function GraphBreakdownCarousel({
         ))}
       </div>
 
-      {/* ROM Info Modal */}
-      <ROMInfoModal isOpen={showROMInfo} onClose={() => setShowROMInfo(false)} />
+      {/* ROM Info Modal (Portal) */}
+      {showROMInfo && typeof document !== 'undefined' && ReactDOM.createPortal(
+        <ROMInfoModal onClose={() => setShowROMInfo(false)} />,
+        document.body
+      )}
     </div>
   );
 }
@@ -394,8 +398,8 @@ function FulfillmentRing({ value }) {
   );
 }
 
-/* ── ROM Info Modal ── */
-function ROMInfoModal({ isOpen, onClose }) {
+/* ── ROM Info Modal (Bottom Sheet via Portal) ── */
+function ROMInfoModal({ onClose }) {
   const [isClosing, setIsClosing] = useState(false);
 
   const handleClose = () => {
@@ -406,91 +410,91 @@ function ROMInfoModal({ isOpen, onClose }) {
     }, 250);
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div 
-      className={`fixed inset-0 z-50 flex items-end justify-center transition-opacity duration-250 ${isClosing ? 'opacity-0' : 'opacity-100'}`}
-      style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)' }}
+    <div
+      className="fixed inset-0 z-[9999] flex items-end justify-center"
       onClick={handleClose}
     >
-      <div 
-        className={`w-full max-w-lg transition-transform ease-out ${isClosing ? 'translate-y-full' : 'translate-y-0'}`}
-        onClick={(e) => e.stopPropagation()}
-        style={{ animation: !isClosing ? 'slideUp 0.25s cubic-bezier(0.32, 0.72, 0, 1)' : undefined }}
+      <div className={`absolute inset-0 bg-black/60 transition-opacity duration-250 ${isClosing ? 'opacity-0' : 'opacity-100'}`} />
+      <div
+        className={`relative w-full max-w-lg rounded-t-2xl bg-[#1e1e1e] border-t border-white/10 pb-8 ${isClosing ? 'animate-slideDown' : 'animate-slideUp'}`}
+        onClick={e => e.stopPropagation()}
       >
-        <div className="rounded-t-3xl pt-3 pb-8 px-5" style={{ backgroundColor: 'rgb(38, 38, 38)' }}>
-          {/* Handle */}
-          <div className="flex justify-center mb-4">
-            <div className="w-9 h-1 rounded-full bg-white/30" />
-          </div>
+        {/* Drag handle */}
+        <div className="flex justify-center pt-3 pb-2 cursor-grab">
+          <div className="w-10 h-1 rounded-full bg-white/20" />
+        </div>
 
-          {/* Header */}
-          <div className="flex items-center gap-3 mb-5">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-green-500/20 to-yellow-500/20 flex items-center justify-center">
-              <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
+        {/* Content */}
+        <div className="px-5 overflow-y-auto" style={{ maxHeight: '65vh' }}>
+          <h4 className="text-[16px] font-bold text-white mb-3">What This Means</h4>
+          <p className="text-[13px] text-white/60 leading-relaxed mb-4">
+            Range of Motion (ROM) measures how much movement occurs during each rep. 
+            It's calculated as a percentage of your calibrated benchmark movement.
+          </p>
+          
+          <p className="text-[13px] font-semibold text-white/70 mb-2">ROM Categories:</p>
+          <div className="space-y-2 mb-4">
+            <div className="flex items-start gap-2.5">
+              <div className="w-2 h-2 rounded-full bg-green-400 mt-1.5 shrink-0" />
+              <div>
+                <span className="text-[13px] font-semibold text-white/80">Full ROM (≥85%)</span>
+                <p className="text-[12px] text-white/40 leading-relaxed">Complete movement through the full range. Maximizes muscle engagement.</p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-lg font-bold text-white">ROM Analysis</h3>
-              <p className="text-xs text-white/50">Range of Motion Tracking</p>
+            <div className="flex items-start gap-2.5">
+              <div className="w-2 h-2 rounded-full bg-yellow-400 mt-1.5 shrink-0" />
+              <div>
+                <span className="text-[13px] font-semibold text-white/80">Partial ROM (&lt;85%)</span>
+                <p className="text-[12px] text-white/40 leading-relaxed">Reduced movement range. Consider checking your form or reducing weight.</p>
+              </div>
             </div>
           </div>
-
-          {/* What is ROM */}
-          <div className="mb-5">
-            <h4 className="text-sm font-semibold text-white mb-2">What is ROM?</h4>
-            <p className="text-sm text-white/70 leading-relaxed">
-              Range of Motion (ROM) measures how much movement occurs during each rep. 
-              It's calculated as a percentage of your calibrated benchmark movement.
+          
+          <div className="pt-3 border-t border-white/[0.08]">
+            <p className="text-[12px] font-semibold text-white/50 mb-2">How It Works</p>
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-violet-400 shrink-0" />
+                <span className="text-[12px] text-white/50"><span className="text-white/70 font-medium">Calibration</span> — Set your baseline ROM at session start</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-violet-400 shrink-0" />
+                <span className="text-[12px] text-white/50"><span className="text-white/70 font-medium">Tracking</span> — Each rep is compared to your benchmark</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-violet-400 shrink-0" />
+                <span className="text-[12px] text-white/50"><span className="text-white/70 font-medium">Fulfillment %</span> — Shows how close you got to full ROM</span>
+              </div>
+            </div>
+          </div>
+          
+          <div className="rounded-xl bg-white/[0.04] p-3 mt-4">
+            <p className="text-[12px] text-white/50 leading-relaxed">
+              <span className="text-white/70 font-medium">Tip:</span> Full ROM helps maximize muscle engagement and training effectiveness. 
+              If consistently partial, consider reducing weight to maintain proper form.
             </p>
-          </div>
-
-          {/* ROM Categories with visualization */}
-          <div className="mb-5">
-            <h4 className="text-sm font-semibold text-white mb-3">ROM Categories</h4>
-            <div className="space-y-3">
-              {/* Full ROM */}
-              <div className="flex items-center gap-3 p-3 rounded-xl bg-green-500/10 border border-green-500/20">
-                <div className="w-12 h-12 rounded-full bg-green-500/20 flex items-center justify-center flex-shrink-0">
-                  <span className="text-lg font-bold text-green-400">≥85%</span>
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-semibold text-green-400">Full ROM</p>
-                  <p className="text-xs text-white/50">Complete movement through the full range</p>
-                </div>
-                <div className="w-3 h-3 rounded-full bg-green-500" />
-              </div>
-
-              {/* Partial ROM */}
-              <div className="flex items-center gap-3 p-3 rounded-xl bg-yellow-500/10 border border-yellow-500/20">
-                <div className="w-12 h-12 rounded-full bg-yellow-500/20 flex items-center justify-center flex-shrink-0">
-                  <span className="text-lg font-bold text-yellow-400">&lt;85%</span>
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-semibold text-yellow-400">Partial ROM</p>
-                  <p className="text-xs text-white/50">Reduced movement range - consider form check</p>
-                </div>
-                <div className="w-3 h-3 rounded-full bg-yellow-500" />
-              </div>
-            </div>
-          </div>
-
-          {/* Tips */}
-          <div className="p-3 rounded-xl bg-white/5 border border-white/10">
-            <div className="flex items-start gap-2">
-              <svg className="w-4 h-4 text-violet-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <p className="text-xs text-white/60 leading-relaxed">
-                <span className="text-white/80 font-medium">Tip:</span> Calibrate your ROM at the start of each session 
-                for accurate tracking. Full ROM helps maximize muscle engagement and training effectiveness.
-              </p>
-            </div>
           </div>
         </div>
       </div>
+      
+      {/* Animation styles */}
+      <style jsx global>{`
+        @keyframes slideUp {
+          from { opacity: 0; transform: translateY(100%); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes slideDown {
+          from { opacity: 1; transform: translateY(0); }
+          to { opacity: 0; transform: translateY(100%); }
+        }
+        .animate-slideUp {
+          animation: slideUp 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+        }
+        .animate-slideDown {
+          animation: slideDown 0.25s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+        }
+      `}</style>
     </div>
   );
 }
