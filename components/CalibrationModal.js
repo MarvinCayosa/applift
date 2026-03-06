@@ -18,10 +18,18 @@ const triggerHaptic = (pattern) => {
 // LocalStorage key prefix for calibration data
 const CALIBRATION_KEY_PREFIX = 'rom_calibration_';
 
-function getCalibrationKey(equipment, exercise) {
+/**
+ * Get localStorage key for calibration data
+ * Includes userId to make calibration user-specific
+ * @param {string} userId - User ID (required for user-specific storage)
+ * @param {string} equipment - Equipment name
+ * @param {string} exercise - Exercise name
+ */
+function getCalibrationKey(userId, equipment, exercise) {
+  const uid = userId || 'anonymous';
   const eq = (equipment || '').toLowerCase().replace(/\s+/g, '-');
   const ex = (exercise || '').toLowerCase().replace(/\s+/g, '-');
-  return `${CALIBRATION_KEY_PREFIX}${eq}_${ex}`;
+  return `${CALIBRATION_KEY_PREFIX}${uid}_${eq}_${ex}`;
 }
 
 /**
@@ -41,10 +49,14 @@ function sanitizeForFirestore(str) {
 /**
  * Save ROM calibration data for an equipment+exercise combo
  * Saves to both localStorage (for offline/fast access) and Firestore (for persistence)
+ * @param {string} userId - User ID for user-specific storage
+ * @param {string} equipment - Equipment name
+ * @param {string} exercise - Exercise name
+ * @param {object} data - Calibration data
  */
-export function saveCalibration(equipment, exercise, data) {
+export function saveCalibration(userId, equipment, exercise, data) {
   try {
-    const key = getCalibrationKey(equipment, exercise);
+    const key = getCalibrationKey(userId, equipment, exercise);
     localStorage.setItem(key, JSON.stringify({
       ...data,
       savedAt: new Date().toISOString()
@@ -102,10 +114,13 @@ export async function loadCalibrationFromFirestore(userId, equipment, exercise) 
 
 /**
  * Load saved ROM calibration data (from localStorage for fast access)
+ * @param {string} userId - User ID for user-specific storage
+ * @param {string} equipment - Equipment name
+ * @param {string} exercise - Exercise name
  */
-export function loadCalibration(equipment, exercise) {
+export function loadCalibration(userId, equipment, exercise) {
   try {
-    const key = getCalibrationKey(equipment, exercise);
+    const key = getCalibrationKey(userId, equipment, exercise);
     const raw = localStorage.getItem(key);
     return raw ? JSON.parse(raw) : null;
   } catch (e) {
@@ -115,12 +130,15 @@ export function loadCalibration(equipment, exercise) {
 
 /**
  * Check if calibration exists for equipment+exercise (localStorage)
+ * @param {string} userId - User ID for user-specific storage
+ * @param {string} equipment - Equipment name
+ * @param {string} exercise - Exercise name
  */
-export function hasCalibration(equipment, exercise) {
-  return loadCalibration(equipment, exercise) !== null;
+export function hasCalibration(userId, equipment, exercise) {
+  return loadCalibration(userId, equipment, exercise) !== null;
 }
 
-export default function CalibrationModal({ isOpen, onClose, onCalibrate, equipment, exercise }) {
+export default function CalibrationModal({ isOpen, onClose, onCalibrate, equipment, exercise, userId }) {
   const { device, connected } = useBluetooth();
   const [isClosing, setIsClosing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -405,8 +423,8 @@ export default function CalibrationModal({ isOpen, onClose, onCalibrate, equipme
     const target = rc.setTargetFromCalibration(roms);
     setAvgROM(target || 0);
     
-    // Save to localStorage
-    saveCalibration(equipment, exercise, {
+    // Save to localStorage (user-specific)
+    saveCalibration(userId, equipment, exercise, {
       targetROM: target,
       repROMs: roms,
       exerciseType: rc.exerciseType,
@@ -426,7 +444,7 @@ export default function CalibrationModal({ isOpen, onClose, onCalibrate, equipme
         unit: rc.getUnit()
       });
     }
-  }, [equipment, exercise, onCalibrate, cleanupBLE]);
+  }, [userId, equipment, exercise, onCalibrate, cleanupBLE]);
   
   // Subscribe to BLE IMU characteristic for calibration
   const subscribeToBLE = useCallback(async () => {

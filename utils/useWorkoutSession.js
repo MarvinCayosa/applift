@@ -389,6 +389,7 @@ export function useWorkoutSession({
   restTime = 30,     // Custom rest time in seconds
   equipment,         // Equipment name for ROM calibration
   workout,           // Exercise name for ROM calibration
+  userId,            // User ID for user-specific calibration
   onIMUSample,       // NEW: Called for each IMU sample (for streaming)
   onRepDetected,     // NEW: Called when a rep is detected
   onSetComplete,
@@ -475,8 +476,8 @@ export function useWorkoutSession({
       const rc = resetROMComputer();
       rc.setExerciseFromNames(equipment, workout);
       
-      // Load saved calibration target ROM
-      const calibration = loadCalibration(equipment, workout);
+      // Load saved calibration target ROM (user-specific)
+      const calibration = loadCalibration(userId, equipment, workout);
       if (calibration && calibration.targetROM) {
         rc.targetROM = calibration.targetROM;
         rc.romCalibrated = true;
@@ -486,7 +487,7 @@ export function useWorkoutSession({
       
       romComputerRef.current = rc;
     }
-  }, [equipment, workout]);
+  }, [userId, equipment, workout]);
   
   // Initialize RepCounter with exercise-specific counting direction
   // This prevents double-counting issues (e.g., bench press counting both lift and lower)

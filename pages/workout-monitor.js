@@ -239,6 +239,7 @@ export default function WorkoutMonitor() {
     restTime: workoutRestTime,
     equipment,
     workout,
+    userId: user?.uid,
     // Stream IMU samples to GCS as they come in
     onIMUSample: (sample) => {
       if (isStreaming) {

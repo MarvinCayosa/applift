@@ -91,7 +91,7 @@ function MetricCardsCarousel({
     {
       label: 'Avg Frequency',
       value: frequencyValue,
-      unit: 'days',
+      unit: 'workouts',
       sublabel: frequencyLabel,
       bgColor: 'bg-violet-400',
       textColor: 'text-black',

@@ -28,11 +28,19 @@ const COUNT_DIRECTION = {
 // Dumbbell exercises: use PEAK_TO_VALLEY so rep counts at the BOTTOM (after lowering)
 // Barbell exercises: count valley-to-peak only (prevents double-counting)
 // Weight stack: accel magnitude shows peak-then-valley during pull motion
+//
+// MOTION PATTERNS (when rep is counted):
+//   Concentration Curls: curl UP → lower DOWN [count] → curl UP...
+//   Overhead Extension:  lower DOWN → extend UP [count] → lower DOWN...
+//   Bench Press:         start at chest → push UP [count] → lower to chest...
+//   Back Squats:         start standing → squat DOWN → stand UP [count]...
+//   Lateral Pulldown:    start at top → pull DOWN [count] → release UP...
+//   Seated Leg Ext:      start at rest → extend UP [count] → lower DOWN...
 const EXERCISE_COUNT_DIRECTION = {
   0: COUNT_DIRECTION.PEAK_TO_VALLEY,  // Concentration Curls - count at bottom (after lowering)
   1: COUNT_DIRECTION.PEAK_TO_VALLEY,  // Overhead Extension - count at bottom (after lowering)
   2: COUNT_DIRECTION.VALLEY_TO_PEAK,  // Bench Press - push up from chest only
-  3: COUNT_DIRECTION.VALLEY_TO_PEAK,  // Back Squats - stand up only
+  3: COUNT_DIRECTION.VALLEY_TO_PEAK,  // Back Squats - stand up from squat (concentric phase)
   4: COUNT_DIRECTION.PEAK_TO_VALLEY,  // Lateral Pulldown - peak during pull, valley at rest
   5: COUNT_DIRECTION.PEAK_TO_VALLEY,  // Seated Leg Extension - peak during extension
 };

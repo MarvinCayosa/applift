@@ -1,19 +1,19 @@
 import { useState, useRef, useEffect } from 'react';
 import { hasCalibration, loadCalibration } from './CalibrationModal';
 
-export default function CalibrationHistoryPanel({ equipment, workout, onCalibrateClick }) {
+export default function CalibrationHistoryPanel({ equipment, workout, userId, onCalibrateClick }) {
   const [calibrationData, setCalibrationData] = useState(null);
   const [isCalibrated, setIsCalibrated] = useState(false);
   
   useEffect(() => {
     if (equipment && workout) {
-      const calibrated = hasCalibration(equipment, workout);
+      const calibrated = hasCalibration(userId, equipment, workout);
       setIsCalibrated(calibrated);
       if (calibrated) {
-        setCalibrationData(loadCalibration(equipment, workout));
+        setCalibrationData(loadCalibration(userId, equipment, workout));
       }
     }
-  }, [equipment, workout]);
+  }, [userId, equipment, workout]);
   
   if (isCalibrated && calibrationData) {
     const unit = calibrationData.unit || '°';

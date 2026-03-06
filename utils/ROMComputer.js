@@ -28,25 +28,46 @@
 // Dumbbell exercises (0,1) = angle, everything else = stroke
 // Stroke ROM only applies to vertical-motion exercises:
 //   Bench Press, Back Squats, Lateral Pulldown, Seated Leg Extension
+//
+// MOTION DIRECTION (sensor placement determines sign convention):
+//   Bench Press:        Start at chest (0), push UP (+), return to chest (0)
+//   Back Squats:        Start standing (0), squat DOWN (-), stand back UP (0)
+//   Lateral Pulldown:   Start at top (0), pull DOWN (-), release back UP (0)
+//   Seated Leg Ext:     Start at rest (0), extend UP (+), return to rest (0)
+//
+// ROM = peak absolute displacement from start, handles both +/- directions
 const EXERCISE_ROM_TYPE = {
   0: 'angle', // Concentration Curls
   1: 'angle', // Overhead Extension
-  2: 'stroke', // Bench Press (vertical bar path)
-  3: 'stroke', // Back Squats (vertical bar path)
-  4: 'stroke', // Lateral Pulldown (vertical stack motion)
-  5: 'stroke', // Seated Leg Extension (vertical stack motion)
+  2: 'stroke', // Bench Press (vertical bar path - UP motion)
+  3: 'stroke', // Back Squats (vertical bar path - DOWN then UP)
+  4: 'stroke', // Lateral Pulldown (vertical stack motion - DOWN motion)
+  5: 'stroke', // Seated Leg Extension (vertical stack motion - UP motion)
 };
 
 // Physical maximum ROM per exercise (degrees for angle, cm for stroke)
 // Anything above these values is definitely sensor drift / integration error.
+// Set generously high to allow calibration testing and tall users with long limbs.
 const EXERCISE_MAX_ROM = {
   0: 180,  // Concentration Curls (angle)
   1: 180,  // Overhead Extension (angle)
-  2: 80,   // Bench Press — chest to lockout ≈ 40-60cm, 80cm generous max
-  3: 100,  // Back Squats — full depth ≈ 50-80cm, 100cm generous max
-  4: 80,   // Lateral Pulldown — full pull ≈ 50-70cm
-  5: 60,   // Seated Leg Extension — full extension ≈ 30-50cm
+  2: 150,  // Bench Press — chest to lockout, generous max for tall users
+  3: 150,  // Back Squats — full depth, generous max for deep squats
+  4: 150,  // Lateral Pulldown — full pull, generous max for long arms
+  5: 100,  // Seated Leg Extension — full extension, generous max
 };
+
+// ========== STROKE ROM SCALE FACTOR ==========
+// Double integration of filtered accelerometer data can under-estimate
+// displacement due to filtering losses. However, with the current lighter
+// filtering (0.20/0.80 EMA, 0.08 m/s² noise floor), the raw integration
+// is close to actual displacement.
+//
+// Empirical testing (Mar 2026):
+//   30cm actual → 31.1cm raw (3.7% over)
+//   40cm actual → 38.1cm raw (4.8% under)
+// Average error is within ±5%, so scale factor ≈ 1.0 is appropriate.
+const STROKE_SCALE_FACTOR = 1.0;  // No scaling needed with current filtering
 
 // Equipment name → exercise code mapping for lookup
 const EQUIPMENT_EXERCISE_MAP = {
@@ -85,7 +106,9 @@ export class ROMComputer {
     this.gyroBias = {x:0,y:0,z:0}; // calibrated gyro offset (native units) from baseline hold
     this.gyroInRadians = false;     // auto-detected: true if ESP32 outputs rad/s
     this.stillCounter = 0;          // consecutive near-zero samples for ZUPT
-    this.NOISE_FLOOR = 0.15;        // m/s² — acceleration dead-zone (raised from 0.06 to reject MEMS noise)
+    this.NOISE_FLOOR = 0.08;        // m/s² — acceleration dead-zone (lowered from 0.15 to preserve signal)
+                                    // Higher values clip real acceleration during slow movements
+                                    // MEMS noise is ~0.05-0.1 m/s² RMS; 0.08 balances noise vs signal
     this.ZUPT_THRESHOLD = 0.20;     // m/s² — accel-magnitude rest detection for ZUPT (relaxed for hand vibration)
     this.GYRO_STILL_RAD = 0.08;     // rad/s — gyro rest detection (~4.6°/s, relaxed)
     this.ZUPT_SAMPLES = 3;          // consecutive still samples to trigger ZUPT (more conservative)
@@ -366,11 +389,12 @@ export class ROMComputer {
     // This extracts ONLY the vertical component — horizontal is ignored.
     const rawVertAccel = this.projectOnGravity(accelX, accelY, accelZ);
     
-    // === STEP 2: Cascaded EMA smoothing (2-stage) ===
-    // Two-stage EMA gives ~12dB/octave noise rolloff (-3dB at ~4Hz for 20Hz sampling).
-    // Single-stage at 0.25 prev was too weak — noise passed through to double integration
-    // causing quadratic position drift. Two stages of 0.4/0.6 is equivalent to a
-    // ~4th-order IIR filter with good noise rejection while preserving 0.5-2Hz exercise motion.
+    // === STEP 2: Lighter EMA smoothing (2-stage, less aggressive) ===
+    // Two-stage EMA for noise rejection while preserving signal amplitude.
+    // Previous 0.4/0.6 split was too aggressive — attenuated peak accelerations by ~30%
+    // causing systematic under-estimation of displacement.
+    // New 0.20/0.80 split preserves more signal while still filtering high-freq noise.
+    // Exercise motion is 0.5-3Hz; this filter has -3dB around 6Hz at 20Hz sampling.
     //
     // IMPORTANT: Prime EMA from first sample instead of starting from 0.
     // Starting from 0 attenuates the first 3-5 samples by 35-64%, which causes
@@ -380,8 +404,8 @@ export class ROMComputer {
       this.prevVertAccel2 = rawVertAccel;
       this.emaInitialized = true;
     }
-    const stage1 = 0.4 * this.prevVertAccel + 0.6 * rawVertAccel;
-    const vertAccel = 0.4 * this.prevVertAccel2 + 0.6 * stage1;
+    const stage1 = 0.20 * this.prevVertAccel + 0.80 * rawVertAccel;
+    const vertAccel = 0.20 * this.prevVertAccel2 + 0.80 * stage1;
     this.prevVertAccel = stage1;
     this.prevVertAccel2 = vertAccel;
     
@@ -435,14 +459,19 @@ export class ROMComputer {
     this.peakDisplacement = Math.max(this.peakDisplacement, this.displacement);
     this.minDisplacement = Math.min(this.minDisplacement, this.displacement);
     
-    // Convert to cm for display
-    this.liveDisplacementCm = this.displacement * 100;
+    // Convert to cm for display - always positive (distance from start)
+    // Back Squats/Pulldowns go negative (down), Bench/Leg Ext go positive (up)
+    // For display, show absolute value = "how far from start" regardless of direction
+    const rawDisplacementCm = this.displacement * 100 * STROKE_SCALE_FACTOR;
+    this.liveDisplacementCm = Math.abs(rawDisplacementCm);
     this.liveVelocity = this.velocity;
     
-    // Track within-rep min/max displacement (cm) for ROM = peak-to-trough
-    this.repMinAngle = Math.min(this.repMinAngle, this.liveDisplacementCm);
-    this.repMaxAngle = Math.max(this.repMaxAngle, this.liveDisplacementCm);
-    this.liveRepROM = this.repMaxAngle - this.repMinAngle;
+    // Track within-rep peak displacement for ROM
+    // Use raw (signed) values for min/max tracking, then take abs for ROM
+    this.repMinAngle = Math.min(this.repMinAngle, rawDisplacementCm);
+    this.repMaxAngle = Math.max(this.repMaxAngle, rawDisplacementCm);
+    // ROM = peak distance from start (always positive)
+    this.liveRepROM = Math.max(Math.abs(this.repMaxAngle), Math.abs(this.repMinAngle));
     
     // Update fulfillment % (use retro-corrected ROM when available for accuracy)
     if (this.targetROM && this.targetROM > 0) {
@@ -479,9 +508,10 @@ export class ROMComputer {
     if (this.currentRepData.length > 10 && this.currentRepData.length % 15 === 0) {
       try {
         const retroResult = this.retroCorrect(this.currentRepData, false);
-        if (retroResult && retroResult.rom > 0) {
+        if (retroResult && retroResult.peak > 0) {
+          // Use peak (distance from start) for consistency with calibration
           // Use max to prevent jitter (ROM only grows during a rep)
-          this.liveAdjustedROM = Math.max(this.liveAdjustedROM, retroResult.rom);
+          this.liveAdjustedROM = Math.max(this.liveAdjustedROM, retroResult.peak);
         }
       } catch (e) {
         // Silently ignore — fall back to raw liveRepROM
@@ -577,7 +607,7 @@ export class ROMComputer {
       if (corrected && corrected.peak > 0) {
         // For calibration, use peak displacement (distance from 0)
         romValue = corrected.peak;
-        console.log(`[ROMComputer] Calibration stroke: using peak=${corrected.peak.toFixed(1)}cm (raw rom=${corrected.rom.toFixed(1)}cm)`);
+        console.log(`[ROMComputer] Calibration stroke: using peak=${corrected.peak.toFixed(1)}cm (ROM=${corrected.rom.toFixed(1)}cm, scaleFactor=${STROKE_SCALE_FACTOR})`);
       } else {
         // Fallback to live tracking
         romValue = this.repMaxAngle - this.repMinAngle;
@@ -754,14 +784,18 @@ export class ROMComputer {
     // This eliminates accumulated drift that live integration suffers from
     const corrected = this.retroCorrect(this.currentRepData);
     
-    if (corrected && corrected.rom > 0) {
-      console.log(`📏 [ROM] RetroCorrect: ROM=${corrected.rom.toFixed(1)}cm peak=${corrected.peak.toFixed(1)}cm`);
-      return corrected.rom;
+    if (corrected && corrected.peak > 0) {
+      // Use PEAK (distance from start) for consistency with calibration logic
+      // ROM (max-min) can be inflated by pre-motion buffer samples
+      // Peak represents the actual vertical displacement traveled
+      console.log(`📏 [ROM] RetroCorrect: peak=${corrected.peak.toFixed(1)}cm ROM=${corrected.rom.toFixed(1)}cm (scaleFactor=${STROKE_SCALE_FACTOR})`);
+      return corrected.peak;
     }
     
-    // Fallback to live integration if retroCorrect fails
+    // Fallback to live integration if retroCorrect fails (apply scale factor)
     const disp = this.currentRepData.map(d => d.displacement);
-    return Math.max(...disp) - Math.min(...disp);
+    const peak = Math.max(Math.abs(Math.max(...disp)), Math.abs(Math.min(...disp)));
+    return peak * STROKE_SCALE_FACTOR;
   }
   
   // ========== RETROSPECTIVE CORRECTION (Forward-Backward Integration) ==========
@@ -775,33 +809,23 @@ export class ROMComputer {
   // 6. Position integration with linear detrending
   // This approach is speed-invariant and eliminates accumulated drift.
   retroCorrect(samples, isComplete = true) {
-    const g = this.gravityMag;
     const n = samples.length;
     if (n < 5) return null;
     
-    // ====== STEP 1: Extract vertical-only acceleration (gravity-axis projection) ======
-    const rawAcc = new Float64Array(n);
-    const dts = new Float64Array(n);
+    // ====== STEP 0: Per-rep gravity re-estimation from FIRST rest segment ======
+    // KEY FIX for drift: Re-estimate gravity from rest samples at the START of each rep.
+    // Using stored gravity from initial calibration causes drift accumulation, especially
+    // for longer movements (60cm+). Each rep gets its own fresh gravity calibration.
     
-    for (let i = 0; i < n; i++) {
-      const s = samples[i];
-      if (i > 0) {
-        const dt = (s.ts - samples[i - 1].ts) / 1000;
-        dts[i] = (dt > 0 && dt < 0.5) ? dt : 0;
-      }
-      // Vertical-only: project raw accel onto gravity axis, subtract gravity magnitude
-      // This ignores all horizontal and diagonal acceleration components
-      rawAcc[i] = this.projectOnGravity(s.ax, s.ay, s.az);
-    }
-    
-    // ====== STEP 2: Detect rest/still segments (accel + gyro) ======
-    const STILL_ACCEL = 0.25;  // m/s² (relaxed for better rest detection with hand vibration)
+    // First pass: detect rest segments using raw accel magnitude + gyro
+    const STILL_ACCEL = 0.25;  // m/s² (relaxed for hand vibration)
     const STILL_GYRO = 0.10;   // rad/s (relaxed to catch more rest samples)
     const isStill = new Uint8Array(n);
     
     for (let i = 0; i < n; i++) {
       const s = samples[i];
-      const aMagDev = Math.abs(Math.sqrt(s.ax ** 2 + s.ay ** 2 + s.az ** 2) - g);
+      const aMag = Math.sqrt(s.ax ** 2 + s.ay ** 2 + s.az ** 2);
+      const aMagDev = Math.abs(aMag - this.gravityMag);
       const gMag = Math.sqrt(s.gx ** 2 + s.gy ** 2 + s.gz ** 2);
       const gMagRad = this.gyroInRadians ? gMag : gMag * this.DEG2RAD;
       isStill[i] = (aMagDev < STILL_ACCEL && gMagRad < STILL_GYRO) ? 1 : 0;
@@ -820,7 +844,54 @@ export class ROMComputer {
     }
     if (rStart >= 0 && (n - rStart) >= 2) restSegs.push([rStart, n - 1]);
     
-    // ====== STEP 3: Estimate & remove acceleration bias from rest periods ======
+    // Re-estimate gravity from FIRST rest segment (pre-motion stillness)
+    // This ensures each rep uses fresh gravity calibration, preventing drift accumulation
+    let localGravityVec = this.gravityUnitVec;
+    let localGravityMag = this.gravityMag;
+    
+    if (restSegs.length > 0) {
+      const [firstStart, firstEnd] = restSegs[0];
+      const restCount = firstEnd - firstStart + 1;
+      if (restCount >= 2) {
+        // Average raw acceleration during first rest segment = gravity vector
+        let gx = 0, gy = 0, gz = 0;
+        for (let i = firstStart; i <= firstEnd; i++) {
+          gx += samples[i].ax;
+          gy += samples[i].ay;
+          gz += samples[i].az;
+        }
+        gx /= restCount; gy /= restCount; gz /= restCount;
+        const gMag = Math.sqrt(gx*gx + gy*gy + gz*gz);
+        
+        if (gMag > 8.0 && gMag < 12.0) {  // Sanity check: should be ~9.81 m/s²
+          // Calculate drift from stored gravity
+          const oldMag = this.gravityMag;
+          const drift = Math.abs(gMag - oldMag);
+          
+          localGravityMag = gMag;
+          localGravityVec = { x: gx/gMag, y: gy/gMag, z: gz/gMag };
+          // Always log gravity recalibration (important for debugging drift)
+          console.log(`🔄 [RetroCorrect] Per-rep gravity: mag=${gMag.toFixed(3)} (stored=${oldMag.toFixed(3)}, drift=${(drift*100).toFixed(1)}%) from ${restCount} rest samples`);
+        }
+      }
+    }
+    
+    // ====== STEP 1: Extract vertical-only acceleration using per-rep gravity ======
+    const rawAcc = new Float64Array(n);
+    const dts = new Float64Array(n);
+    
+    for (let i = 0; i < n; i++) {
+      const s = samples[i];
+      if (i > 0) {
+        const dt = (s.ts - samples[i - 1].ts) / 1000;
+        dts[i] = (dt > 0 && dt < 0.5) ? dt : 0;
+      }
+      // Project onto LOCAL (per-rep) gravity axis, not stored global gravity
+      const vertComponent = s.ax * localGravityVec.x + s.ay * localGravityVec.y + s.az * localGravityVec.z;
+      rawAcc[i] = vertComponent - localGravityMag;
+    }
+    
+    // ====== STEP 2: Estimate & remove acceleration bias from rest periods ======
     // At rest, vertical acceleration should be exactly 0. Any non-zero mean = systematic bias.
     let biasSum = 0, biasN = 0;
     restSegs.forEach(([s, e]) => {
@@ -843,23 +914,23 @@ export class ROMComputer {
       // Force zero at rest segments; apply noise floor elsewhere
       if (isStill[i]) {
         a = 0;
-      } else if (Math.abs(a) < 0.12) {
-        a = 0; // Noise floor: reject sub-threshold acceleration (raised from 0.05)
+      } else if (Math.abs(a) < 0.06) {
+        a = 0; // Noise floor: lowered from 0.12 to preserve more signal
+               // Higher thresholds clip real acceleration during slow/controlled movements
       }
       acc[i] = a;
     }
     
-    // ====== STEP 4b: Two-pass triangle smoothing [1,2,1]/4 ======
-    // Single-pass gave only -6dB/octave noise attenuation, inadequate for double integration.
-    // Two passes give -12dB/octave — much better noise rejection while preserving
-    // the 0.5-2Hz exercise motion signal. Rest segments kept at zero.
+    // ====== STEP 4b: Single-pass triangle smoothing [1,2,1]/4 ======
+    // Reduced from 2 passes to 1 pass to preserve more signal amplitude.
+    // Two passes were -12dB/octave but also attenuated peak accelerations by ~15-20%.
+    // Single pass is -6dB/octave — adequate when combined with forward-backward integration
+    // which itself cancels drift. Rest segments kept at zero.
     if (n > 10) {
-      for (let pass = 0; pass < 2; pass++) {
-        const prev = Float64Array.from(acc);
-        for (let i = 1; i < n - 1; i++) {
-          if (!isStill[i]) {
-            acc[i] = (prev[i - 1] + 2 * prev[i] + prev[i + 1]) / 4;
-          }
+      const prev = Float64Array.from(acc);
+      for (let i = 1; i < n - 1; i++) {
+        if (!isStill[i]) {
+          acc[i] = (prev[i - 1] + 2 * prev[i] + prev[i + 1]) / 4;
         }
       }
     }
@@ -964,17 +1035,24 @@ export class ROMComputer {
     }
     
     const peakAbs = Math.max(Math.abs(maxD), Math.abs(minD));
-    const rom = maxD - minD;
+    const rawRom = maxD - minD;
+    
+    // Apply scale factor to compensate for systematic under-estimation from filtering
+    // See STROKE_SCALE_FACTOR constant for detailed explanation
+    const scaledPeak = peakAbs * STROKE_SCALE_FACTOR;
+    const scaledRom = rawRom * STROKE_SCALE_FACTOR;
     
     if (this.DEBUG_MODE) {
-      console.log(`📏 [RetroCorrect] bias=${(accBias).toFixed(4)}m/s² restSegs=${restSegs.length} peak=${(peakAbs*100).toFixed(1)}cm rom=${(rom*100).toFixed(1)}cm complete=${isComplete}`);
+      console.log(`📏 [RetroCorrect] bias=${(accBias).toFixed(4)}m/s² restSegs=${restSegs.length} rawROM=${(rawRom*100).toFixed(1)}cm scaledROM=${(scaledRom*100).toFixed(1)}cm (x${STROKE_SCALE_FACTOR}) complete=${isComplete}`);
     }
     
     return {
-      peak: peakAbs * 100,   // cm
-      rom: rom * 100,         // cm
-      maxDisp: maxD * 100,
-      minDisp: minD * 100
+      peak: scaledPeak * 100,   // cm (scaled)
+      rom: scaledRom * 100,     // cm (scaled)
+      maxDisp: maxD * STROKE_SCALE_FACTOR * 100,
+      minDisp: minD * STROKE_SCALE_FACTOR * 100,
+      rawRom: rawRom * 100,     // cm (unscaled, for debugging)
+      scaleFactor: STROKE_SCALE_FACTOR
     };
   }
   

@@ -747,24 +747,24 @@ export default function SelectedWorkout() {
   useEffect(() => {
     if (!equipment || !workout) return;
     
-    // Check localStorage first (instant)
-    const localCalibrated = hasCalibration(equipment, workout);
-    if (localCalibrated) {
-      setIsROMCalibrated(true);
-      setSavedCalibrationData(loadCalibration(equipment, workout));
-      return;
-    }
-    
-    // If not in localStorage, check Firestore
+    // Check localStorage first (instant) - requires user ID for user-specific storage
     if (user?.uid) {
+      const localCalibrated = hasCalibration(user.uid, equipment, workout);
+      if (localCalibrated) {
+        setIsROMCalibrated(true);
+        setSavedCalibrationData(loadCalibration(user.uid, equipment, workout));
+        return;
+      }
+      
+      // If not in localStorage, check Firestore
       loadCalibrationFromFirestore(user.uid, equipment, workout).then((firestoreData) => {
         if (firestoreData && firestoreData.targetROM) {
           setIsROMCalibrated(true);
           setSavedCalibrationData(firestoreData);
-          // Sync back to localStorage for fast access next time
+          // Sync back to localStorage for fast access next time (user-specific)
           try {
             const { saveCalibration } = require('../components/CalibrationModal');
-            saveCalibration(equipment, workout, firestoreData);
+            saveCalibration(user.uid, equipment, workout, firestoreData);
           } catch (e) { /* ignore */ }
           console.log('[SelectedWorkout] ✅ Loaded calibration from Firestore');
         } else {
@@ -773,6 +773,7 @@ export default function SelectedWorkout() {
         }
       });
     } else {
+      // No user logged in - cannot load user-specific calibration
       setIsROMCalibrated(false);
       setSavedCalibrationData(null);
     }
@@ -1135,6 +1136,7 @@ export default function SelectedWorkout() {
         onClose={() => setIsCalibrationModalOpen(false)}
         equipment={equipment}
         exercise={workout}
+        userId={user?.uid}
         onCalibrate={async (calibrationData) => {
           console.log('ROM Calibration saved:', calibrationData);
           setIsROMCalibrated(true);

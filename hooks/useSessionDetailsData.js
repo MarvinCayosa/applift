@@ -116,8 +116,8 @@ export default function useSessionDetailsData({ logId, equipment, exercise }) {
         setRomCalibration(calibrationData);
         console.log('[useSessionDetailsData] ✅ Loaded ROM calibration from Firestore:', calibrationData.targetROM);
       } else {
-        // Fall back to localStorage
-        const localCalibration = loadCalibration(equipment, exercise);
+        // Fall back to localStorage (user-specific)
+        const localCalibration = loadCalibration(user.uid, equipment, exercise);
         if (localCalibration && localCalibration.targetROM) {
           setRomCalibration(localCalibration);
           console.log('[useSessionDetailsData] ✅ Loaded ROM calibration from localStorage:', localCalibration.targetROM);
@@ -126,8 +126,8 @@ export default function useSessionDetailsData({ logId, equipment, exercise }) {
         }
       }
     }).catch(() => {
-      // On error, try localStorage
-      const localCalibration = loadCalibration(equipment, exercise);
+      // On error, try localStorage (user-specific)
+      const localCalibration = loadCalibration(user.uid, equipment, exercise);
       if (localCalibration && localCalibration.targetROM) {
         setRomCalibration(localCalibration);
         console.log('[useSessionDetailsData] ✅ Loaded ROM calibration from localStorage (after error):', localCalibration.targetROM);

@@ -141,8 +141,8 @@ export default function SessionSummaryPage() {
         setRomCalibration(calibrationData)
         console.log('[Session] ✅ Loaded ROM calibration from Firestore:', calibrationData.targetROM)
       } else {
-        // Fall back to localStorage
-        const localCalibration = loadCalibration(eq, ex)
+        // Fall back to localStorage (user-specific)
+        const localCalibration = loadCalibration(user.uid, eq, ex)
         if (localCalibration && localCalibration.targetROM) {
           setRomCalibration(localCalibration)
           console.log('[Session] ✅ Loaded ROM calibration from localStorage:', localCalibration.targetROM)
@@ -151,8 +151,8 @@ export default function SessionSummaryPage() {
         }
       }
     }).catch(() => {
-      // On error, try localStorage
-      const localCalibration = loadCalibration(eq, ex)
+      // On error, try localStorage (user-specific)
+      const localCalibration = loadCalibration(user.uid, eq, ex)
       if (localCalibration && localCalibration.targetROM) {
         setRomCalibration(localCalibration)
         console.log('[Session] ✅ Loaded ROM calibration from localStorage (after Firestore error):', localCalibration.targetROM)
