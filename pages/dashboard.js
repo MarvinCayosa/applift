@@ -10,7 +10,7 @@ import LoadingScreen from '../components/LoadingScreen';
 import LoadTrendIndicator from '../components/LoadTrendIndicator';
 import EquipmentDistributionCard from '../components/EquipmentDistributionCard';
 import TotalCaloriesCard from '../components/TotalCaloriesCard';
-import TotalVolumeCard from '../components/TotalVolumeCard';
+import BestSessionsCard from '../components/BestSessionsCard';
 import { ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useUserProfile } from '../utils/userProfileStore';
 import { useWorkoutStreak } from '../utils/useWorkoutStreak';
@@ -1154,7 +1154,7 @@ export default function Dashboard() {
 
           {/* Two half-width cards side by side */}
           <section className="mb-4 md:mb-6 content-fade-up-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-4 h-[300px]">
               {/* Left: Equipment Distribution */}
               <EquipmentDistributionCard
                 data={equipmentDistributionData}
@@ -1162,14 +1162,14 @@ export default function Dashboard() {
                 animate={true}
                 hasData={equipmentDistributionData.length > 0}
               />
-              {/* Right: Stacked cards */}
-              <div className="flex flex-col gap-4">
+              {/* Right: Stacked cards — same height as left */}
+              <div className="flex flex-col gap-4 h-full">
                 <TotalCaloriesCard
                   logs={logs}
                   hasData={logs.length > 0}
                 />
-                {/* Volume Lifted card */}
-                <TotalVolumeCard
+                {/* Best Sessions This Week card */}
+                <BestSessionsCard
                   logs={logs}
                   hasData={logs.length > 0}
                 />

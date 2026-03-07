@@ -1,7 +1,7 @@
 ﻿/**
  * FatigueCarousel — Velocity Loss & Smoothness Analysis Cards
  *
- * Two-card carousel:
+ * Scroll-snap carousel (matching PWA standard pattern):
  * 1. Velocity Loss:
  *    • VL Formula: (Best Rep - Mean Last 3) / Best Rep × 100 (González-Badillo et al.)
  *    • Cyan color scheme for bars
@@ -13,11 +13,10 @@
  *    • References: Rohrer et al. (2002), Balasubramanian et al. (2012)
  */
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 
 export default function FatigueCarousel({ setsData, smoothnessData, fatigueScore: propScore, fatigueLevel: propLevel, fatigueComponents: propComponents, selectedSet = 'all' }) {
-  const [currentSlide, setCurrentSlide] = useState(0);
   const [showVelocityInfo, setShowVelocityInfo] = useState(false);
   const [showSmoothnessInfo, setShowSmoothnessInfo] = useState(false);
   const [dragStartY, setDragStartY] = useState(0);
@@ -26,11 +25,20 @@ export default function FatigueCarousel({ setsData, smoothnessData, fatigueScore
   const [isClosingOverlay, setIsClosingOverlay] = useState(false);
   const [velocitySetFilter, setVelocitySetFilter] = useState('all');
   const [smoothnessSetFilter, setSmoothnessSetFilter] = useState('all');
+  const [activeSlide, setActiveSlide] = useState(0);
+  const carouselRef = useRef(null);
 
-  // ── Swipe state for carousel ───────────────────────────────
-  const [swipeStartX, setSwipeStartX] = useState(0);
-  const [swipeCurrentX, setSwipeCurrentX] = useState(0);
-  const [isSwiping, setIsSwiping] = useState(false);
+  // ── Scroll-snap dot tracking ────────────────────────────────
+  useEffect(() => {
+    const el = carouselRef.current;
+    if (!el) return;
+    const handleScroll = () => {
+      const w = el.offsetWidth;
+      if (w > 0) setActiveSlide(Math.round(el.scrollLeft / w));
+    };
+    el.addEventListener('scroll', handleScroll, { passive: true });
+    return () => el.removeEventListener('scroll', handleScroll);
+  }, []);
 
   // ── Set filter options for tap-cycle ───────────────────────
   const setFilterOptions = useMemo(() => {
@@ -52,35 +60,6 @@ export default function FatigueCarousel({ setsData, smoothnessData, fatigueScore
       const idx = setFilterOptions.indexOf(prev);
       return setFilterOptions[(idx + 1) % setFilterOptions.length];
     });
-  };
-
-  // ── Slide navigation ───────────────────────────────────────
-  const TOTAL_SLIDES = smoothnessData && smoothnessData.length > 0 ? 2 : 1;
-  const nextSlide = () => setCurrentSlide(prev => (prev + 1) % TOTAL_SLIDES);
-  const prevSlide = () => setCurrentSlide(prev => (prev - 1 + TOTAL_SLIDES) % TOTAL_SLIDES);
-
-  // ── Swipe handlers for carousel ───────────────────────────
-  const handleSwipeStart = (e) => {
-    setSwipeStartX(e.touches[0].clientX);
-    setIsSwiping(true);
-  };
-  const handleSwipeMove = (e) => {
-    if (!isSwiping) return;
-    setSwipeCurrentX(e.touches[0].clientX);
-  };
-  const handleSwipeEnd = () => {
-    if (!isSwiping) return;
-    const diff = swipeCurrentX - swipeStartX;
-    if (Math.abs(diff) > 50) {
-      if (diff < 0 && currentSlide < TOTAL_SLIDES - 1) {
-        setCurrentSlide(prev => prev + 1);
-      } else if (diff > 0 && currentSlide > 0) {
-        setCurrentSlide(prev => prev - 1);
-      }
-    }
-    setIsSwiping(false);
-    setSwipeStartX(0);
-    setSwipeCurrentX(0);
   };
 
   // ── Drag-to-dismiss handlers for info overlay ──────────────────────
@@ -285,20 +264,23 @@ export default function FatigueCarousel({ setsData, smoothnessData, fatigueScore
   const plotH = BAR_H - BP.t - BP.b;
 
   // ====================================================================
-  // RENDER
+  // RENDER — Scroll-snap carousel
   // ====================================================================
+  const hasSmoothnessData = smoothnessData && smoothnessData.length > 0 && smoothness.scores.length > 0;
+  const slideCount = hasSmoothnessData ? 2 : 1;
+
   return (
-    <div 
-      className="rounded-2xl bg-[#1a1a1a] overflow-hidden content-fade-up-3"
-      onTouchStart={handleSwipeStart}
-      onTouchMove={handleSwipeMove}
-      onTouchEnd={handleSwipeEnd}
-    >
-      {/* ══════════════════════════════════════════════════════════════════════
-          SLIDE 0: VELOCITY LOSS
-          ══════════════════════════════════════════════════════════════════════ */}
-      {currentSlide === 0 && (
-        <>
+    <div className="content-fade-up-3">
+      {/* ── Scroll-snap carousel container ── */}
+      <div
+        ref={carouselRef}
+        className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide scroll-smooth"
+      >
+        {/* ══════════════════════════════════════════════════════════════════════
+            SLIDE 1: VELOCITY LOSS
+            ══════════════════════════════════════════════════════════════════════ */}
+        <div className="shrink-0 snap-center" style={{ width: '100%' }}>
+        <div className="rounded-2xl bg-[#1a1a1a] overflow-hidden">
       {/* ── Header: Title + Info (left) | Filter/Level pill (right) ── */}
       <div className="px-5 pt-4 pb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -435,14 +417,15 @@ export default function FatigueCarousel({ setsData, smoothnessData, fatigueScore
           </>
         )}
       </div>
-        </>
-      )}
+      </div>
+      </div>
 
-      {/* ══════════════════════════════════════════════════════════════════════
-          SLIDE 1: SMOOTHNESS (Gradient Line Chart)
-          ══════════════════════════════════════════════════════════════════════ */}
-      {currentSlide === 1 && smoothness.scores.length > 0 && (
-        <>
+        {/* ══════════════════════════════════════════════════════════════════════
+            SLIDE 2: SMOOTHNESS (Gradient Line Chart)
+            ══════════════════════════════════════════════════════════════════════ */}
+        {hasSmoothnessData && (
+        <div className="shrink-0 snap-center" style={{ width: '100%' }}>
+        <div className="rounded-2xl bg-[#1a1a1a] overflow-hidden">
           {/* ── Header: Title + Info (left) | Filter/Trend pill (right) ── */}
           <div className="px-5 pt-4 pb-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -587,17 +570,20 @@ export default function FatigueCarousel({ setsData, smoothnessData, fatigueScore
             </div>
 
           </div>
-        </>
+        </div>
+        </div>
       )}
+      </div>
 
-      {/* ── Slide Navigation Dots (bottom) ── */}
-      {TOTAL_SLIDES > 1 && (
-        <div className="flex justify-center gap-1.5 py-3">
-          {[...Array(TOTAL_SLIDES)].map((_, i) => (
-            <button
+      {/* ── Dot indicators ── */}
+      {slideCount > 1 && (
+        <div className="flex justify-center gap-1.5 mt-3">
+          {[0, 1].map(i => (
+            <div
               key={i}
-              onClick={() => setCurrentSlide(i)}
-              className={`w-1.5 h-1.5 rounded-full transition-all ${currentSlide === i ? 'bg-white w-4' : 'bg-white/30'}`}
+              className={`h-1.5 rounded-full transition-all duration-300 ${
+                activeSlide === i ? 'w-5 bg-white/60' : 'w-1.5 bg-white/20'
+              }`}
             />
           ))}
         </div>
