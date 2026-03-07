@@ -1,0 +1,642 @@
+================================================================================
+APPLIFT PWA — AI FEATURES DOCUMENTATION
+================================================================================
+Written for validator presentation. This document explains the 3 AI features in
+AppLift step-by-step: what they do, the prompts, parameters, and how the code
+works from button click to AI response.
+
+All 3 features use the same AI model:
+  - Model: Google Vertex AI Gemini 2.5 Flash
+  - SDK: @google-cloud/vertexai (Node.js)
+  - Runs entirely server-side (Next.js API Routes)
+  - Authentication: Firebase JWT token verification
+  - Rate limiting: In-memory per-user (10-20 requests/min)
+
+================================================================================
+TABLE OF CONTENTS
+================================================================================
+1. AI RECOMMENDATION (Pre-Workout)
+2. AI SESSION INSIGHTS (Post-Workout)
+3. AI SET FEEDBACK (Per-Set, During Workout)
+4. SHARED INFRASTRUCTURE (Auth, Rate Limiting, Vertex AI Setup)
+
+================================================================================
+================================================================================
+1. AI RECOMMENDATION — Pre-Workout Set Recommendation
+================================================================================
+================================================================================
+
+PURPOSE:
+Before starting a workout, the AI recommends how much weight to use, how many
+sets and reps to perform, and how long to rest. It considers the user's profile,
+past workout history, injury status, experience level, and sensor-measured
+performance data (velocity loss, smoothness, ML classification results).
+
+FILES INVOLVED (in order of execution):
+  1. pages/selectedWorkout.js          — Triggers the recommendation when user navigates to exercise
+  2. hooks/useAIRecommendation.js      — React hook managing cache-check → API call flow
+  3. services/aiRecommendationService.js — Firestore caching, API call, regen limits
+  4. pages/api/ai-recommendation.js    — SERVER-SIDE: builds prompt, calls Gemini, returns JSON
+  5. components/RecommendedSetCard.js   — Displays the recommendation in a card UI
+
+--------------------------------------------------------------------------------
+STEP-BY-STEP CODE FLOW:
+--------------------------------------------------------------------------------
+
+STEP 1: User navigates to exercise page (selectedWorkout.js)
+  - The page reads query params: ?equipment=Dumbbell&workout=Concentration Curls
+  - It fetches past workout sessions from Firestore (up to 5 most recent)
+  - Once sessions are loaded, it passes them to the useAIRecommendation hook
+
+STEP 2: useAIRecommendation hook checks the Firestore cache
+  File: hooks/useAIRecommendation.js
+  
+  - Calls getCachedRecommendation(uid, equipment, exerciseName)
+  - This reads from Firestore path: users/{uid}/aiRecommendations/{equipment}_{exerciseName}
+  - If cached recommendation exists AND the session count hasn't increased:
+      → Uses cached data immediately (no API call)
+      → Sets isFromCache = true
+  - If cached recommendation exists BUT user has completed a new session since:
+      → Cache is stale, falls through to Step 3
+  - If no cache exists:
+      → Falls through to Step 3
+
+STEP 3: Hook calls the API to generate a new recommendation
+  File: services/aiRecommendationService.js → generateRecommendation()
+  
+  - Gets the user's Firebase ID token: await user.getIdToken()
+  - Builds sessionContext object containing:
+      * totalSessions: number of past sessions for this exercise
+      * timeSinceLastSession: human-readable string ("2 days ago")
+      * hoursSinceLastSession: number (for recovery checks)
+      * lastFeedback: user's self-assessment from their last session
+  - Sends POST request to /api/ai-recommendation with:
+      * userProfile (age, gender, weight, experience, injuries, goals)
+      * equipment ("Dumbbell", "Barbell", or "Weight Stack")
+      * exerciseName ("Concentration Curls", etc.)
+      * pastSessions (up to 3, with weight, sets, reps, cleanRepPct, fatigue, velocity loss, smoothness)
+      * sessionContext (time since last session, feedback)
+      * Authorization: Bearer {idToken}
+
+STEP 4: Server-side API handles the request
+  File: pages/api/ai-recommendation.js
+  
+  a) AUTHENTICATION:
+     - Extracts Bearer token from Authorization header
+     - Calls admin.auth().verifyIdToken(idToken) using Firebase Admin SDK
+     - If invalid/expired → returns 401 Unauthorized
+  
+  b) RATE LIMITING:
+     - Checks in-memory Map: max 10 requests per user per 60 seconds
+     - If exceeded → returns 429 Too Many Requests
+  
+  c) BUILDS THE USER PROMPT (buildUserPrompt function):
+     The prompt sent TO the AI is constructed like this:
+     
+     Line 1: EXERCISE: Concentration Curls (Dumbbell)
+     Line 2: USER: 21y Male, 70kg, exp: beginner, goal: muscle building
+     Line 3: (if beginner) ⚠️ BEGINNER: Use minimal starting weights
+     Line 4: (if injuries) INJURIES: lower back pain
+     Line 5: SESSION CONTEXT:
+             - Total sessions with this exercise: 5
+             - Time since last session: 2 days ago
+     Line 6: (recovery warnings based on hours since last)
+             < 24h: ⚠️ SAME-DAY TRAINING
+             < 48h: ⚠️ SHORT RECOVERY
+             > 168h: ⚠️ LONG GAP
+     Line 7: USER FEEDBACK FROM LAST SESSION:
+             - How they felt: Good (4/5)
+             - Workout difficulty: Just Right (3/5)
+             - AI recommendation rating: 4/5
+     Line 8: HISTORY (3 sessions, most recent first):
+             S1: 10kg × 3s × 8r, cleanRepPct: 85%, fatigue: 15%, VL: 12.5%, smoothness: 72 (2 days ago)
+             S2: 8kg × 3s × 8r, cleanRepPct: 70%, fatigue: 25%, VL: 22.1%, smoothness: 65 (5 days ago)
+     Line 9: (form warnings based on latest cleanRepPct)
+             < 60%: ⚠️ FORM WARNING: MUST decrease or maintain load
+             < 80%: ⚠️ FORM NOTE: maintain current load
+     Line 10: MOVEMENT QUALITY TRENDS:
+             (velocity loss interpretation)
+             (smoothness interpretation)
+  
+  d) CALLS VERTEX AI GEMINI:
+     Model configuration:
+       - model: "gemini-2.5-flash"
+       - temperature: 0.3 (low = more deterministic/consistent)
+       - topP: 0.8
+       - topK: 40
+       - maxOutputTokens: 4096
+       - responseMimeType: "application/json" (forces JSON output)
+     
+     The call:
+       generativeModel.generateContent({
+         contents: [{ role: 'user', parts: [{ text: userPrompt }] }]
+       })
+     
+     systemInstruction is set separately with the SYSTEM_PROMPT.
+  
+  e) PARSES AND VALIDATES THE AI RESPONSE:
+     - Strips markdown fences if present
+     - Parses JSON
+     - Handles both flat format and nested format (model sometimes wraps in "recommendation" object)
+     - Applies safety bounds:
+         weight: 0-500 kg
+         sets: 1-10
+         reps: 1-15
+         restTimeSeconds: 15-600
+         estimatedCalories: 5-500
+         recommendedRestDays: 1-4
+     - Server-side generates weightBreakdown for consistent format
+  
+  f) RETURNS RESPONSE:
+     {
+       recommendation: { weight, sets, reps, restTimeSeconds, estimatedCalories, recommendedRestDays, weightBreakdown },
+       reasoning: { rationale, safetyJustification, guidelineReference, progressionNotes }
+     }
+
+STEP 5: Response is cached and displayed
+  File: services/aiRecommendationService.js → cacheRecommendation()
+  
+  - Saves to Firestore: users/{uid}/aiRecommendations/{equipment}_{exerciseName}
+  - Stores: recommendation, reasoning, sessionCountAtGeneration, regenCount
+  - If triggered by new_session or initial: regenCount resets to 0
+  - If triggered by regenerate: regenCount increments by 1
+  
+  File: components/RecommendedSetCard.js
+  - Displays weight, sets × reps, rest time in a card
+  - Shows rationale, safety note, guideline
+  - Has "Regenerate" button (max 5 regenerations per cache cycle)
+
+STEP 6: Cache invalidation
+  File: services/aiRecommendationService.js → bustRecommendationCache()
+  
+  - Called when a workout is completed (from workout-finished page)
+  - Deletes the cached recommendation entirely
+  - Next visit to the exercise page triggers a fresh API call
+
+--------------------------------------------------------------------------------
+SYSTEM PROMPT (FULL TEXT):
+--------------------------------------------------------------------------------
+
+The system prompt is the "personality" and rules given to the AI. It contains:
+
+1. ROLE: "AppLift's certified AI strength coach following NSCA/ACSM/STE guidelines"
+
+2. SYSTEM CONTEXT: Explains that AppLift uses an IMU sensor (not camera) to track movement
+
+3. EXERCISE CATALOG: Lists all 6 exercises with their equipment type and ML quality labels:
+   - Concentration Curls (Dumbbell): Clean, Uncontrolled Movement, Abrupt Initiation
+   - Overhead Extension (Dumbbell): Clean, Uncontrolled Movement, Abrupt Initiation
+   - Bench Press (Barbell): Clean, Uncontrolled Movement, Inclination Asymmetry
+   - Back Squat (Barbell): Clean, Uncontrolled Movement, Inclination Asymmetry
+   - Lateral Pulldown (Weight Stack): Clean, Pulling Too Fast, Releasing Too Fast
+   - Seated Leg Extension (Weight Stack): Clean, Pulling Too Fast, Releasing Too Fast
+
+4. BARBELL WEIGHT RULES: Always include the bar in total weight
+   - Olympic bar: 20kg, Women's: 15kg, EZ: 8kg
+   - Must show exact plate breakdown (e.g., "20kg bar + 5kg per side")
+   - Weight stack uses 5kg increments only
+
+5. SAFETY RULES:
+   - Beginners: max 5-10% increase
+   - Intermediates: 5-15% if form quality is high
+   - Advanced: standard progressive overload with deload every 4-6 weeks
+   - Always respect injuries
+
+6. LOAD DECISIONS (strictly enforced):
+   - Increase: ONLY if cleanRepPct >= 80% AND fatigue < 25% AND consistency >= 75%
+   - Maintain: cleanRepPct 60-79% OR fatigue 25-40%
+   - Decrease: cleanRepPct < 60% OR fatigue > 40% OR consistency < 60%
+   This is the most critical rule — the AI cannot increase load if form quality is poor.
+
+7. VELOCITY LOSS & SMOOTHNESS METRICS interpretation guidance
+
+8. OUTPUT FORMAT: Strict JSON schema with recommendedLoad, sets, reps, restTimeSeconds,
+   estimatedCalories, recommendedRestDays, weightBreakdown, rationale, safetyNote,
+   guideline, nextSteps
+
+--------------------------------------------------------------------------------
+PARAMETERS SUMMARY:
+--------------------------------------------------------------------------------
+  Model:        gemini-2.5-flash
+  Temperature:  0.3 (conservative, consistent outputs)
+  topP:         0.8
+  topK:         40
+  Max tokens:   4096
+  Output:       application/json (forced JSON)
+  Rate limit:   10 requests/min/user
+  Regen limit:  5 per cache cycle
+  Cache:        Firestore (users/{uid}/aiRecommendations/{docId})
+
+
+================================================================================
+================================================================================
+2. AI SESSION INSIGHTS — Post-Workout Summary
+================================================================================
+================================================================================
+
+PURPOSE:
+After completing a workout, the AI generates a brief performance summary
+paragraph and 3-5 specific improvement tips. This runs once per session and
+is cached permanently in the workout log document.
+
+FILES INVOLVED:
+  1. pages/workout-finished.js          — Triggers insights generation after workout completion
+  2. services/aiInsightsService.js      — Client service: cache check, API call, Firestore save
+  3. pages/api/ai-insights.js           — SERVER-SIDE: builds metrics prompt, calls Gemini
+  4. components/aiInsights/             — UI components for displaying summary + bullets
+
+--------------------------------------------------------------------------------
+STEP-BY-STEP CODE FLOW:
+--------------------------------------------------------------------------------
+
+STEP 1: Workout finishes (workout-finished.js)
+  - User completes their workout and lands on the workout-finished page
+  - The page collects all workout metrics: exercise, equipment, weight, sets/reps data,
+    duration, calories, ML classification results, fatigue score, consistency score
+  - Calls getCachedInsights() first to check if insights already exist for this session
+
+STEP 2: Check Firestore cache (aiInsightsService.js)
+  - Reads from: userWorkouts/{userId}/{equipment}/{exercise}/logs/{workoutId}
+  - If the document has an aiInsights field with a summary → returns cached insights
+  - If not → proceeds to generate
+
+STEP 3: Generate insights (aiInsightsService.js → generateInsights())
+  - Gets Firebase ID token
+  - Sets a 30-second abort timeout (AbortController)
+  - Sends POST to /api/ai-insights with full metrics payload
+
+STEP 4: Server-side API (ai-insights.js)
+  
+  a) AUTHENTICATION: Same as recommendation — Firebase JWT verification
+  
+  b) RATE LIMITING: Same pattern — 10 requests/min/user
+  
+  c) BUILDS METRICS PROMPT (buildMetricsPrompt function):
+     The prompt includes:
+     
+     Line 1: EXERCISE: Concentration Curls (Dumbbell), 10kg
+     Line 2: PLAN: 3×8 | ACTUAL: 3 sets, 22 reps
+     Line 3: DURATION: 12m 30s
+     Line 4: CALORIES: 85
+     Line 5: COMPLETION: 92% (22/24)
+     
+     SET BREAKDOWN:
+       Set1: 8 reps [Clean: 75%, Uncontrolled Movement: 25%], vel 0.45m/s, ROM 95.2°, conc 1.20s ecc 2.10s
+       Set2: 8 reps [Clean: 62%, Abrupt Initiation: 38%], vel 0.40m/s, ROM 92.1°, conc 1.35s ecc 1.90s
+       Set3: 6 reps [Clean: 50%, Uncontrolled Movement: 50%], vel 0.35m/s, ROM 88.5°, conc 1.50s ecc 1.70s
+     
+     EXECUTION DISTRIBUTION (22 total reps): Clean: 64% (14), Uncontrolled Movement: 27% (6), Abrupt Initiation: 9% (2)
+     
+     EXECUTION QUALITY (ML Classification):
+       Clean Rep Percentage: 64%
+       Quality Labels: Clean, Uncontrolled Movement, Abrupt Initiation
+       Distribution: Clean: 64%, Uncontrolled Movement: 27%, Abrupt Initiation: 9%
+       Top Mistakes: Uncontrolled Movement (27%), Abrupt Initiation (9%)
+     
+     FATIGUE SCORE: 28%
+     CONSISTENCY SCORE: 72%
+     
+     VELOCITY LOSS ANALYSIS:
+       Set1: Velocity Loss 15%, 7/8 effective
+       Set2: Velocity Loss 22%, 5/8 effective
+       Set3: Velocity Loss 35%, 3/6 effective
+  
+  d) CALLS VERTEX AI GEMINI:
+     Same model (gemini-2.5-flash) but slightly different config:
+       - temperature: 0.4 (slightly more creative than recommendation)
+       - topP: 0.8
+       - topK: 40
+       - maxOutputTokens: 4096
+       - responseMimeType: "application/json"
+  
+  e) PARSES RESPONSE:
+     - Strips markdown fences
+     - Parses JSON
+     - Truncates summary to 500 chars
+     - Limits bullets to 6 items, each max 200 chars
+  
+  f) RETURNS:
+     { summary: "2-3 sentence paragraph", bullets: ["tip 1", "tip 2", "tip 3"] }
+
+STEP 5: Cache and display
+  - aiInsightsService saves insights into the workout log document:
+    userWorkouts/{userId}/{equipment}/{exercise}/logs/{workoutId}.aiInsights
+  - This means insights are generated ONCE per session and never regenerated
+  - The UI displays the summary paragraph and improvement bullet points
+
+--------------------------------------------------------------------------------
+SYSTEM PROMPT (FULL TEXT):
+--------------------------------------------------------------------------------
+
+Role: "AppLift's AI performance analyst"
+
+KEY INSTRUCTIONS:
+1. SUMMARY (2-3 sentences):
+   - Lead with execution quality (clean-to-mistake ratio)
+   - Interpret velocity loss and effective reps in context
+   - Be direct, not generic
+
+2. BULLETS (3-5 tips):
+   - Each must be concrete and derived directly from session data
+   - Must reference the specific metric that triggered the tip
+   - Prioritize form mistakes first, then fatigue management
+   - Each tip is 1 short sentence, no generic advice
+
+3. CONTEXT:
+   - Lists all 6 exercises with ML quality labels
+   - Explains velocity loss, effective reps, ROM, smoothness metrics
+   - Never mention cameras (system uses IMU sensor)
+
+4. OUTPUT: { "summary": "...", "bullets": ["...", "...", "..."] }
+
+--------------------------------------------------------------------------------
+PARAMETERS SUMMARY:
+--------------------------------------------------------------------------------
+  Model:        gemini-2.5-flash
+  Temperature:  0.4 (slightly more creative)
+  topP:         0.8
+  topK:         40
+  Max tokens:   4096
+  Output:       application/json
+  Rate limit:   10 requests/min/user
+  Cache:        One-time, stored in workout log document (never regenerated)
+  Timeout:      30 seconds (client-side AbortController)
+
+
+================================================================================
+================================================================================
+3. AI SET FEEDBACK — Per-Set Coach Feedback (During Workout)
+================================================================================
+================================================================================
+
+PURPOSE:
+After completing each set during a workout, the AI provides a quick 2-3 sentence
+"coach-style" feedback summarizing how the set went. Think of it as having a
+personal trainer watching your set and giving you a quick recap before the next one.
+
+FILES INVOLVED:
+  1. components/setBreak/SetBreakOverlay.js — UI that appears between sets, triggers the API call
+  2. pages/api/set-feedback.js              — SERVER-SIDE: builds set data prompt, calls Gemini
+
+NOTE: This feature has NO separate service file. The frontend component calls the
+API directly (no caching — feedback is generated fresh for each set in real-time).
+
+--------------------------------------------------------------------------------
+STEP-BY-STEP CODE FLOW:
+--------------------------------------------------------------------------------
+
+STEP 1: User finishes a set (SetBreakOverlay.js)
+  - When a set ends, the SetBreakOverlay component appears showing:
+    * Set number / total sets
+    * Rest timer countdown
+    * Per-rep data table
+    * AI feedback section (loading spinner → feedback text)
+  - The component calls /api/set-feedback directly with:
+    * exerciseName, equipment, weight, weightUnit
+    * setNumber, totalSets
+    * repsData: array of rep objects with classification, velocity, ROM, timing, smoothness
+
+STEP 2: Server-side API (set-feedback.js)
+  
+  a) AUTHENTICATION: Firebase JWT verification (same as other APIs)
+  
+  b) RATE LIMITING: 20 requests/min/user (higher than other APIs since this fires per-set)
+  
+  c) BUILDS SET PROMPT (buildSetPrompt function):
+     This is the most detailed prompt per-rep. Example:
+     
+     EXERCISE: Concentration Curls (Dumbbell), 10kg
+     SET: 2 of 3
+     REPS COMPLETED: 8
+     
+     REP-BY-REP:
+       Rep1: Clean, vel 0.48m/s, ROM 96.2°, conc 1.15s ecc 2.20s, smooth 78/100
+       Rep2: Clean, vel 0.46m/s, ROM 95.8°, conc 1.18s ecc 2.15s, smooth 75/100
+       Rep3: Clean, vel 0.44m/s, ROM 94.1°, conc 1.22s ecc 2.05s, smooth 72/100
+       Rep4: Uncontrolled Movement, vel 0.40m/s, ROM 91.5°, conc 1.30s ecc 1.85s, smooth 58/100
+       Rep5: Clean, vel 0.39m/s, ROM 90.2°, conc 1.35s ecc 1.80s, smooth 62/100
+       Rep6: Uncontrolled Movement, vel 0.35m/s, ROM 87.8°, conc 1.45s ecc 1.65s, smooth 48/100
+       Rep7: Clean, vel 0.33m/s, ROM 86.5°, conc 1.50s ecc 1.60s, smooth 45/100
+       Rep8: Uncontrolled Movement, vel 0.30m/s, ROM 84.1°, conc 1.55s ecc 1.50s, smooth 40/100
+     
+     FORM QUALITY: Clean: 5/8, Uncontrolled Movement: 3/8
+     
+     VELOCITY: best 0.48m/s, VL 25% (moderate fatigue), effective reps 5/8
+     SPEED TREND: first-half avg 0.45 → second-half avg 0.34 (noticeable slowdown)
+     
+     ROM: avg 90.8°, range 84.1-96.2, variability 5% (mostly consistent)
+     
+     SMOOTHNESS: avg 60/100 (moderate control), lowest rep 40, control dropped toward end
+     
+     TEMPO: avg conc 1.34s / ecc 1.85s (ratio 1.4:1, decent tempo)
+  
+  d) The prompt includes these computed analyses:
+     - ROM CV%: coefficient of variation showing ROM consistency
+       (<=8% = very consistent, <=15% = mostly consistent, >15% = inconsistent)
+     - Velocity Loss: best rep vs average of last 3
+       (>30% = heavy fatigue, >20% = moderate, >10% = mild, <=10% = minimal)
+     - Speed Trend: first-half average vs second-half average
+     - Smoothness Trend: first-half vs second-half comparison
+     - Tempo Analysis: concentric/eccentric ratio
+       (eccentric >= 1.8× concentric = good control)
+  
+  e) CALLS VERTEX AI GEMINI:
+     Same model configuration as insights:
+       - temperature: 0.4
+       - topP: 0.8
+       - topK: 40
+       - maxOutputTokens: 4096
+       - responseMimeType: "application/json"
+  
+  f) RETURNS: { feedback: "2-3 sentence feedback", generatedAt: "ISO timestamp" }
+
+STEP 3: Display in SetBreakOverlay
+  - The feedback text replaces the loading spinner
+  - User reads it during their rest period before the next set
+  - No caching — each set gets fresh real-time feedback
+
+--------------------------------------------------------------------------------
+SYSTEM PROMPT (FULL TEXT):
+--------------------------------------------------------------------------------
+
+Role: "A friendly gym coach giving a quick holistic recap after a set"
+
+KEY RULES:
+1. Give a SHORT overall picture covering: speed/fatigue, form quality, movement
+   control, and ROM — in plain language
+2. End with one specific, actionable tip for the next set
+3. Talk like a coach, NOT a data scientist
+   Good: "your speed held up nicely", "form started breaking down"
+   Bad: "velocity loss was 25.3%", "smoothness score of 58/100"
+4. Do NOT quote raw numbers, percentages, or scores — convert to natural observations
+5. Keep total under 50 words
+6. Never mention sensors, IMU, cameras, or technical details
+7. If most metrics are good, acknowledge that and give a small refinement tip
+
+OUTPUT: { "feedback": "2-3 sentence feedback here." }
+
+--------------------------------------------------------------------------------
+PARAMETERS SUMMARY:
+--------------------------------------------------------------------------------
+  Model:        gemini-2.5-flash
+  Temperature:  0.4
+  topP:         0.8
+  topK:         40
+  Max tokens:   4096
+  Output:       application/json
+  Rate limit:   20 requests/min/user (higher because fires per-set)
+  Cache:        None (real-time, no caching)
+  Timing:       Fires immediately when set ends, response during rest period
+
+
+================================================================================
+================================================================================
+4. SHARED INFRASTRUCTURE
+================================================================================
+================================================================================
+
+--------------------------------------------------------------------------------
+4A. AUTHENTICATION FLOW (same for all 3 APIs)
+--------------------------------------------------------------------------------
+
+1. Client gets Firebase ID token:
+   const idToken = await user.getIdToken();
+
+2. Client sends token in Authorization header:
+   Authorization: Bearer eyJhbGciOi...
+
+3. Server extracts and verifies:
+   const idToken = authHeader.split('Bearer ')[1];
+   const decodedToken = await admin.auth().verifyIdToken(idToken);
+   const uid = decodedToken.uid;  // unique user ID
+
+4. Firebase Admin SDK is initialized ONCE per server instance:
+   admin.initializeApp({
+     credential: admin.credential.cert({
+       projectId: process.env.FIREBASE_PROJECT_ID,
+       clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+       privateKey: process.env.FIREBASE_PRIVATE_KEY
+     })
+   });
+
+--------------------------------------------------------------------------------
+4B. RATE LIMITING (same pattern for all 3 APIs)
+--------------------------------------------------------------------------------
+
+- In-memory Map keyed by user UID
+- Window: 60 seconds
+- Max requests per window:
+    ai-recommendation:  10
+    ai-insights:        10
+    set-feedback:       20 (higher because fires every set)
+- Stale entries cleaned every 5 minutes
+- Returns 429 status if exceeded
+
+Code pattern:
+  const rateLimitMap = new Map();
+  function checkRateLimit(uid) {
+    const entry = rateLimitMap.get(uid);
+    // if expired or new → reset window, allow
+    // if under limit → increment, allow
+    // if at limit → deny (return false)
+  }
+
+--------------------------------------------------------------------------------
+4C. VERTEX AI CLIENT SETUP (same for all 3 APIs)
+--------------------------------------------------------------------------------
+
+Environment variables (stored in Vercel):
+  - VERTEX_AI_PROJECT_ID or GOOGLE_CLOUD_PROJECT or GCS_PROJECT_ID
+  - VERTEX_AI_LOCATION or GOOGLE_CLOUD_LOCATION (default: us-central1)
+  - VERTEX_AI_CLIENT_EMAIL or GCS_CLIENT_EMAIL
+  - VERTEX_AI_PRIVATE_KEY or GCS_PRIVATE_KEY
+  - VERTEX_AI_MODEL (default: gemini-2.5-flash)
+  - FIREBASE_PROJECT_ID
+  - FIREBASE_CLIENT_EMAIL
+  - FIREBASE_PRIVATE_KEY
+
+Client initialization:
+  const vertexAI = new VertexAI({
+    project,
+    location,
+    googleAuthOptions: {
+      credentials: {
+        client_email: clientEmail,
+        private_key: privateKey,
+      },
+      projectId: project,
+    },
+  });
+
+Model initialization:
+  const generativeModel = vertexAI.preview.getGenerativeModel({
+    model: 'gemini-2.5-flash',
+    generationConfig: {
+      temperature: 0.3-0.4,      // lower = more consistent
+      topP: 0.8,                 // nucleus sampling
+      topK: 40,                  // top-k sampling
+      maxOutputTokens: 4096,     // max response length
+      responseMimeType: 'application/json',  // forces JSON output
+    },
+    systemInstruction: {
+      parts: [{ text: SYSTEM_PROMPT }],  // the "personality" and rules
+    },
+  });
+
+Generating content:
+  const result = await generativeModel.generateContent({
+    contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+  });
+
+Reading the response:
+  // Gemini has two possible response formats:
+  if (typeof result.response?.text === 'function') {
+    responseText = result.response.text();       // method call
+  } else {
+    responseText = result.response?.candidates?.[0]?.content?.parts?.[0]?.text;  // nested
+  }
+
+--------------------------------------------------------------------------------
+4D. ERROR HANDLING (same for all 3 APIs)
+--------------------------------------------------------------------------------
+
+- Quota exceeded (RESOURCE_EXHAUSTED) → 503 "AI service temporarily unavailable"
+- Timeout (DEADLINE_EXCEEDED)         → 504 "AI service timed out"
+- Empty response from AI              → 500 "Empty response from AI model"
+- JSON parse failure                  → 500 "AI response was not valid JSON"
+- Missing environment variables       → 500 "Server configuration error"
+- Invalid auth token                  → 401 "Unauthorized"
+- Rate limit exceeded                 → 429 "Too many requests"
+
+--------------------------------------------------------------------------------
+4E. RESPONSE PARSING (same for all 3 APIs)
+--------------------------------------------------------------------------------
+
+1. Get raw text from Gemini response
+2. Strip markdown fences if present:
+   cleaned = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+3. Parse as JSON: JSON.parse(cleaned)
+4. Apply safety bounds / truncation
+5. Return structured response
+
+================================================================================
+SUMMARY COMPARISON TABLE
+================================================================================
+
+Feature          | AI Recommendation      | AI Insights           | Set Feedback
+-----------------|------------------------|-----------------------|------------------
+When             | Pre-workout            | Post-workout          | After each set
+API Route        | /api/ai-recommendation | /api/ai-insights      | /api/set-feedback
+Trigger          | Navigate to exercise   | Workout finished page | Set completion
+Temperature      | 0.3                    | 0.4                   | 0.4
+Rate Limit       | 10/min                 | 10/min                | 20/min
+Caching          | Firestore (reusable)   | Firestore (one-time)  | None (real-time)
+Regeneration     | Yes (max 5)            | No                    | No
+Output Format    | recommendation+reasoning| summary+bullets      | feedback string
+Prompt Size      | ~500-1500 chars        | ~500-2000 chars       | ~500-2000 chars
+System Prompt    | ~3000 chars            | ~2500 chars           | ~1500 chars
+Cache Location   | users/{uid}/aiRec...   | ...logs/{id}.aiInsights| N/A
+
+================================================================================
+END OF DOCUMENT
+================================================================================

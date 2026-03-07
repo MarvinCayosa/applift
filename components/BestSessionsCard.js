@@ -2,37 +2,13 @@ import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/router'
 
 /**
- * BestSessionsCard — Auto-scrolling card showing this week's best sessions:
- *  Slide 1 (blue):  Heaviest Lifted (max weight × reps in a single session)
- *  Slide 2 (red):   Best Completion (highest set/rep completion rate)
- * 
+ * BestSessionsCard — Auto-scrolling carousel showing this week's bests:
+ *  Slide 1 (blue):   Heaviest Lift This Week
+ *  Slide 2 (green):  Best Clean Session This Week (highest cleanRepPct)
+ *  Slide 3 (purple): Longest Session This Week (highest duration)
+ *
  * Tapping a slide navigates to that session's detail page.
  */
-
-const SLIDES = [
-  {
-    key: 'heaviest',
-    label: 'Heaviest Lift',
-    icon: (
-      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-        <path d="M20.57 14.86L22 13.43 20.57 12 17 15.57 8.43 7 12 3.43 10.57 2 9.14 3.43 7.71 2 5.57 4.14 4.14 2.71 2.71 4.14l1.43 1.43L2 7.71l1.43 1.43L2 10.57 3.43 12 7 8.43 15.57 17 12 20.57 13.43 22l1.43-1.43L16.29 22l2.14-2.14 1.43 1.43 1.43-1.43-1.43-1.43L22 16.29z"/>
-      </svg>
-    ),
-    gradient: 'linear-gradient(135deg, #3B82F6 0%, #1E3A8A 100%)',
-    emptyText: 'No sessions yet',
-  },
-  {
-    key: 'completion',
-    label: 'Best Completion',
-    icon: (
-      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
-      </svg>
-    ),
-    gradient: 'linear-gradient(135deg, #EF4444 0%, #7F1D1D 100%)',
-    emptyText: 'No sessions yet',
-  },
-]
 
 /* ── helpers ────────────────────────────────────────────────── */
 const parseTimestamp = (ts) => {
@@ -74,8 +50,8 @@ export default function BestSessionsCard({ logs = [], hasData = false }) {
   const userScrollTimeout = useRef(null)
 
   /* ── derive best sessions for this week ───────────────────── */
-  const { heaviest, bestCompletion } = useMemo(() => {
-    if (!logs || logs.length === 0) return { heaviest: null, bestCompletion: null }
+  const { heaviest, bestClean, longest } = useMemo(() => {
+    if (!logs || logs.length === 0) return { heaviest: null, bestClean: null, longest: null }
 
     const now = new Date()
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
@@ -86,9 +62,11 @@ export default function BestSessionsCard({ logs = [], hasData = false }) {
     weekStart.setHours(0, 0, 0, 0)
 
     let heaviest = null
-    let bestCompletion = null
+    let bestClean = null
+    let longest = null
     let maxWeight = 0
-    let maxCompletionPct = 0
+    let maxCleanPct = 0
+    let maxDurationMs = 0
 
     logs.forEach((log) => {
       const startedAt =
@@ -103,14 +81,16 @@ export default function BestSessionsCard({ logs = [], hasData = false }) {
       const equipment = normalizeForDisplay(log._equipment || log.exercise?.equipment || log.equipment || 'Unknown')
       const totalReps = log.results?.totalReps || log.totalReps || 0
       const totalSets = log.results?.totalSets || (log.sets ? Object.keys(log.sets).length : 0) || 0
-      const plannedSets = log.planned?.sets || totalSets
-      const plannedRepsPerSet = log.planned?.reps || 0
-      const plannedTotalReps = plannedSets * plannedRepsPerSet
       const durationMs = log.results?.durationMs || 0
-      const completedAt = parseTimestamp(log.timestamps?.completed)
 
       const eqPath = log._equipment || equipment.toLowerCase().replace(/\s+/g, '-')
       const exPath = log._exercise || exercise.toLowerCase().replace(/\s+/g, '-')
+
+      // Clean rep percentage from analytics or ML classification
+      const cleanPct = log.analytics?.cleanRepPercentage
+        ?? log.results?.cleanRepPercentage
+        ?? log.mlClassification?.cleanPercentage
+        ?? null
 
       const entry = {
         logId: log.id,
@@ -121,8 +101,8 @@ export default function BestSessionsCard({ logs = [], hasData = false }) {
         totalReps,
         totalSets,
         durationMs,
+        cleanPct,
         startedAt,
-        completedAt,
         time: formatTime(startedAt),
         duration: formatDuration(durationMs),
         eqPath,
@@ -135,36 +115,70 @@ export default function BestSessionsCard({ logs = [], hasData = false }) {
         heaviest = entry
       }
 
-      // Best completion = highest reps-completed / reps-planned ratio
-      // Fallback: if no planned data, use total volume (weight × reps)
-      if (plannedTotalReps > 0) {
-        const pct = Math.min(100, Math.round((totalReps / plannedTotalReps) * 100))
-        if (pct > maxCompletionPct || (pct === maxCompletionPct && weight > (bestCompletion?.weight || 0))) {
-          maxCompletionPct = pct
-          entry.completionPct = pct
-          bestCompletion = entry
-        }
-      } else if (totalReps > 0) {
-        // No planned info — use volume as tiebreaker
-        const vol = weight * totalReps
-        const pseudoPct = vol // raw value, we'll just pick max
-        if (pseudoPct > maxCompletionPct) {
-          maxCompletionPct = pseudoPct
-          entry.completionPct = 100 // no plan → "completed"
-          bestCompletion = entry
-        }
+      // Best Clean = highest clean rep percentage
+      if (cleanPct != null && cleanPct > maxCleanPct) {
+        maxCleanPct = cleanPct
+        bestClean = entry
+      }
+
+      // Longest = highest duration
+      if (durationMs > maxDurationMs) {
+        maxDurationMs = durationMs
+        longest = entry
       }
     })
 
-    return { heaviest, bestCompletion }
+    return { heaviest, bestClean, longest }
   }, [logs])
 
+  /* ── build slides array ───────────────────────────────────── */
   const slides = useMemo(() => {
-    return [
-      { ...SLIDES[0], session: heaviest },
-      { ...SLIDES[1], session: bestCompletion },
-    ]
-  }, [heaviest, bestCompletion])
+    const list = []
+
+    list.push({
+      key: 'heaviest',
+      title: 'Heaviest Lift This Week',
+      icon: (
+        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M20.57 14.86L22 13.43 20.57 12 17 15.57 8.43 7 12 3.43 10.57 2 9.14 3.43 7.71 2 5.57 4.14 4.14 2.71 2.71 4.14l1.43 1.43L2 7.71l1.43 1.43L2 10.57 3.43 12 7 8.43 15.57 17 12 20.57 13.43 22l1.43-1.43L16.29 22l2.14-2.14 1.43 1.43 1.43-1.43-1.43-1.43L22 16.29z"/>
+        </svg>
+      ),
+      gradient: 'linear-gradient(135deg, #3B82F6 0%, #1E3A8A 100%)',
+      session: heaviest,
+      value: heaviest ? `${heaviest.weight}` : null,
+      unit: heaviest?.weightUnit || 'kg',
+    })
+
+    list.push({
+      key: 'clean',
+      title: 'Best Clean Session This Week',
+      icon: (
+        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+        </svg>
+      ),
+      gradient: 'linear-gradient(135deg, #10B981 0%, #064E3B 100%)',
+      session: bestClean,
+      value: bestClean?.cleanPct != null ? `${Math.round(bestClean.cleanPct)}%` : null,
+      unit: 'clean',
+    })
+
+    list.push({
+      key: 'longest',
+      title: 'Longest Session This Week',
+      icon: (
+        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/>
+        </svg>
+      ),
+      gradient: 'linear-gradient(135deg, #8B5CF6 0%, #3B0764 100%)',
+      session: longest,
+      value: longest?.durationMs ? formatDuration(longest.durationMs) : null,
+      unit: '',
+    })
+
+    return list
+  }, [heaviest, bestClean, longest])
 
   /* ── auto-scroll ──────────────────────────────────────────── */
   const scrollTo = useCallback(
@@ -223,9 +237,9 @@ export default function BestSessionsCard({ logs = [], hasData = false }) {
     return (
       <div
         className="rounded-2xl p-4 flex flex-col flex-1"
-        style={{ background: SLIDES[0].gradient, minHeight: '100px' }}
+        style={{ background: 'linear-gradient(135deg, #3B82F6 0%, #1E3A8A 100%)' }}
       >
-        <h3 className="text-xs font-semibold text-white/90">Best This Week</h3>
+        <h3 className="text-[10px] font-semibold text-white/80">Heaviest Lift This Week</h3>
         <div className="flex-1 flex items-center justify-center">
           <p className="text-xs text-white/50">No sessions yet</p>
         </div>
@@ -235,7 +249,7 @@ export default function BestSessionsCard({ logs = [], hasData = false }) {
 
   /* ── render ───────────────────────────────────────────────── */
   return (
-    <div className="rounded-2xl flex-1 overflow-hidden relative" style={{ minHeight: '100px' }}>
+    <div className="rounded-2xl flex-1 overflow-hidden relative">
       {/* Slide container */}
       <div
         ref={containerRef}
@@ -255,31 +269,24 @@ export default function BestSessionsCard({ logs = [], hasData = false }) {
                 className="h-full p-3 flex flex-col cursor-pointer active:brightness-110 transition-all"
                 style={{ background: slide.gradient }}
               >
-                {/* Header row */}
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-semibold text-white/90">Best This Week</h3>
-                </div>
-
-                {/* Category label */}
-                <div className="flex items-center gap-1.5 mt-1">
+                {/* Title */}
+                <div className="flex items-center gap-1.5">
                   <span className="text-white/60">{slide.icon}</span>
-                  <span className="text-[10px] font-medium text-white/70">{slide.label}</span>
+                  <h3 className="text-[10px] font-semibold text-white/80 leading-tight">{slide.title}</h3>
                 </div>
 
-                {s ? (
+                {s && slide.value ? (
                   <>
                     {/* Main value */}
                     <div className="flex-1 flex flex-col items-end justify-center">
                       <span className="font-extrabold text-white leading-none" style={{ fontSize: '2.2rem' }}>
-                        {slide.key === 'heaviest'
-                          ? s.weight
-                          : s.completionPct != null
-                            ? `${s.completionPct}%`
-                            : `${s.totalReps}`}
+                        {slide.value}
                       </span>
-                      <span className="text-xs font-semibold text-white/70 mt-0.5">
-                        {slide.key === 'heaviest' ? s.weightUnit : 'completed'}
-                      </span>
+                      {slide.unit && (
+                        <span className="text-xs font-semibold text-white/70 mt-0.5">
+                          {slide.unit}
+                        </span>
+                      )}
                     </div>
 
                     {/* Footer: exercise name + time */}
@@ -294,7 +301,7 @@ export default function BestSessionsCard({ logs = [], hasData = false }) {
                   </>
                 ) : (
                   <div className="flex-1 flex items-center justify-center">
-                    <p className="text-xs text-white/40">{slide.emptyText}</p>
+                    <p className="text-xs text-white/40">No sessions yet</p>
                   </div>
                 )}
               </div>

@@ -355,7 +355,7 @@ export default function SetBreakOverlay({
                   }}
                 />
               </div>
-              <span className="text-2xl font-bold text-white tabular-nums min-w-[65px] text-right">
+              <span className="text-3xl font-bold text-white tabular-nums min-w-[75px] text-right">
                 {timeStr}
               </span>
             </div>
@@ -471,7 +471,7 @@ export default function SetBreakOverlay({
         </div>
 
         {/* Bottom safe area */}
-        <div className="h-4" />
+        <div className="h-8" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }} />
       </div>
 
       {/* ═════════ Global Styles ═════════ */}

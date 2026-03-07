@@ -203,25 +203,29 @@ function computeLocalPhaseTimings(samples, repInfo = null) {
     const startVal = primarySignal[0];
     const endVal = primarySignal[n - 1];
     
-    // For dumbbell curls: min pitch = arm curled (peak of movement) = turning point
-    // max pitch = arm extended (rest position)
-    // The movement cycle is: rest(max) → curl(min) → rest(max)
-    
-    // IMPORTANT: Use min pitch as turning point for curl exercises
-    // This is the top of the curl where concentric ends and eccentric begins
-    const turningIdx = minIdx;
-    const turningVal = minVal;
+    // Determine the physical turning point: the extremum FURTHEST from the
+    // average of the start and end values. This correctly identifies the peak
+    // of movement regardless of exercise type:
+    //  - Curls: min pitch (arm curled) is furthest from rest → turning point
+    //  - Bench press: max pitch (arms extended) is furthest from chest → turning point
+    //  - Squats, pulldowns, etc.: automatically correct
+    const edgeAvg = (startVal + endVal) / 2;
+    const distToMin = Math.abs(minVal - edgeAvg);
+    const distToMax = Math.abs(maxVal - edgeAvg);
+    const turningIdx = distToMin >= distToMax ? minIdx : maxIdx;
+    const turningVal = primarySignal[turningIdx];
     
     // Calculate total angular movement from start to turning point
     const phase1AngleChange = Math.abs(startVal - turningVal);
     const phase2AngleChange = Math.abs(endVal - turningVal);
     const totalAngleChange = phase1AngleChange + phase2AngleChange;
     
-    // If the rep starts near max pitch (rest), Phase 1 is lifting
-    // If the rep starts near min pitch (curled), Phase 1 is lowering
-    const startDistFromRest = Math.abs(startVal - maxVal);
-    const startDistFromCurl = Math.abs(startVal - minVal);
-    const startsNearRest = startDistFromRest < startDistFromCurl;
+    // Determine which end is "rest" and which is "peak".
+    // Rest = the extremum that is NOT the turning point.
+    const restVal = turningIdx === minIdx ? maxVal : minVal;
+    const startDistFromRest = Math.abs(startVal - restVal);
+    const startDistFromPeak = Math.abs(startVal - turningVal);
+    const startsNearRest = startDistFromRest < startDistFromPeak;
     
     // Time-based phase calculation
     const turningTimeMs = hasValidTimestamps 
@@ -232,19 +236,19 @@ function computeLocalPhaseTimings(samples, repInfo = null) {
     let liftingTimeMs, loweringTimeMs;
     
     // Check if there's a clear lower→lift→lower pattern
-    // This happens when: 1) max comes before min, AND 2) we start significantly away from rest
-    // If we start AT rest (close to max), it's a normal lift→lower pattern even if maxIdx < minIdx
-    const startDistFromMax = Math.abs(startVal - maxVal);
+    // This happens when rest position comes BETWEEN start and turning point
+    const restIdx = turningIdx === minIdx ? maxIdx : minIdx;
     const totalRange = maxVal - minVal;
-    const startFarFromRest = startDistFromMax > totalRange * 0.10; // >10% away from max
+    const startDistFromRestPos = Math.abs(startVal - restVal);
+    const startFarFromRest = startDistFromRestPos > totalRange * 0.10;
     
-    if (maxIdx < minIdx && maxIdx > 2 && startFarFromRest) {
-      // Pattern: [partial lower] → max (rest) → min (curl) → [partial lower]
-      // The lifting phase is strictly: max → min
-      const maxTimeMs = hasValidTimestamps 
-        ? (timestamps[maxIdx] - timestamps[0])
-        : (maxIdx / n) * totalDurationMs;
-      const liftPhaseMs = turningTimeMs - maxTimeMs; // From max to min
+    if (restIdx < turningIdx && restIdx > 2 && startFarFromRest) {
+      // Pattern: [partial lower] → rest → turning point → [partial lower]
+      // The lifting phase is strictly: rest → turning point
+      const restTimeMs = hasValidTimestamps 
+        ? (timestamps[restIdx] - timestamps[0])
+        : (restIdx / n) * totalDurationMs;
+      const liftPhaseMs = turningTimeMs - restTimeMs;
       
       // Lowering = everything else (before max + after min)
       loweringTimeMs = totalDurationMs - liftPhaseMs;
@@ -280,22 +284,21 @@ function computeLocalPhaseTimings(samples, repInfo = null) {
         loweringTimeMs = totalDurationMs - liftingTimeMs;
       }
     } else {
-      // Started from curled position - Phase 1 is completing previous rep's lowering
-      // Find the max (rest position) to determine where lifting starts
+      // Started from peak position - Phase 1 is completing previous rep's lowering
+      // Find the rest position to determine where lifting starts
       
-      if (maxIdx < minIdx) {
-        // Sequence: start → max (rest) → min (curl) → end
-        // Lowering: start to max, Lifting: max to min, Lowering: min to end
+      if (restIdx < turningIdx) {
+        // Sequence: start → rest → turning point → end
+        // Lowering: start to rest, Lifting: rest to turning, Lowering: turning to end
         const toRestMs = hasValidTimestamps 
-          ? (timestamps[maxIdx] - timestamps[0])
-          : (maxIdx / n) * totalDurationMs;
+          ? (timestamps[restIdx] - timestamps[0])
+          : (restIdx / n) * totalDurationMs;
         const liftMs = turningTimeMs - toRestMs;
-        const afterCurlMs = afterTurningMs;
         
         liftingTimeMs = liftMs;
         loweringTimeMs = totalDurationMs - liftMs;
       } else {
-        // max is after min - unusual sequence, use 50/50 with slight eccentric bias
+        // rest is after turning - unusual sequence, use 50/50 with slight eccentric bias
         liftingTimeMs = totalDurationMs * 0.45;
         loweringTimeMs = totalDurationMs * 0.55;
       }
@@ -305,12 +308,13 @@ function computeLocalPhaseTimings(samples, repInfo = null) {
     let loweringTime = loweringTimeMs / 1000;
     const total = liftingTime + loweringTime;
     
-    // Sanity bounds: phases should be between 25% and 75%
+    // Sanity bounds: phases should be between 30% and 70%
+    // Real-world lifting rarely has a phase shorter than 30% of total duration
     const liftRatio = liftingTime / total;
-    if (liftRatio < 0.25) {
+    if (liftRatio < 0.30) {
       liftingTime = total * 0.35;
       loweringTime = total * 0.65;
-    } else if (liftRatio > 0.75) {
+    } else if (liftRatio > 0.70) {
       liftingTime = total * 0.55;
       loweringTime = total * 0.45;
     }
@@ -358,7 +362,22 @@ function computeLocalPhaseTimings(samples, repInfo = null) {
     loweringTime = ((primarySignal.length - bestIdx) / primarySignal.length) * total;
   }
   // Swap: accel peak comes early in concentric; swap so liftingTime = concentric.
-  return { liftingTime: Math.max(0, loweringTime), loweringTime: Math.max(0, liftingTime) };
+  [liftingTime, loweringTime] = [loweringTime, liftingTime];
+
+  // Sanity bounds for accel fallback: phases between 30% and 70%
+  const totalAccel = liftingTime + loweringTime;
+  if (totalAccel > 0) {
+    const accelLiftRatio = liftingTime / totalAccel;
+    if (accelLiftRatio < 0.30) {
+      liftingTime = totalAccel * 0.35;
+      loweringTime = totalAccel * 0.65;
+    } else if (accelLiftRatio > 0.70) {
+      liftingTime = totalAccel * 0.55;
+      loweringTime = totalAccel * 0.45;
+    }
+  }
+
+  return { liftingTime: Math.max(0, liftingTime), loweringTime: Math.max(0, loweringTime) };
 }
 
 export function useWorkoutSession({ 

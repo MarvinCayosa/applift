@@ -166,10 +166,9 @@ export default function TotalCaloriesCard({ logs = [], hasData = false }) {
   if (!hasData) {
     return (
       <div
-        className="rounded-2xl p-4 flex flex-col"
+        className="rounded-2xl p-4 flex flex-col flex-1"
         style={{
           background: 'linear-gradient(135deg, #FF9012 0%, #AD380A 100%)',
-          minHeight: '80px',
         }}
       >
         <h3 className="text-sm font-extrabold text-white/90">Calories Burned</h3>
@@ -191,10 +190,9 @@ export default function TotalCaloriesCard({ logs = [], hasData = false }) {
 
   return (
     <div
-      className="rounded-2xl p-3 flex flex-col"
+      className="rounded-2xl p-3 flex flex-col flex-1"
       style={{
         background: 'linear-gradient(135deg, #FF9012 0%, #AD380A 100%)',
-        minHeight: '80px',
       }}
     >
       {/* Title */}
