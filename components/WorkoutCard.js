@@ -51,7 +51,7 @@ export default function WorkoutCard({ workout }) {
               </svg>
             )}
           </div>
-          <div className="text-xs text-white/70 truncate">{workout.weight} kg | {workout.sets} sets | {workout.reps} reps</div>
+          <div className="text-xs text-white/70 truncate">{workout.equipment?.toLowerCase().includes('dumb') ? Math.max(0, workout.weight - 2) : workout.weight} {workout.weightUnit || 'kg'} | {workout.sets} sets | {workout.reps} reps</div>
         </div>
         <div className="text-xs whitespace-nowrap pb-0.5" style={{ color: 'rgba(255, 255, 255, 0.3)' }}>{workout.date}</div>
       </div>

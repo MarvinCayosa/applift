@@ -219,6 +219,7 @@ export default function SessionDetailsPage() {
           totalSets={vm.totalSets}
           totalReps={vm.totalReps}
           onShare={handleShare}
+          equipment={vm.equipmentName}
         />
 
         {/* Content cards */}

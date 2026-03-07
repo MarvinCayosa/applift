@@ -145,7 +145,7 @@ export default function BestSessionsCard({ logs = [], hasData = false }) {
       ),
       gradient: 'linear-gradient(135deg, #3B82F6 0%, #1E3A8A 100%)',
       session: heaviest,
-      value: heaviest ? `${heaviest.weight}` : null,
+      value: heaviest ? `${heaviest.equipment?.toLowerCase().includes('dumb') ? Math.max(0, heaviest.weight - 2) : heaviest.weight}` : null,
       unit: heaviest?.weightUnit || 'kg',
     })
 

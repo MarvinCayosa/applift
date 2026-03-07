@@ -32,6 +32,7 @@ export default function HeaderSection({
   onShare,
   hideBack = false,
   sharedBranding = false,
+  equipment = '',
 }) {
   const router = useRouter();
   const dateStr = formatSessionDate(date);
@@ -123,7 +124,7 @@ export default function HeaderSection({
             }}
           >
             <div className="flex items-baseline gap-[2px]">
-              <span className="text-5xl font-bold text-white leading-none">{weight || '—'}</span>
+              <span className="text-5xl font-bold text-white leading-none">{(equipment || '').toLowerCase().includes('dumb') ? Math.max(0, weight - 2) : (weight || '—')}</span>
               <span className="text-[13px] text-white/90 font-semibold">{weightUnit}</span>
             </div>
             <span className="text-[11px] text-white/60 mt-0.5 font-medium">Weight</span>

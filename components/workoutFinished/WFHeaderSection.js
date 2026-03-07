@@ -113,13 +113,13 @@ export default function WFHeaderSection({
 
         {/* ── Weight badge + Stats card row ── */}
         <div className="flex items-stretch gap-2.5 mb-3 content-fade-up-1">
-          {/* Weight badge */}
+          {/* Weight badge — subtract dumbbell handle for display */}
           <div
             className="flex flex-col items-center justify-center rounded-2xl p-4 shrink-0"
             style={{ backgroundColor: primaryColor, width: 120, minHeight: 88 }}
           >
             <div className="flex items-baseline gap-[2px]">
-              <span className="text-5xl font-bold text-white leading-none">{weight || '—'}</span>
+              <span className="text-5xl font-bold text-white leading-none">{slug.includes('dumb') ? Math.max(0, weight - 2) : (weight || '—')}</span>
               <span className="text-[13px] text-white/90 font-semibold">{weightUnit}</span>
             </div>
             <span className="text-[11px] text-white/60 mt-0.5 font-medium">Weight</span>

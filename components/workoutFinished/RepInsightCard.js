@@ -115,8 +115,8 @@ export default function RepInsightCard({ repData, repNumber, targetROM, romUnit:
   // ROM fulfillment description
   const getRomDescription = () => {
     if (romProgress == null) return null;
-    if (romProgress >= 85) return { text: 'Full ROM', color: '#22c55e' };
-    return { text: 'Partial ROM', color: '#eab308' };
+    if (romProgress >= 85) return { text: 'Full', color: '#22c55e' };
+    return { text: 'Partial', color: '#eab308' };
   };
   const romDesc = getRomDescription();
 

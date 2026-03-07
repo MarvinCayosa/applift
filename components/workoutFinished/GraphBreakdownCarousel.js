@@ -374,7 +374,7 @@ function FulfillmentRing({ value }) {
   const isFull = pct >= 85;
   const color = isFull ? '#22c55e' : '#eab308';
   const textColor = isFull ? 'text-green-400' : 'text-yellow-400';
-  const label = isFull ? 'Full ROM' : 'Partial ROM';
+  const label = isFull ? 'Full' : 'Partial';
 
   return (
     <div className="relative" style={{ width: size, height: size }}>
