@@ -469,6 +469,7 @@ export default function SelectedWorkout() {
   const [isCalibrationModalOpen, setIsCalibrationModalOpen] = useState(false);
   const [isROMCalibrated, setIsROMCalibrated] = useState(false);
   const [savedCalibrationData, setSavedCalibrationData] = useState(null);
+  const [setupComplete, setSetupComplete] = useState(false);
   
   // Video player modal state
   const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
@@ -491,6 +492,12 @@ export default function SelectedWorkout() {
   // Past sessions for AI context
   const [pastSessions, setPastSessions] = useState([]);
   const [sessionsLoaded, setSessionsLoaded] = useState(false);
+  const isFirstTimeExercise = sessionsLoaded && pastSessions.length === 0;
+
+  // Mark setup complete when existing calibration is found (returning user)
+  useEffect(() => {
+    if (isROMCalibrated) setSetupComplete(true);
+  }, [isROMCalibrated]);
 
   // Sanitize string for Firestore path (matches workoutLogService convention)
   const sanitizeForPath = useCallback((str) => {
@@ -660,7 +667,7 @@ export default function SelectedWorkout() {
     equipment,
     exerciseName: workout,
     pastSessions,
-    enabled: aiEnabled && !!equipment && !!workout && sessionsLoaded,
+    enabled: aiEnabled && !!equipment && !!workout && sessionsLoaded && setupComplete,
   });
 
   // Update rest time when AI provides a recommendation
@@ -1141,14 +1148,27 @@ export default function SelectedWorkout() {
         equipment={equipment}
         exercise={workout}
         userId={user?.uid}
+        isFirstTime={isFirstTimeExercise}
         onCalibrate={async (calibrationData) => {
           console.log('ROM Calibration saved:', calibrationData);
           setIsROMCalibrated(true);
           setSavedCalibrationData(calibrationData);
-          // Save calibration to Firestore for persistence across devices/sessions
           if (user?.uid) {
             await saveCalibrationToFirestore(user.uid, equipment, workout, calibrationData);
           }
+          // For non-barbell or returning users, setup completes after calibration
+          if (equipment !== 'Barbell' || !isFirstTimeExercise) {
+            setSetupComplete(true);
+          }
+        }}
+        onDiscard={() => {
+          setIsROMCalibrated(false);
+          setSavedCalibrationData(null);
+          setSetupComplete(false);
+        }}
+        onBarWeightSelect={(barWeight) => {
+          setCustomBarWeight(barWeight);
+          setSetupComplete(true);
         }}
       />
       

@@ -138,15 +138,18 @@ export function hasCalibration(userId, equipment, exercise) {
   return loadCalibration(userId, equipment, exercise) !== null;
 }
 
-export default function CalibrationModal({ isOpen, onClose, onCalibrate, equipment, exercise, userId }) {
+export default function CalibrationModal({ isOpen, onClose, onCalibrate, onDiscard, onBarWeightSelect, equipment, exercise, userId, isFirstTime = false }) {
   const { device, connected } = useBluetooth();
   const [isClosing, setIsClosing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStartY, setDragStartY] = useState(0);
   const [dragCurrentY, setDragCurrentY] = useState(0);
   
-  // Steps: 1=Instructions, 2=Countdown, 3=BaselineHold, 4=Recording reps, 5=Success
+  // Steps: 1=Instructions, 2=Countdown, 3=BaselineHold, 4=Recording reps, 5=Success, 6=BarWeight (barbell first-time only)
   const [step, setStep] = useState(1);
+  const [selectedBarWeight, setSelectedBarWeight] = useState(20);
+  const [customBarInput, setCustomBarInput] = useState('');
+  const [showCustomBarInput, setShowCustomBarInput] = useState(false);
   const [countdown, setCountdown] = useState(5);
   const [baselineCountdown, setBaselineCountdown] = useState(3);
   const [completedReps, setCompletedReps] = useState(0);
@@ -217,6 +220,9 @@ export default function CalibrationModal({ isOpen, onClose, onCalibrate, equipme
       lastRepTimeRef.current = 0;
       sampleCountRef.current = 0;
       calibrationStillCountRef.current = 0;
+      setSelectedBarWeight(20);
+      setCustomBarInput('');
+      setShowCustomBarInput(false);
       
       // Initialize ROMComputer
       const rc = new ROMComputer();
@@ -255,6 +261,20 @@ export default function CalibrationModal({ isOpen, onClose, onCalibrate, equipme
       setStep(1);
     }, 250);
   }, [onClose, cleanupBLE]);
+  
+  const handleDiscard = useCallback(() => {
+    try {
+      const key = getCalibrationKey(userId, equipment, exercise);
+      localStorage.removeItem(key);
+    } catch (e) { /* ignore */ }
+    cleanupBLE();
+    if (onDiscard) onDiscard();
+    setIsClosing(true);
+    setTimeout(() => {
+      onClose();
+      setStep(1);
+    }, 250);
+  }, [userId, equipment, exercise, onClose, onDiscard, cleanupBLE]);
   
   // IMU data handler for calibration - parses raw BLE data
   const handleIMUDataForCalibration = useCallback((event) => {
@@ -595,7 +615,7 @@ export default function CalibrationModal({ isOpen, onClose, onCalibrate, equipme
   if (!isOpen) return null;
 
   // Determine if swipe-to-close is allowed
-  const canClose = step === 1 || step === 5;
+  const canClose = step === 1 || step === 5 || step === 6;
 
   return (
     <div 
@@ -617,21 +637,34 @@ export default function CalibrationModal({ isOpen, onClose, onCalibrate, equipme
           className="rounded-t-3xl pt-3 pb-8 px-5"
           style={{ backgroundColor: 'rgb(38, 38, 38)' }}
         >
-          {/* Handle */}
-          {canClose ? (
-            <div 
-              className="flex justify-center mb-6 py-2 cursor-grab active:cursor-grabbing"
-              onTouchStart={handleHandleTouchStart}
-              onTouchMove={handleHandleTouchMove}
-              onTouchEnd={handleHandleTouchEnd}
+          {/* Handle + X close button */}
+          <div className="relative mb-6">
+            {canClose ? (
+              <div 
+                className="flex justify-center py-2 cursor-grab active:cursor-grabbing"
+                onTouchStart={handleHandleTouchStart}
+                onTouchMove={handleHandleTouchMove}
+                onTouchEnd={handleHandleTouchEnd}
+              >
+                <div className="w-9 h-1 rounded-full bg-white/30" />
+              </div>
+            ) : (
+              <div className="flex justify-center py-2">
+                <div className="w-9 h-1 rounded-full bg-white/30" />
+              </div>
+            )}
+            {/* X close button — always visible */}
+            <button
+              type="button"
+              onClick={handleClose}
+              className="absolute top-1 right-0 w-8 h-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 transition-colors"
+              aria-label="Close"
             >
-              <div className="w-9 h-1 rounded-full bg-white/30" />
-            </div>
-          ) : (
-            <div className="flex justify-center mb-6 py-2">
-              <div className="w-9 h-1 rounded-full bg-white/30" />
-            </div>
-          )}
+              <svg className="w-4 h-4 text-white/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
 
           {/* Error message */}
           {errorMsg && (
@@ -852,12 +885,119 @@ export default function CalibrationModal({ isOpen, onClose, onCalibrate, equipme
                 </div>
               </div>
               
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={handleDiscard}
+                  className="flex-1 py-4 text-base bg-white/10 hover:bg-white/15 active:bg-white/20 text-white/70 font-bold rounded-xl transition-all duration-150"
+                >
+                  Discard
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isBarbell && isFirstTime) {
+                      setStep(6);
+                    } else {
+                      handleClose();
+                    }
+                  }}
+                  className="flex-1 py-4 text-base bg-green-600 hover:bg-green-500 active:bg-green-700 text-white font-bold rounded-xl transition-all duration-150"
+                >
+                  {isBarbell && isFirstTime ? 'Next' : 'Done'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 6: Bar Weight Selection (barbell first-time only) */}
+          {step === 6 && (
+            <div className="mb-8">
+              <div className="text-center mb-6">
+                <h2 className="text-2xl font-bold text-white mb-2">Select Your Bar</h2>
+                <p className="text-sm text-white/60">What barbell are you using?</p>
+              </div>
+
+              <div className="space-y-3 mb-6">
+                {[
+                  { label: 'Olympic Bar', weight: 20, desc: 'Standard 20kg / 45lb' },
+                  { label: "Women's Bar", weight: 15, desc: 'Standard 15kg / 33lb' },
+                  { label: 'EZ Curl Bar', weight: 8, desc: 'Standard 8kg / 18lb' },
+                ].map((option) => (
+                  <button
+                    key={option.weight}
+                    type="button"
+                    onClick={() => {
+                      setSelectedBarWeight(option.weight);
+                      setShowCustomBarInput(false);
+                      triggerHaptic();
+                    }}
+                    className={`w-full flex items-center justify-between rounded-xl px-4 py-4 border-2 transition-all duration-150 ${
+                      selectedBarWeight === option.weight && !showCustomBarInput
+                        ? 'bg-violet-500/15 border-violet-500'
+                        : 'bg-white/5 border-white/10 hover:bg-white/8'
+                    }`}
+                  >
+                    <div className="text-left">
+                      <p className="text-base font-semibold text-white">{option.label}</p>
+                      <p className="text-xs text-white/50">{option.desc}</p>
+                    </div>
+                    <span className="text-lg font-bold text-violet-400">{option.weight}kg</span>
+                  </button>
+                ))}
+
+                {/* Custom bar weight option */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCustomBarInput(true);
+                    triggerHaptic();
+                  }}
+                  className={`w-full flex items-center justify-between rounded-xl px-4 py-4 border-2 transition-all duration-150 ${
+                    showCustomBarInput
+                      ? 'bg-violet-500/15 border-violet-500'
+                      : 'bg-white/5 border-white/10 hover:bg-white/8'
+                  }`}
+                >
+                  <div className="text-left">
+                    <p className="text-base font-semibold text-white">Custom</p>
+                    <p className="text-xs text-white/50">Enter your bar weight</p>
+                  </div>
+                  {showCustomBarInput ? (
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        autoFocus
+                        className="w-16 text-right text-lg font-bold text-white bg-transparent border-b-2 border-violet-500 outline-none appearance-none"
+                        style={{ MozAppearance: 'textfield' }}
+                        value={customBarInput}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => {
+                          setCustomBarInput(e.target.value);
+                          const parsed = parseFloat(e.target.value);
+                          if (!isNaN(parsed) && parsed > 0) setSelectedBarWeight(parsed);
+                        }}
+                        placeholder="0"
+                      />
+                      <span className="text-sm text-white/40">kg</span>
+                    </div>
+                  ) : (
+                    <svg className="w-5 h-5 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+
               <button
                 type="button"
-                onClick={handleClose}
-                className="w-full py-4 text-base bg-green-600 hover:bg-green-500 active:bg-green-700 text-white font-bold rounded-xl transition-all duration-150"
+                onClick={() => {
+                  if (onBarWeightSelect) onBarWeightSelect(selectedBarWeight);
+                  handleClose();
+                }}
+                className="w-full py-4 text-base bg-violet-600 hover:bg-violet-500 active:bg-violet-700 text-white font-bold rounded-xl transition-all duration-150"
               >
-                Done
+                Confirm
               </button>
             </div>
           )}

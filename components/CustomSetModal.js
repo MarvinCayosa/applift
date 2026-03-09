@@ -382,10 +382,10 @@ export default function CustomSetModal({
   const [dragCurrentY, setDragCurrentY] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
 
-  // Bar / handle weight state (for Barbell & Dumbbell exercises)
+  // Bar weight state (for Barbell exercises only — dumbbell shows plates only)
   const isBarbell = equipment === 'Barbell';
   const isDumbbell = equipment === 'Dumbbell';
-  const hasBaseWeight = isBarbell || isDumbbell;
+  const hasBaseWeight = isBarbell;
   const defaultBaseWeight = isBarbell ? 20 : 2; // Olympic bar 20kg, Dumbbell handle 2kg
   const baseLabel = isBarbell ? 'Bar Weight' : 'Handle Weight';
   const baseOnlyLabel = isBarbell ? 'Bar Only' : 'Handle Only';
