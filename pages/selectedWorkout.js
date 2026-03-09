@@ -1149,6 +1149,7 @@ export default function SelectedWorkout() {
         exercise={workout}
         userId={user?.uid}
         isFirstTime={isFirstTimeExercise}
+        gender={userProfile?.gender}
         onCalibrate={async (calibrationData) => {
           console.log('ROM Calibration saved:', calibrationData);
           setIsROMCalibrated(true);

@@ -1,6 +1,6 @@
 import Head from 'next/head'
 import { useRouter } from 'next/router'
-import { useState, useMemo, useRef, useCallback } from 'react'
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react'
 import {
   ResponsiveContainer,
   AreaChart, Area,
@@ -149,6 +149,7 @@ export default function ExerciseDetailPage() {
   const [period, setPeriod] = useState('week')
   const [chartMetric, setChartMetric] = useState('load')
   const [showOverloadTooltip, setShowOverloadTooltip] = useState(false)
+  const [overloadInfoTab, setOverloadInfoTab] = useState('breakdown') // 'breakdown' | 'info'
   const cyclePeriod = useCallback(() => {
     setPeriod((p) => (p === 'week' ? 'month' : p === 'month' ? 'all' : 'week'))
   }, [])
@@ -169,6 +170,38 @@ export default function ExerciseDetailPage() {
     if (!el) return
     setActiveQualitySlide(Math.round(el.scrollLeft / el.clientWidth))
   }, [])
+
+  /* ── auto-scroll: timing cards (3 slides, 4s interval) ── */
+  const timingAutoRef = useRef(null)
+  const timingTouchRef = useRef(false)
+  useEffect(() => {
+    if (activeTab !== 'statistics') return
+    const TOTAL = 3, INTERVAL = 4000
+    timingAutoRef.current = setInterval(() => {
+      if (timingTouchRef.current) return
+      const el = carouselRef.current
+      if (!el) return
+      const next = ((Math.round(el.scrollLeft / el.clientWidth) + 1) % TOTAL)
+      el.scrollTo({ left: next * el.clientWidth, behavior: 'smooth' })
+    }, INTERVAL)
+    return () => clearInterval(timingAutoRef.current)
+  }, [activeTab])
+
+  /* ── auto-scroll: execution quality (2 slides, 5s interval) ── */
+  const qualityAutoRef = useRef(null)
+  const qualityTouchRef = useRef(false)
+  useEffect(() => {
+    if (activeTab !== 'statistics') return
+    const TOTAL = 2, INTERVAL = 5000
+    qualityAutoRef.current = setInterval(() => {
+      if (qualityTouchRef.current) return
+      const el = qualityCarouselRef.current
+      if (!el) return
+      const next = ((Math.round(el.scrollLeft / el.clientWidth) + 1) % TOTAL)
+      el.scrollTo({ left: next * el.clientWidth, behavior: 'smooth' })
+    }, INTERVAL)
+    return () => clearInterval(qualityAutoRef.current)
+  }, [activeTab])
 
   /* ── computed stats (all use analytics when available) ── */
   const kpis = useMemo(() => computeOverviewKPIs(sessions, analyticsMap), [sessions, analyticsMap])
@@ -490,53 +523,121 @@ export default function ExerciseDetailPage() {
                       
                       {/* Tooltip */}
                       {showOverloadTooltip && (
-                        <div className="absolute top-full right-0 mt-2 w-72 bg-zinc-900 border border-white/20 rounded-xl p-4 shadow-xl z-20">
-                          <div className="flex items-center justify-between mb-3">
-                            <h3 className="text-sm font-bold text-white">Progressive Overload Breakdown</h3>
-                            <button 
-                              onClick={() => setShowOverloadTooltip(false)}
-                              className="text-white/40 hover:text-white/60"
+                        <div className="absolute top-full right-0 mt-2 w-72 bg-zinc-900 border border-white/20 rounded-xl shadow-xl z-20 overflow-hidden">
+                          {/* Tab header */}
+                          <div className="flex border-b border-white/10">
+                            <button
+                              onClick={() => setOverloadInfoTab('breakdown')}
+                              className={`flex-1 text-[11px] font-semibold py-2.5 transition-colors ${
+                                overloadInfoTab === 'breakdown' ? 'text-white border-b-2' : 'text-white/40'
+                              }`}
+                              style={overloadInfoTab === 'breakdown' ? { borderColor: bgColor } : {}}
                             >
-                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                              Breakdown
+                            </button>
+                            <button
+                              onClick={() => setOverloadInfoTab('info')}
+                              className={`flex-1 text-[11px] font-semibold py-2.5 transition-colors flex items-center justify-center gap-1 ${
+                                overloadInfoTab === 'info' ? 'text-white border-b-2' : 'text-white/40'
+                              }`}
+                              style={overloadInfoTab === 'info' ? { borderColor: bgColor } : {}}
+                            >
+                              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                              </svg>
+                              How It Works
+                            </button>
+                            <button 
+                              onClick={() => { setShowOverloadTooltip(false); setOverloadInfoTab('breakdown') }}
+                              className="px-3 text-white/40 hover:text-white/60"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
                                 <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
                               </svg>
                             </button>
                           </div>
-                          
-                          <div className="space-y-2 text-xs">
-                            <div className="flex justify-between items-center">
-                              <span className="text-white/70">Load Trend</span>
-                              <span className="text-white font-medium">50% weight</span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                              <span className="text-white/70">Weight Progression</span>
-                              <span className="text-white font-medium">30% weight</span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                              <span className="text-white/70">Volume (Reps)</span>
-                              <span className="text-white font-medium">15% weight</span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                              <span className="text-white/70">Execution Quality</span>
-                              <span className="text-white font-medium">5% weight</span>
-                            </div>
-                            
-                            <div className="border-t border-white/10 pt-2 mt-3">
-                              <div className="flex justify-between items-center">
-                                <span className="text-white/90 font-medium">Final Score</span>
-                                <span className={`font-bold ${
-                                  progressiveOverload.status === 'progressive' ? 'text-green-500' :
-                                  progressiveOverload.status === 'regressive' ? 'text-red-400' :
-                                  'text-yellow-400'
-                                }`}>
-                                  {progressiveOverload.label}
-                                </span>
+
+                          {/* Breakdown Tab */}
+                          {overloadInfoTab === 'breakdown' && (
+                            <div className="p-4 space-y-2 text-xs">
+                              {[
+                                { label: 'Load Trend', weight: '50%', desc: 'Total volume (sets × reps × weight)' },
+                                { label: 'Weight Progression', weight: '30%', desc: 'Weight increases over sessions' },
+                                { label: 'Volume (Reps)', weight: '15%', desc: 'Rep count changes' },
+                                { label: 'Execution Quality', weight: '5%', desc: 'ML-classified clean rep %' },
+                              ].map((item) => (
+                                <div key={item.label}>
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-white/70">{item.label}</span>
+                                    <span className="text-white font-medium">{item.weight}</span>
+                                  </div>
+                                  <p className="text-white/30 text-[10px] mt-0.5">{item.desc}</p>
+                                </div>
+                              ))}
+                              
+                              <div className="border-t border-white/10 pt-2 mt-3">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-white/90 font-medium">Final Score</span>
+                                  <span className={`font-bold ${
+                                    progressiveOverload.status === 'progressive' ? 'text-green-500' :
+                                    progressiveOverload.status === 'regressive' ? 'text-red-400' :
+                                    'text-yellow-400'
+                                  }`}>
+                                    {progressiveOverload.label}
+                                  </span>
+                                </div>
+                                <p className="text-white/50 text-[10px] mt-1">
+                                  Based on last {Math.min(sessions.length, 5)} sessions with weighted analysis
+                                </p>
                               </div>
-                              <p className="text-white/50 text-[10px] mt-1">
-                                Based on last {Math.min(sessions.length, 5)} sessions with weighted analysis
-                              </p>
                             </div>
-                          </div>
+                          )}
+
+                          {/* Info / How It Works Tab */}
+                          {overloadInfoTab === 'info' && (
+                            <div className="p-4 space-y-3 text-xs text-white/70 leading-relaxed">
+                              <div>
+                                <p className="text-white font-semibold text-[11px] mb-1">What is Progressive Overload?</p>
+                                <p>
+                                  Progressive overload is the gradual increase of stress placed on the body during training.
+                                  It&apos;s the fundamental mechanism behind strength and hypertrophy adaptation.
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-white font-semibold text-[11px] mb-1">How is the score calculated?</p>
+                                <p>
+                                  We compare your last {Math.min(sessions.length, 5)} sessions using a <span className="text-white/90">weighted trend analysis</span>.
+                                  Recent sessions are weighted more heavily than older ones, reflecting your current trajectory.
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-white font-semibold text-[11px] mb-1">Why these weights?</p>
+                                <ul className="space-y-1 ml-2">
+                                  <li className="flex gap-1.5">
+                                    <span className="text-white/40">•</span>
+                                    <span><span className="text-white/90">Load (50%)</span> — Total volume is the strongest predictor of progressive overload.</span>
+                                  </li>
+                                  <li className="flex gap-1.5">
+                                    <span className="text-white/40">•</span>
+                                    <span><span className="text-white/90">Weight (30%)</span> — Increasing weight is the most direct form of overload.</span>
+                                  </li>
+                                  <li className="flex gap-1.5">
+                                    <span className="text-white/40">•</span>
+                                    <span><span className="text-white/90">Reps (15%)</span> — Rep progression drives hypertrophy especially at constant weight.</span>
+                                  </li>
+                                  <li className="flex gap-1.5">
+                                    <span className="text-white/40">•</span>
+                                    <span><span className="text-white/90">Quality (5%)</span> — Clean reps matter, but form shouldn&apos;t override load progression.</span>
+                                  </li>
+                                </ul>
+                              </div>
+                              <div className="border-t border-white/10 pt-2">
+                                <p className="text-white/40 text-[10px]">
+                                  Score &gt; +2% = Progressive · &lt; −2% = Regressive · In between = Maintained
+                                </p>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -636,6 +737,8 @@ export default function ExerciseDetailPage() {
                       <div
                         ref={qualityCarouselRef}
                         onScroll={handleQualityCarouselScroll}
+                        onTouchStart={() => { qualityTouchRef.current = true }}
+                        onTouchEnd={() => { setTimeout(() => { qualityTouchRef.current = false }, 8000) }}
                         className="flex-1 flex overflow-x-auto snap-x snap-mandatory scrollbar-hide scroll-smooth"
                         style={{ scrollSnapType: 'x mandatory' }}
                       >
@@ -907,6 +1010,8 @@ export default function ExerciseDetailPage() {
                         <div
                           ref={carouselRef}
                           onScroll={handleCarouselScroll}
+                          onTouchStart={() => { timingTouchRef.current = true }}
+                          onTouchEnd={() => { setTimeout(() => { timingTouchRef.current = false }, 6000) }}
                           className="h-full flex overflow-x-auto snap-x snap-mandatory scrollbar-hide scroll-smooth"
                           style={{ scrollSnapType: 'x mandatory' }}
                         >

@@ -1154,7 +1154,7 @@ export default function Dashboard() {
 
           {/* Two half-width cards side by side */}
           <section className="mb-4 md:mb-6 content-fade-up-4">
-            <div className="grid grid-cols-2 gap-4 h-[300px]">
+            <div className="grid grid-cols-2 gap-4 h-[380px]">
               {/* Left: Equipment Distribution */}
               <EquipmentDistributionCard
                 data={equipmentDistributionData}

@@ -122,7 +122,7 @@ export default function EquipmentDistributionCard({
   }
 
   return (
-    <div className="rounded-2xl p-3 h-[300px] flex flex-col bg-white/10 overflow-hidden">
+    <div className="rounded-2xl p-3 h-[380px] flex flex-col bg-white/10 overflow-hidden">
       {/* Header */}
       <div className="mb-1 flex-shrink-0">
         <h3 className="text-xs font-semibold text-white tracking-wide">
@@ -145,7 +145,7 @@ export default function EquipmentDistributionCard({
               <div 
                 className="relative flex-shrink-0 transition-transform duration-300 ease-out" 
                 style={{ 
-                  height: '160px',
+                  height: '200px',
                   transform: activeIndex !== null ? 'scale(1.05)' : 'scale(1)'
                 }}
               >
@@ -157,8 +157,8 @@ export default function EquipmentDistributionCard({
                       data={equipmentData}
                       cx="50%"
                       cy="50%"
-                      innerRadius={42}
-                      outerRadius={62}
+                      innerRadius={50}
+                      outerRadius={72}
                       paddingAngle={4}
                       dataKey="value"
                       onMouseEnter={onPieEnter}

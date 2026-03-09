@@ -138,16 +138,20 @@ export function hasCalibration(userId, equipment, exercise) {
   return loadCalibration(userId, equipment, exercise) !== null;
 }
 
-export default function CalibrationModal({ isOpen, onClose, onCalibrate, onDiscard, onBarWeightSelect, equipment, exercise, userId, isFirstTime = false }) {
+export default function CalibrationModal({ isOpen, onClose, onCalibrate, onDiscard, onBarWeightSelect, equipment, exercise, userId, isFirstTime = false, gender = '' }) {
   const { device, connected } = useBluetooth();
   const [isClosing, setIsClosing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStartY, setDragStartY] = useState(0);
   const [dragCurrentY, setDragCurrentY] = useState(0);
   
+  // Auto-detect default bar weight based on gender
+  const isFemale = gender?.toLowerCase()?.includes('female') || gender?.toLowerCase()?.includes('woman');
+  const defaultBarWeight = isFemale ? 15 : 20;
+  
   // Steps: 1=Instructions, 2=Countdown, 3=BaselineHold, 4=Recording reps, 5=Success, 6=BarWeight (barbell first-time only)
   const [step, setStep] = useState(1);
-  const [selectedBarWeight, setSelectedBarWeight] = useState(20);
+  const [selectedBarWeight, setSelectedBarWeight] = useState(defaultBarWeight);
   const [customBarInput, setCustomBarInput] = useState('');
   const [showCustomBarInput, setShowCustomBarInput] = useState(false);
   const [countdown, setCountdown] = useState(5);
@@ -220,7 +224,7 @@ export default function CalibrationModal({ isOpen, onClose, onCalibrate, onDisca
       lastRepTimeRef.current = 0;
       sampleCountRef.current = 0;
       calibrationStillCountRef.current = 0;
-      setSelectedBarWeight(20);
+      setSelectedBarWeight(defaultBarWeight);
       setCustomBarInput('');
       setShowCustomBarInput(false);
       
@@ -920,9 +924,9 @@ export default function CalibrationModal({ isOpen, onClose, onCalibrate, onDisca
 
               <div className="space-y-3 mb-6">
                 {[
-                  { label: 'Olympic Bar', weight: 20, desc: 'Standard 20kg / 45lb' },
-                  { label: "Women's Bar", weight: 15, desc: 'Standard 15kg / 33lb' },
-                  { label: 'EZ Curl Bar', weight: 8, desc: 'Standard 8kg / 18lb' },
+                  { label: 'Olympic Bar', weight: 20, desc: 'Standard 20kg / 45lb', recommended: !isFemale },
+                  { label: "Women's Olympic Bar", weight: 15, desc: 'Standard 15kg / 33lb', recommended: isFemale },
+                  { label: 'EZ Curl Bar', weight: 8, desc: 'Standard 8kg / 18lb', recommended: false },
                 ].map((option) => (
                   <button
                     key={option.weight}
@@ -939,7 +943,12 @@ export default function CalibrationModal({ isOpen, onClose, onCalibrate, onDisca
                     }`}
                   >
                     <div className="text-left">
-                      <p className="text-base font-semibold text-white">{option.label}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-base font-semibold text-white">{option.label}</p>
+                        {option.recommended && (
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-violet-500/25 text-violet-300">Preset</span>
+                        )}
+                      </div>
                       <p className="text-xs text-white/50">{option.desc}</p>
                     </div>
                     <span className="text-lg font-bold text-violet-400">{option.weight}kg</span>
