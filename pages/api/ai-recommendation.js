@@ -57,60 +57,33 @@ setInterval(() => {
 // ============================================================
 // SYSTEM PROMPT — APPLIFT AI COACH (NSCA/ACSM/STE)
 // ============================================================
-const SYSTEM_PROMPT = `You are AppLift's certified AI strength coach. Follow NSCA/ACSM/STE guidelines strictly.
+const SYSTEM_PROMPT = `You are AppLift's certified AI strength coach. Apply NSCA/ACSM/STE principles using the data provided.
 
 SYSTEM CONTEXT:
-AppLift uses a single IMU (Inertial Measurement Unit) sensor attached to the equipment (dumbbell, barbell, or machine) to track movement. There is NO camera. All movement quality data (classification labels, velocity, ROM, phase timing) comes from IMU sensor readings: accelerometer, gyroscope, magnetometer, and derived orientation data. NEVER mention cameras, video, or visual analysis in your responses.
+AppLift uses a single IMU sensor on the equipment to track movement. No camera. All quality data comes from accelerometer, gyroscope, magnetometer readings. NEVER mention cameras or video.
 
-APPLIFT EXERCISE CATALOG & ML QUALITY LABELS:
-- Concentration Curls (Dumbbell, biceps): Clean, Uncontrolled Movement, Abrupt Initiation
-- Overhead Extension (Dumbbell, triceps): Clean, Uncontrolled Movement, Abrupt Initiation
-- Bench Press (Barbell, chest/shoulders/triceps): Clean, Uncontrolled Movement, Inclination Asymmetry
-- Back Squat (Barbell, quads/glutes/hamstrings): Clean, Uncontrolled Movement, Inclination Asymmetry
-- Lateral Pulldown (Weight Stack, lats/biceps): Clean, Pulling Too Fast, Releasing Too Fast
-- Seated Leg Extension (Weight Stack, quads): Clean, Pulling Too Fast, Releasing Too Fast
+EQUIPMENT LOADING RULES:
+- Barbell: recommendedLoad = bar + plates. Bar weights: Olympic 20kg, Women's 15kg, EZ 8kg. weightBreakdown must show exactly what to load (e.g. "20kg bar + 5kg per side" or "Bar only (20kg)").
+- Dumbbell: 2kg handle. weightBreakdown shows handle + plates (e.g. "2kg handle + 8kg plates").
+- Weight Stack: 5kg increments only. weightBreakdown shows stack weight (e.g. "25kg on stack").
 
-BARBELL WEIGHTS (always include bar in total): Olympic 20kg, Women's 15kg, EZ 8kg
-- IMPORTANT: recommendedLoad = bar + plates combined. weightBreakdown must show EXACTLY what to load.
-- Barbell example: recommendedLoad=30 → weightBreakdown "20kg bar + 5kg per side"
-- Barbell bar only: recommendedLoad=20 → weightBreakdown "Bar only (20kg)"
-- Dumbbell (2kg handle): recommendedLoad=10 → weightBreakdown "2kg handle + 8kg plates". Handle only: weightBreakdown "Handle only (2kg)"
-- Weight Stack / Machine: recommendedLoad=25 → weightBreakdown "25kg on stack"
-- WEIGHT STACK INCREMENTS: Weight stack machines use 5kg increments (5, 10, 15, 20, 25...). ALWAYS recommend weight in multiples of 5kg for weight stack exercises.
-- Always tell user exactly what plates/weight to load — never just show a total number
+SAFETY:
+- Respect injuries — reduce load or avoid contraindicated movements.
+- Prioritize controlled, quality reps.
+- Do NOT under-load experienced users. Match load to their level.
+- If user has past session data, base decisions on actual performance — not generic starting weights.
 
-SAFETY RULES:
-1. Beginners (<6mo): 5-10% max increase, start with minimal weights
-2. Intermediates (6mo-2y): 5-15% if form quality is high
-3. Advanced (2y+): standard progressive overload with deload every 4-6 weeks
-4. ALWAYS respect injuries — reduce load or avoid contraindicated movements
-5. Prioritize controlled, quality reps over heavy load
+DATA PROVIDED IN USER PROMPT:
+You will receive the user's profile (experience, activity level, goal, body weight), exercise-specific reference ranges, ML quality metrics (cleanRepPct, fatigue, consistency, velocity loss, smoothness), and session history. Use ALL of this data to make your decision.
 
-STARTING WEIGHTS (beginners/first-time):
-- Barbell: empty bar only (20kg)
-- Dumbbell: 3-5kg total
-- Weight Stack: 20-25kg
+KEY METRICS (defined for reference — interpret them holistically, do not apply rigid thresholds):
+- cleanRepPct: % of reps classified "Clean" by ML model. Higher = better form.
+- fatigueScore: % fatigue detected. Higher = more fatigued.
+- consistencyScore: % rep-to-rep consistency. Higher = more consistent.
+- Velocity Loss (D_ω): Fatigue accumulation ratio within a set (0–1 scale, sent as %). Derived from angular velocity drop across reps.
+- Smoothness: Movement control score (0–100). Derived from mean jerk magnitude. Higher = smoother.
 
-REP RANGES: **PRIORITIZE HYPERTROPHY** — Hypertrophy 6-10 (65-85%, rest 60-120s), Strength 3-5 (85-100%, rest 2-5min), Endurance 10-12 (<65%, rest 30-60s)
-**Default to hypertrophy range (6-10 reps) for muscle building.** Be conservative with reps — prefer 6-10 range. Never exceed 12 reps unless explicitly requested.
-
-LOAD DECISIONS (based on ML data — STRICTLY ENFORCED):
-- Increase: ONLY if cleanRepPct >=80% AND fatigue <25% AND consistency >=75%
-- Maintain: cleanRepPct 60-79%, OR fatigue 25-40%
-- Decrease: cleanRepPct <60%, OR fatigue >40%, OR consistency <60%
-CRITICAL: cleanRepPct is the percentage of reps classified as "Clean" by our ML model. If cleanRepPct < 60%, you MUST recommend the SAME or LOWER load than last session. NEVER increase load when form quality is poor. Reference the actual cleanRepPct value in your rationale.
-
-VELOCITY LOSS & SMOOTHNESS METRICS:
-- Velocity Loss (VL%): Measures fatigue accumulation within a set. Calculated as (firstRepVelocity - lastRepVelocity) / firstRepVelocity × 100.
-  - VL < 20%: Effective training zone with minimal fatigue accumulation
-  - VL 20-30%: Moderate fatigue, acceptable for hypertrophy
-  - VL > 30%: High fatigue, may indicate load is too heavy or insufficient rest
-- Smoothness (Mean Jerk Magnitude): Measures movement quality/control. Score 0-100 where higher = smoother movement.
-  - 80-100: Excellent control, smooth execution
-  - 60-79: Good control, minor irregularities
-  - 40-59: Moderate control issues, consider technique focus
-  - <40: Poor control, likely compensating or struggling with load
-- Use these metrics alongside cleanRepPct to assess readiness for progression.
+Your job: Analyze the data holistically. Weigh the user's experience level, activity level, goals, session history, form quality, fatigue, and movement quality together. Make a balanced recommendation — safe but appropriately challenging for the user's level.
 
 OUTPUT FORMAT (JSON only, no markdown):
 {
@@ -120,14 +93,149 @@ OUTPUT FORMAT (JSON only, no markdown):
   "restTimeSeconds": <int>,
   "estimatedCalories": <int>,
   "recommendedRestDays": <1-3>,
-  "weightBreakdown": "<e.g. 'Bar only (20kg)' or '20kg bar + 10kg plates' or '2kg handle + 8kg plates' or '25kg on stack'>",
-  "rationale": "<2-3 sentences referencing specific data if available>",
+  "weightBreakdown": "<exact loading instructions>",
+  "rationale": "<2-3 sentences referencing the specific data you based this on>",
   "safetyNote": "<1 sentence>",
   "guideline": "<max 15 words>",
   "nextSteps": "<1 sentence for next session>"
 }
 
-Calorie estimate: MET(3-6) x user_kg x duration_min / 60, typically 30-150 kcal per exercise.`;
+Calorie estimate: MET(3-6) x user_kg x duration_min / 60.`;
+
+// ============================================================
+// EXERCISE-SPECIFIC CONTEXT TABLE
+// Provides programmatic per-exercise guidance so the prompt
+// is tailored to the selected equipment + exercise combo.
+// ============================================================
+const EXERCISE_CONTEXT = {
+  'Concentration Curls': {
+    equipment: 'Dumbbell',
+    muscleGroups: ['biceps'],
+    movementType: 'isolation',
+    mlLabels: ['Clean', 'Uncontrolled Movement', 'Abrupt Initiation'],
+    typicalRanges: {
+      beginner:     { male: [3, 6],   female: [2, 4] },
+      intermediate: { male: [8, 16],  female: [5, 10] },
+      advanced:     { male: [16, 25], female: [10, 18] },
+    },
+    bodyweightMultiplier: null,
+    notes: 'Single-arm isolation.',
+  },
+  'Overhead Extension': {
+    equipment: 'Dumbbell',
+    muscleGroups: ['triceps'],
+    movementType: 'isolation',
+    mlLabels: ['Clean', 'Uncontrolled Movement', 'Abrupt Initiation'],
+    typicalRanges: {
+      beginner:     { male: [3, 6],   female: [2, 4] },
+      intermediate: { male: [8, 16],  female: [5, 10] },
+      advanced:     { male: [16, 25], female: [10, 18] },
+    },
+    bodyweightMultiplier: null,
+    notes: 'Overhead position — requires shoulder mobility.',
+  },
+  'Bench Press': {
+    equipment: 'Barbell',
+    muscleGroups: ['chest', 'shoulders', 'triceps'],
+    movementType: 'compound',
+    mlLabels: ['Clean', 'Uncontrolled Movement', 'Inclination Asymmetry'],
+    typicalRanges: {
+      beginner:     { male: [20, 35],  female: [15, 25] },
+      intermediate: { male: [40, 75],  female: [25, 45] },
+      advanced:     { male: [80, 130], female: [45, 75] },
+    },
+    bodyweightMultiplier: {
+      beginner:     { male: [0.25, 0.45], female: [0.20, 0.35] },
+      intermediate: { male: [0.55, 1.0],  female: [0.35, 0.65] },
+      advanced:     { male: [1.0, 1.5],   female: [0.65, 1.0] },
+    },
+    notes: 'Compound press. Include bar weight (20kg) in total.',
+  },
+  'Back Squat': {
+    equipment: 'Barbell',
+    muscleGroups: ['quads', 'glutes', 'hamstrings'],
+    movementType: 'compound',
+    mlLabels: ['Clean', 'Uncontrolled Movement', 'Inclination Asymmetry'],
+    typicalRanges: {
+      beginner:     { male: [20, 45],  female: [15, 30] },
+      intermediate: { male: [50, 95],  female: [30, 60] },
+      advanced:     { male: [100, 170], female: [60, 110] },
+    },
+    bodyweightMultiplier: {
+      beginner:     { male: [0.3, 0.6],  female: [0.25, 0.45] },
+      intermediate: { male: [0.7, 1.25], female: [0.45, 0.85] },
+      advanced:     { male: [1.25, 2.0], female: [0.85, 1.4] },
+    },
+    notes: 'Compound lift. Include bar weight (20kg) in total.',
+  },
+  'Lateral Pulldown': {
+    equipment: 'Weight Stack',
+    muscleGroups: ['lats', 'biceps'],
+    movementType: 'compound',
+    mlLabels: ['Clean', 'Pulling Too Fast', 'Releasing Too Fast'],
+    typicalRanges: {
+      beginner:     { male: [15, 25],  female: [10, 20] },
+      intermediate: { male: [30, 55],  female: [20, 40] },
+      advanced:     { male: [55, 85],  female: [40, 60] },
+    },
+    bodyweightMultiplier: null,
+    notes: 'Weight stack in 5kg increments.',
+  },
+  'Seated Leg Extension': {
+    equipment: 'Weight Stack',
+    muscleGroups: ['quads'],
+    movementType: 'isolation',
+    mlLabels: ['Clean', 'Pulling Too Fast', 'Releasing Too Fast'],
+    typicalRanges: {
+      beginner:     { male: [15, 25],  female: [10, 20] },
+      intermediate: { male: [30, 55],  female: [20, 40] },
+      advanced:     { male: [55, 85],  female: [40, 65] },
+    },
+    bodyweightMultiplier: null,
+    notes: 'Weight stack in 5kg increments.',
+  },
+};
+
+/**
+ * Get exercise-specific context string for the AI prompt.
+ * Returns weight ranges, bodyweight estimates, and exercise notes
+ * tailored to the user's experience, gender, and body weight.
+ */
+function getExerciseContext(exerciseName, equipment, userProfile) {
+  const ctx = EXERCISE_CONTEXT[exerciseName];
+  if (!ctx) return '';
+
+  const exp = (userProfile.strengthExperience || 'beginner').toLowerCase();
+  const gender = (userProfile.gender || 'male').toLowerCase();
+  const genderKey = gender.includes('female') || gender.includes('woman') ? 'female' : 'male';
+  const bodyWeightKg = parseFloat(userProfile.weight) || 70;
+
+  let lines = [];
+  lines.push(`\nEXERCISE: ${exerciseName}`);
+  lines.push(`- Type: ${ctx.movementType}`);
+  lines.push(`- Muscles: ${ctx.muscleGroups.join(', ')}`);
+  lines.push(`- ML labels for this exercise: ${ctx.mlLabels.join(', ')}`);
+
+  // Typical weight ranges for this experience level
+  const range = ctx.typicalRanges[exp] || ctx.typicalRanges['intermediate'];
+  const [lo, hi] = range[genderKey] || range['male'];
+  lines.push(`- Reference range (${exp}, ${genderKey}): ${lo}–${hi}kg`);
+
+  // Bodyweight multiplier (for barbell compounds)
+  if (ctx.bodyweightMultiplier) {
+    const bwRange = ctx.bodyweightMultiplier[exp] || ctx.bodyweightMultiplier['intermediate'];
+    const [bwLo, bwHi] = bwRange[genderKey] || bwRange['male'];
+    const estLo = Math.round(bodyWeightKg * bwLo);
+    const estHi = Math.round(bodyWeightKg * bwHi);
+    lines.push(`- BW-relative estimate (${bodyWeightKg}kg × ${bwLo}–${bwHi}): ${estLo}–${estHi}kg`);
+  }
+
+  if (ctx.notes) {
+    lines.push(`- ${ctx.notes}`);
+  }
+
+  return lines.join('\n') + '\n';
+}
 
 // ============================================================
 // VERTEX AI CLIENT INITIALIZATION
@@ -161,19 +269,24 @@ function getVertexAIClient() {
 function buildUserPrompt({ userProfile, equipment, exerciseName, pastSessions, sessionContext }) {
   let prompt = `EXERCISE: ${exerciseName} (${equipment})\n`;
 
-  // User basics (compact)
-  prompt += `USER: ${userProfile.age || '?'}y ${userProfile.gender || '?'}, ${userProfile.weight || '?'}${userProfile.weightUnit || 'kg'}, `;
-  prompt += `exp: ${userProfile.strengthExperience || 'beginner'}, goal: ${userProfile.fitnessGoal || 'general fitness'}\n`;
+  // User basics — include activityLevel with description
+  const experience = userProfile.strengthExperience || 'beginner';
+  const activityLevel = userProfile.activityLevel || 2;
+  const activityDescriptions = {
+    1: 'Sedentary — daily basic activities only, no regular exercise',
+    2: 'Somewhat Active — 30-60 min moderate activity most days',
+    3: 'Active — exercises regularly, 3-4x per week, good work capacity',
+    4: 'Very Active — intense exercise 6-7x per week, high work capacity',
+  };
+  
+  prompt += `USER: ${userProfile.age || '?'}y ${userProfile.gender || '?'}, ${userProfile.weight || '?'}${userProfile.weightUnit || 'kg'}\n`;
+  prompt += `- Experience: ${experience}\n`;
+  prompt += `- Activity Level: ${activityLevel}/4 — ${activityDescriptions[activityLevel] || 'Unknown'}\n`;
+  prompt += `- Goal: ${userProfile.fitnessGoal || 'general fitness'}\n`;
+  if (userProfile.trainingPriority) prompt += `- Training Priority: ${userProfile.trainingPriority}\n`;
 
-  // Beginner flag
-  const isBeginner = !userProfile.strengthExperience || 
-                    userProfile.strengthExperience.toLowerCase().includes('beginner') ||
-                    userProfile.strengthExperience.toLowerCase().includes('new') ||
-                    userProfile.strengthExperience === 'Less than 6 months' ||
-                    userProfile.strengthExperience === '0-6 months';
-  if (isBeginner) {
-    prompt += `⚠️ BEGINNER: Use minimal starting weights, prioritize form\n`;
-  }
+  // Exercise-specific context (programmatic — tailored to this exact exercise, user profile, and gender)
+  prompt += getExerciseContext(exerciseName, equipment, userProfile);
 
   // Injuries (compact)
   if (userProfile.injuries?.length) {
@@ -189,106 +302,50 @@ function buildUserPrompt({ userProfile, equipment, exerciseName, pastSessions, s
     if (sessionContext.timeSinceLastSession) {
       prompt += `- Time since last session: ${sessionContext.timeSinceLastSession}\n`;
       
-      // Add specific guidance based on recovery time
+      // Recovery time — send raw hours, let AI decide
       const hours = sessionContext.hoursSinceLastSession || 0;
-      if (hours < 24) {
-        prompt += `⚠️ SAME-DAY TRAINING: User trained this exercise less than 24h ago. Consider reducing load by 10-20% or recommend rest.\n`;
-      } else if (hours < 48) {
-        prompt += `⚠️ SHORT RECOVERY: Only ${Math.round(hours)}h since last session. Muscles may not be fully recovered. Consider maintaining or slightly reducing load.\n`;
-      } else if (hours > 168) { // More than 1 week
-        prompt += `⚠️ LONG GAP: More than a week since last session. Consider a slight deload (5-10%) to re-acclimate.\n`;
+      if (hours > 0) {
+        prompt += `- Hours since last session: ${Math.round(hours)}h\n`;
       }
     }
     
-    // Previous session feedback (user's self-assessment)
+    // Previous session feedback (user's self-assessment) — data only
     if (sessionContext.lastFeedback) {
       const fb = sessionContext.lastFeedback;
       prompt += `\nUSER FEEDBACK FROM LAST SESSION:\n`;
       if (fb.feelingRating != null) {
         const feelingText = ['Very Poor', 'Poor', 'Okay', 'Good', 'Great'][fb.feelingRating - 1] || 'Unknown';
-        prompt += `- How they felt: ${feelingText} (${fb.feelingRating}/5)\n`;
+        prompt += `- Feeling: ${feelingText} (${fb.feelingRating}/5)\n`;
       }
       if (fb.difficultyRating != null) {
         const diffText = ['Too Easy', 'Easy', 'Just Right', 'Hard', 'Too Hard'][fb.difficultyRating - 1] || 'Unknown';
-        prompt += `- Workout difficulty: ${diffText} (${fb.difficultyRating}/5)\n`;
+        prompt += `- Difficulty: ${diffText} (${fb.difficultyRating}/5)\n`;
       }
       if (fb.recommendationRating != null) {
         prompt += `- AI recommendation rating: ${fb.recommendationRating}/5\n`;
       }
       if (fb.notes) {
-        prompt += `- User notes: "${fb.notes}"\n`;
-      }
-      
-      // Adjust based on feedback
-      if (fb.difficultyRating === 1) {
-        prompt += `⬆️ INCREASE LOAD: User found last session too easy. Consider 5-15% increase.\n`;
-      } else if (fb.difficultyRating === 2) {
-        prompt += `⬆️ SLIGHT INCREASE: User found last session easy. Consider 5-10% increase.\n`;
-      } else if (fb.difficultyRating === 5) {
-        prompt += `⬇️ DECREASE LOAD: User found last session too hard. Reduce by 10-15%.\n`;
-      } else if (fb.difficultyRating === 4) {
-        prompt += `→ MAINTAIN OR SLIGHT DECREASE: User found last session hard. Consider maintaining.\n`;
-      }
-      
-      if (fb.feelingRating && fb.feelingRating <= 2) {
-        prompt += `⚠️ USER FELT POOR: Consider recovery day or lighter session.\n`;
+        prompt += `- Notes: "${fb.notes}"\n`;
       }
     }
   }
 
-  // Past sessions (compact)
+  // Past sessions — raw data, no interpretation
   if (pastSessions?.length > 0) {
-    prompt += `\nHISTORY (${pastSessions.length} sessions, most recent first):\n`;
+    prompt += `\nSESSION HISTORY (${pastSessions.length} sessions, most recent first):\n`;
     pastSessions.slice(0, 3).forEach((s, i) => {
       prompt += `S${i+1}: ${s.weight || 0}kg × ${s.sets || 0}s × ${s.reps || 0}r`;
-      if (s.quality) prompt += `, form: ${s.quality}`;
       if (s.cleanRepPct != null) prompt += `, cleanRepPct: ${s.cleanRepPct}%`;
       if (s.fatigueScore != null) prompt += `, fatigue: ${s.fatigueScore}%`;
       if (s.consistencyScore != null) prompt += `, consistency: ${s.consistencyScore}%`;
-      // Velocity Loss and Smoothness metrics
-      if (s.avgVelocityLoss != null) prompt += `, VL: ${s.avgVelocityLoss.toFixed(1)}%`;
-      if (s.avgSmoothness != null) prompt += `, smoothness: ${s.avgSmoothness.toFixed(0)}`;
-      if (s.mlClassification) prompt += `, ML: ${s.mlClassification}`;
+      if (s.avgVelocityLoss != null) prompt += `, velocityLoss: ${s.avgVelocityLoss.toFixed(1)}%`;
+      if (s.avgSmoothness != null) prompt += `, smoothness: ${s.avgSmoothness.toFixed(0)}/100`;
+      if (s.mlClassification) prompt += `, mlDistribution: ${s.mlClassification}`;
       if (s.date) prompt += ` (${s.date})`;
       prompt += `\n`;
     });
-
-    // Add explicit form quality warning based on most recent session
-    const mostRecent = pastSessions[0];
-    if (mostRecent?.cleanRepPct != null && mostRecent.cleanRepPct < 60) {
-      prompt += `\n⚠️ FORM WARNING: Most recent session had only ${mostRecent.cleanRepPct}% clean reps. Per LOAD DECISIONS rules, you MUST decrease or maintain load. DO NOT increase load.\n`;
-    } else if (mostRecent?.cleanRepPct != null && mostRecent.cleanRepPct < 80) {
-      prompt += `\n⚠️ FORM NOTE: Most recent session had ${mostRecent.cleanRepPct}% clean reps. Per LOAD DECISIONS rules, maintain current load — do not increase.\n`;
-    }
-
-    // Velocity Loss and Smoothness trend analysis for most recent session
-    if (mostRecent?.avgVelocityLoss != null || mostRecent?.avgSmoothness != null) {
-      prompt += `\nMOVEMENT QUALITY TRENDS (last session):\n`;
-      if (mostRecent.avgVelocityLoss != null) {
-        const vl = mostRecent.avgVelocityLoss;
-        if (vl > 30) {
-          prompt += `⚠️ HIGH VELOCITY LOSS (${vl.toFixed(1)}%): Significant fatigue detected. Consider reducing load or adding rest.\n`;
-        } else if (vl > 20) {
-          prompt += `→ MODERATE VELOCITY LOSS (${vl.toFixed(1)}%): Acceptable fatigue for hypertrophy training.\n`;
-        } else {
-          prompt += `✓ LOW VELOCITY LOSS (${vl.toFixed(1)}%): Good fatigue management, may be ready for progression.\n`;
-        }
-      }
-      if (mostRecent.avgSmoothness != null) {
-        const sm = mostRecent.avgSmoothness;
-        if (sm < 40) {
-          prompt += `⚠️ LOW SMOOTHNESS (${sm.toFixed(0)}): Poor movement control. Reduce load to improve form.\n`;
-        } else if (sm < 60) {
-          prompt += `→ MODERATE SMOOTHNESS (${sm.toFixed(0)}): Some control issues. Maintain load, focus on technique.\n`;
-        } else if (sm < 80) {
-          prompt += `✓ GOOD SMOOTHNESS (${sm.toFixed(0)}): Acceptable movement quality.\n`;
-        } else {
-          prompt += `✓ EXCELLENT SMOOTHNESS (${sm.toFixed(0)}): Great movement control, ready for progression.\n`;
-        }
-      }
-    }
   } else {
-    prompt += `FIRST TIME: No past data. Use conservative starting weights.\n`;
+    prompt += `\nFIRST TIME: No session history for this exercise.\n`;
   }
 
   return prompt;
@@ -404,8 +461,8 @@ export default async function handler(req, res) {
     const generativeModel = vertexAI.preview.getGenerativeModel({
       model,
       generationConfig: {
-        temperature: 0.3,
-        topP: 0.8,
+        temperature: 0.45,   // Balanced: enough variance to avoid robotic repetition, low enough for consistency
+        topP: 0.9,
         topK: 40,
         maxOutputTokens: 4096,
         responseMimeType: 'application/json',

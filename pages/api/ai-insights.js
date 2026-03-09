@@ -66,54 +66,89 @@ function getVertexClient() {
 }
 
 // ============================================================
-// SYSTEM PROMPT — SESSION INSIGHTS COACH
+// SYSTEM PROMPT — SESSION INSIGHTS (DATA-ONLY, NO PRESCRIPTIVE RULES)
 // ============================================================
-const SYSTEM_PROMPT = `You are AppLift's AI performance analyst. Analyze the workout metrics and do two things: (1) interpret what the session data means for the user's training, and (2) give specific, actionable tips on what to improve next time.
+const SYSTEM_PROMPT = `You are AppLift's AI performance analyst. You receive raw workout session data and generate a post-workout insight.
 
 SYSTEM CONTEXT:
-AppLift uses a single IMU (Inertial Measurement Unit) sensor attached to the equipment (dumbbell, barbell, or machine) to track movement. There is NO camera. All movement quality data (classification labels, velocity, ROM, phase timing) comes from IMU sensor readings: accelerometer, gyroscope, magnetometer, and derived orientation data.
+AppLift uses a single IMU (Inertial Measurement Unit) sensor on the equipment (dumbbell, barbell, or machine). No camera. All data comes from accelerometer, gyroscope, magnetometer, and derived orientation. NEVER mention cameras or video.
 
-KEY METRICS TO INTERPRET:
-- Velocity Loss: Compares best rep speed to average of last 3 reps per set. Higher velocity loss = more fatigue. <10% minimal, 10-20% low, 20-30% moderate, 30-40% high, >40% near failure. Velocity loss helps assess if the set was challenging enough for growth.
-- Effective Reps: Reps within 20% of the best rep speed — these are the "growth" reps that stimulate adaptation. More effective reps = better training stimulus.
-- ROM (Range of Motion): Consistency of movement depth across reps. Shortened ROM may indicate fatigue or poor form.
-- Smoothness (Mean Jerk): Measures movement control using jerk (rate of acceleration change). Lower jerk = smoother, more controlled movement. Score 75-100 = excellent control, 45-60 = moderate (check form), <30 = jerky/uncontrolled. Based on Flash & Hogan (1985) minimum-jerk model.
+METRIC DEFINITIONS (for reference — you decide how to interpret them):
+- Velocity Loss: Best rep speed vs average of last 3 reps per set. Derived from angular velocity drop across reps (0–100% scale).
+- Effective Reps: Reps within 20% of the best rep speed in a set.
+- ROM (Range of Motion): Movement depth consistency across reps, in degrees.
+- Smoothness: Movement control score (0–100). Derived from mean jerk magnitude. Higher = smoother.
+- Fatigue Score: Overall fatigue detected across the session (%).
+- Consistency Score: Rep-to-rep consistency (%).
+- ML Classification: Each rep is classified by the ML model into exercise-specific quality labels. "Clean" = good form.
 
-APPLIFT EXERCISE CATALOG & ML QUALITY LABELS:
-- Concentration Curls (Dumbbell, biceps): Clean, Uncontrolled Movement, Abrupt Initiation
-- Overhead Extension (Dumbbell, triceps): Clean, Uncontrolled Movement, Abrupt Initiation
-- Bench Press (Barbell, chest/shoulders/triceps): Clean, Uncontrolled Movement, Inclination Asymmetry
-- Back Squat (Barbell, quads/glutes/hamstrings): Clean, Uncontrolled Movement, Inclination Asymmetry
-- Lateral Pulldown (Weight Stack, lats/biceps): Clean, Pulling Too Fast, Releasing Too Fast
-- Seated Leg Extension (Weight Stack, quads): Clean, Pulling Too Fast, Releasing Too Fast
-
-SUMMARY — Session Interpretation:
-- Start with execution quality: lead with the clean-to-mistake ratio (e.g. "67% clean reps with 3 flagged as Uncontrolled Movement").
-- Interpret velocity loss and effective reps context (e.g. "Velocity loss of 25% with 6/10 effective reps suggests you pushed appropriately close to failure").
-- 2-3 sentences maximum. Be direct, not generic.
-
-BULLETS — What to Improve (Tips for Next Session):
-- Each bullet must be a concrete improvement tip derived directly from the session data.
-- Reference the specific metric that triggered the tip (e.g. "Velocity loss of 45% indicates near-failure — consider reducing weight slightly to maintain better form").
-- Prioritize fixing form mistakes first, then velocity loss-related fatigue management.
-- 3-5 tips total. Each 1 short sentence. No generic advice — every tip must trace back to a real number in the data.
-- NEVER mention cameras, video, or visual analysis. All data comes from the IMU sensor.
-
-RULES:
-- Use professional, encouraging coaching tone.
-- If any metric is missing or zero, skip it entirely.
-- Do NOT repeat the same point in both summary and bullets.
-- NEVER suggest "ensure the camera has a stable view" or any camera-related advice. The system uses an IMU sensor, not a camera.
-- JSON only, no markdown.
+Your job: Analyze ALL the raw data holistically. Generate a session summary and actionable tips. Every observation must trace back to actual numbers in the data.
 
 OUTPUT FORMAT (JSON only, no markdown):
 {
-  "summary": "2-3 sentence session interpretation paragraph",
-  "bullets": ["tip 1", "tip 2", "tip 3"]
+  "summary": "session interpretation paragraph",
+  "bullets": ["tip 1", "tip 2", ...]
 }`;
 
 // ============================================================
-// BUILD COMPACT METRICS PROMPT
+// EXERCISE-SPECIFIC CONTEXT TABLE (same as ai-recommendation)
+// ============================================================
+const EXERCISE_CONTEXT = {
+  'Concentration Curls': {
+    equipment: 'Dumbbell',
+    muscleGroups: ['biceps'],
+    movementType: 'isolation',
+    mlLabels: ['Clean', 'Uncontrolled Movement', 'Abrupt Initiation'],
+  },
+  'Overhead Extension': {
+    equipment: 'Dumbbell',
+    muscleGroups: ['triceps'],
+    movementType: 'isolation',
+    mlLabels: ['Clean', 'Uncontrolled Movement', 'Abrupt Initiation'],
+  },
+  'Bench Press': {
+    equipment: 'Barbell',
+    muscleGroups: ['chest', 'shoulders', 'triceps'],
+    movementType: 'compound',
+    mlLabels: ['Clean', 'Uncontrolled Movement', 'Inclination Asymmetry'],
+  },
+  'Back Squat': {
+    equipment: 'Barbell',
+    muscleGroups: ['quads', 'glutes', 'hamstrings'],
+    movementType: 'compound',
+    mlLabels: ['Clean', 'Uncontrolled Movement', 'Inclination Asymmetry'],
+  },
+  'Lateral Pulldown': {
+    equipment: 'Weight Stack',
+    muscleGroups: ['lats', 'biceps'],
+    movementType: 'compound',
+    mlLabels: ['Clean', 'Pulling Too Fast', 'Releasing Too Fast'],
+  },
+  'Seated Leg Extension': {
+    equipment: 'Weight Stack',
+    muscleGroups: ['quads'],
+    movementType: 'isolation',
+    mlLabels: ['Clean', 'Pulling Too Fast', 'Releasing Too Fast'],
+  },
+};
+
+/**
+ * Get exercise-specific context string for the prompt (programmatic).
+ */
+function getExerciseContext(exerciseName) {
+  const ctx = EXERCISE_CONTEXT[exerciseName];
+  if (!ctx) return '';
+
+  let lines = [];
+  lines.push(`EXERCISE CONTEXT:`);
+  lines.push(`- Type: ${ctx.movementType}`);
+  lines.push(`- Muscles: ${ctx.muscleGroups.join(', ')}`);
+  lines.push(`- ML labels for this exercise: ${ctx.mlLabels.join(', ')}`);
+  return lines.join('\n') + '\n';
+}
+
+// ============================================================
+// BUILD METRICS PROMPT (DATA-ONLY, PROGRAMMATIC)
 // ============================================================
 function buildMetricsPrompt(data) {
   const {
@@ -125,6 +160,10 @@ function buildMetricsPrompt(data) {
   } = data;
 
   let prompt = `EXERCISE: ${exerciseName} (${equipment}), ${weight}${weightUnit || 'kg'}\n`;
+
+  // Programmatic exercise context
+  prompt += getExerciseContext(exerciseName);
+
   prompt += `PLAN: ${plannedSets}×${plannedReps} | ACTUAL: ${totalSets} sets, ${totalReps} reps\n`;
   if (durationSec) prompt += `DURATION: ${Math.floor(durationSec / 60)}m ${durationSec % 60}s\n`;
   if (calories) prompt += `CALORIES: ${calories}\n`;
@@ -187,33 +226,25 @@ function buildMetricsPrompt(data) {
     }
   }
 
-  // ML Classification (exercise-specific quality labels)
+  // ML Classification — raw data only
   if (mlClassification) {
-    const { cleanPercentage, distributionPercent, qualityLabels } = mlClassification;
+    const { cleanPercentage, distributionPercent } = mlClassification;
     if (cleanPercentage != null) {
-      prompt += `\nEXECUTION QUALITY (ML Classification):\n`;
-      prompt += `  Clean Rep Percentage: ${cleanPercentage}%\n`;
-      if (qualityLabels?.length) {
-        prompt += `  Quality Labels (exercise-specific): ${qualityLabels.join(', ')}\n`;
-      }
+      prompt += `\nML CLASSIFICATION:\n`;
+      prompt += `  cleanRepPct: ${cleanPercentage}%\n`;
       if (distributionPercent && typeof distributionPercent === 'object') {
         const entries = Object.entries(distributionPercent)
           .sort(([,a], [,b]) => b - a);
         prompt += `  Distribution: ${entries.map(([label, pct]) => `${label}: ${pct}%`).join(', ')}\n`;
-        // Highlight the top mistakes
-        const mistakes = entries.filter(([label]) => label !== 'Clean');
-        if (mistakes.length > 0) {
-          prompt += `  Top Mistakes: ${mistakes.map(([label, pct]) => `${label} (${pct}%)`).join(', ')}\n`;
-        }
       }
     }
   }
 
-  // Fatigue & consistency scores
-  if (fatigueScore != null) prompt += `FATIGUE SCORE: ${fatigueScore}%\n`;
-  if (consistencyScore != null) prompt += `CONSISTENCY SCORE: ${consistencyScore}%\n`;
+  // Raw scores
+  if (fatigueScore != null) prompt += `fatigueScore: ${fatigueScore}%\n`;
+  if (consistencyScore != null) prompt += `consistencyScore: ${consistencyScore}%\n`;
 
-  // Velocity Loss Analysis per set
+  // Velocity loss & effective reps per set — raw computed values
   if (setsData?.length) {
     let vlSummary = [];
 
@@ -221,7 +252,6 @@ function buildMetricsPrompt(data) {
       const reps = set.repsData || [];
       if (!reps.length) return;
 
-      // VL calculation - Best Rep vs Mean Last 3
       const velocities = reps.map(r => r.meanVelocity || r.peakVelocity || 0).filter(v => v > 0);
       if (velocities.length >= 3) {
         const baseline = Math.max(...velocities);
@@ -229,16 +259,16 @@ function buildMetricsPrompt(data) {
         const avgLast = velocities.slice(-lastN).reduce((s, v) => s + v, 0) / lastN;
         const vl = baseline > 0 ? Math.round(((baseline - avgLast) / baseline) * 100) : 0;
         const effective = velocities.filter(v => v >= baseline * 0.8).length;
-        vlSummary.push(`Set${i + 1}: Velocity Loss ${vl}%, ${effective}/${velocities.length} effective`);
+        vlSummary.push(`Set${i + 1}: velocityLoss ${vl}%, effectiveReps ${effective}/${velocities.length}`);
       }
     });
 
     if (vlSummary.length > 0) {
-      prompt += `\nVELOCITY LOSS ANALYSIS:\n  ${vlSummary.join('\n  ')}\n`;
+      prompt += `\nVELOCITY LOSS:\n  ${vlSummary.join('\n  ')}\n`;
     }
   }
 
-  prompt += `\nGenerate the session summary JSON.`;
+  prompt += `\nAnalyze this session data.`;
   return prompt;
 }
 
