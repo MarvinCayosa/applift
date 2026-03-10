@@ -953,6 +953,33 @@ export const getStreamingState = () => ({
 export const getCompleteWorkoutData = () => ({ ...workoutData });
 
 /**
+ * Reset the current set's data — discard all reps recorded so far for this set.
+ * Called when the user hits "Reset Set" during an active set.
+ */
+export const resetCurrentSetData = () => {
+  if (!isStreaming) return;
+
+  const setIndex = currentSetNumber - 1;
+  const currentSetObj = workoutData.sets[setIndex];
+  const discardedReps = currentSetObj ? currentSetObj.reps.length : 0;
+
+  // Clear reps from the current set
+  if (currentSetObj) {
+    currentSetObj.reps = [];
+  }
+
+  // Adjust metadata totals
+  workoutMetadata.totalReps = Math.max(0, workoutMetadata.totalReps - discardedReps);
+
+  // Reset rep counter and buffer for this set
+  currentRepNumber = 0;
+  currentRepBuffer = [];
+  repStartTime = null;
+
+  console.log(`[IMUStreaming] Reset Set ${currentSetNumber}: discarded ${discardedReps} reps`);
+};
+
+/**
  * Clear the current rep buffer (for BLE disconnect rollback)
  * Discards any incomplete rep data that was being recorded
  * Also resets the currentRepNumber to match the last completed rep count
@@ -1017,5 +1044,6 @@ export default {
   getCompleteWorkoutData,
   exportWorkoutAsCSV,
   clearCurrentRepBuffer,
-  getCurrentRepBufferLength
+  getCurrentRepBufferLength,
+  resetCurrentSetData
 };

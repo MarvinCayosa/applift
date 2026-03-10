@@ -50,6 +50,7 @@ export default function WorkoutMonitor() {
     flushPendingSetClassifications,
     checkHasPendingUploads,
     backgroundMLStatus,
+    resetCurrentSetLogging,
   } = useWorkoutLogging();
   
   // Track last rep count for detecting new reps
@@ -1273,6 +1274,7 @@ export default function WorkoutMonitor() {
   // Handle reset current set - clear reps and start over
   const handleResetSet = () => {
     resetCurrentSet();
+    resetCurrentSetLogging();
   };
 
   return (

@@ -112,7 +112,7 @@ export default function ConnectPill({
       {/* Pill - stays in place, expands like accordion */}
       <div 
         ref={pillRef}
-        className={`relative overflow-hidden border shadow-lg ${
+        className={`relative overflow-hidden shadow-lg ${
           isExpanded 
             ? 'z-[10000] rounded-[24px] px-6 py-6 w-full max-w-sm' 
             : 'z-50 rounded-[32px] py-3'
@@ -126,7 +126,7 @@ export default function ConnectPill({
           background: connected
             ? (showBatteryBar ? '#4a4a4a' : getBatteryGradient(batteryPercent))
             : 'linear-gradient(90deg, #2A2A2A 0%, #3A3A3A 100%)',
-          borderColor: connected ? getBatteryBorder(batteryPercent) : 'rgba(107, 114, 128, 0.45)',
+          borderColor: 'transparent',
           boxShadow: connected
             ? getBatteryShadow(batteryPercent)
             : '0 14px 40px rgba(0, 0, 0, 0.25)',

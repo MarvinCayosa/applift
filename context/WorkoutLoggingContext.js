@@ -40,7 +40,8 @@ import {
   getSetRepsForML,
   storeRepClassification,
   getCompleteWorkoutData,
-  exportWorkoutAsCSV
+  exportWorkoutAsCSV,
+  resetCurrentSetData
 } from '../services/imuStreamingService';
 import { classifyReps } from '../services/mlClassificationService';
 import { isNetworkOffline } from '../hooks/useNetworkConnectionWatcher';
@@ -719,6 +720,19 @@ export function WorkoutLoggingProvider({ children }) {
     return exportWorkoutAsCSV();
   }, []);
 
+  /**
+   * Reset the current set's streaming data (discard reps recorded so far)
+   */
+  const resetCurrentSetLogging = useCallback(() => {
+    if (!isStreaming) return;
+    resetCurrentSetData();
+    setTotalReps(prev => {
+      const state = getStreamingState();
+      return state?.totalReps ?? 0;
+    });
+    setCurrentRep(0);
+  }, [isStreaming]);
+
   const value = {
     // State
     isStreaming,
@@ -742,6 +756,7 @@ export function WorkoutLoggingProvider({ children }) {
     finishWorkout,
     cancelWorkout,
     resetWorkout,
+    resetCurrentSetLogging,
     getState,
     
     // ML Integration
