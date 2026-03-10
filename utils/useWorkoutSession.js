@@ -859,12 +859,16 @@ export function useWorkoutSession({
     countdownActiveRef.current = countdownActive;
   }, [isRecording, isPaused, countdownActive]);
 
-  // Timer effect - starts after countdown completes
+  // Timer effect - manages timer based on state changes
+  // Note: Timer is also started directly in runCountdown() for precise timing
   useEffect(() => {
     if (isRecording && !isPaused && !countdownActive) {
-      timerIntervalRef.current = setInterval(() => {
-        setElapsedTime(prev => prev + 1);
-      }, 1000);
+      // Only start if not already running (runCountdown may have started it)
+      if (!timerIntervalRef.current) {
+        timerIntervalRef.current = setInterval(() => {
+          setElapsedTime(prev => prev + 1);
+        }, 1000);
+      }
     } else {
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current);
@@ -1282,6 +1286,16 @@ export function useWorkoutSession({
     isPausedRef.current = false;
     setIsRecording(true);
     isRecordingRef.current = true;
+    
+    // *** CRITICAL: Start elapsed timer IMMEDIATELY to avoid delay ***
+    // The useEffect timer depends on async state updates which can lag behind
+    // Starting the timer here ensures it's in sync with when recording actually starts
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+    }
+    timerIntervalRef.current = setInterval(() => {
+      setElapsedTime(prev => prev + 1);
+    }, 1000);
     
     // *** Set ROM baseline from countdown samples ***
     // Uses samples collected during 3-2-1 countdown for accurate baseline

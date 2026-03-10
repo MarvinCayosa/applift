@@ -930,6 +930,37 @@ export default function Settings() {
       const result = await response.json();
       
       if (response.ok && result.success) {
+        // Clear client-side caches and local storage
+        try {
+          // 1. Clear IndexedDB caches (workout cache + offline queue)
+          const { clearAllCache } = await import('../utils/workoutCache');
+          const { clearAllPendingJobs } = await import('../utils/offlineQueue');
+          await clearAllCache().catch(() => {});
+          await clearAllPendingJobs().catch(() => {});
+
+          // 2. Clear localStorage — ROM calibrations, scanned equipment, IMU data
+          // Preserve: applift:userProfile (account info)
+          const keysToRemove = [];
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (
+              key.startsWith('rom_calibration_') ||
+              key.startsWith('imu_data_') ||
+              key.startsWith('imu_fallback_') ||
+              key === 'scannedEquipment' ||
+              key.startsWith('applift:onboarding:')
+            ) {
+              keysToRemove.push(key);
+            }
+          }
+          keysToRemove.forEach(k => localStorage.removeItem(k));
+
+          // 3. Clear sessionStorage caches (exercise stats, workout results, etc.)
+          sessionStorage.clear();
+        } catch (localErr) {
+          console.warn('[ClearData] Local cache cleanup partial failure:', localErr);
+        }
+
         setClearDataResult({
           success: true,
           message: `Successfully cleared all data! Deleted ${result.details.gcsFilesDeleted} IMU files and ${result.details.firestoreDocsDeleted} workout logs.`

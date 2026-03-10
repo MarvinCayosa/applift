@@ -161,7 +161,18 @@ async function deleteFirestoreWorkoutLogs(userId) {
       console.log(`[ClearData] Deleted user streak document`);
     }
 
-    // 4. Reset workoutStreak in user profile (but keep the profile)
+    // 4. Delete AI recommendation cache subcollection: users/{userId}/aiRecommendations
+    const userDocRef = adminDb.collection('users').doc(userId);
+    const aiRecSubcollections = await userDocRef.collection('aiRecommendations').get();
+    if (!aiRecSubcollections.empty) {
+      const aiBatch = adminDb.batch();
+      aiRecSubcollections.docs.forEach(d => aiBatch.delete(d.ref));
+      await aiBatch.commit();
+      totalDeleted += aiRecSubcollections.size;
+      console.log(`[ClearData] Deleted ${aiRecSubcollections.size} AI recommendation docs`);
+    }
+
+    // 5. Reset workoutStreak in user profile (but keep the profile)
     const userRef = adminDb.collection('users').doc(userId);
     await userRef.update({
       workoutStreak: {

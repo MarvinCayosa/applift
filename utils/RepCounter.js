@@ -64,9 +64,15 @@ export class RepCounter {
     this.stepSize = Math.floor(this.windowSamples * (1 - this.windowOverlap));
     
     // Data buffers
-    this.accelBuffer = [];
+    this.accelBuffer = [];  // Stores EMA-smoothed magnitude for peak/valley detection
+    this.rawMagBuffer = []; // Stores unsmoothed magnitude (for reference)
     this.timeBuffer = [];
     this.allSamples = [];
+    
+    // EMA low-pass filter on magnitude to suppress tremor before peak detection
+    // Alpha 0.3 at 20Hz → cutoff ~1Hz, removes hand tremor (4-8Hz) while preserving rep motion (0.2-1Hz)
+    this.emaAlpha = config.emaAlpha || 0.3;
+    this.emaValue = null; // Initialised on first sample
     
     // Rep segmentation
     this.reps = []; // Array of rep segments with timestamps
@@ -81,8 +87,9 @@ export class RepCounter {
     this.adaptiveThreshold = true; // Use adaptive thresholding
     
     // Anti-tremor: Refractory period after counting a rep (prevents double-counting during shaking)
-    this.refractoryPeriod = config.refractoryPeriod || 500; // Reduced from 800ms - faster recovery for slow rep sequences
+    this.refractoryPeriod = config.refractoryPeriod || 500; // Base refractory period
     this.lastRepCountedTime = 0; // Timestamp of last counted rep
+    this.adaptiveRefractoryMs = 500; // Adaptive refractory: updates based on recent rep tempo
     
     // Slow rep detection: Track recent signal amplitude for adaptive sensitivity
     this.recentRanges = []; // Rolling window of recent signal ranges
@@ -253,8 +260,16 @@ export class RepCounter {
     
     this.allSamples.push(sample);
     
-    // Use filtered magnitude for rep detection on ALL exercises
-    this.accelBuffer.push(magForDetection);
+    // Apply EMA low-pass filter on magnitude to suppress tremor/shaking
+    // This is the key fix: tremor creates false peaks in the raw magnitude signal
+    if (this.emaValue === null) {
+      this.emaValue = magForDetection; // Initialise on first sample
+    } else {
+      this.emaValue = this.emaAlpha * magForDetection + (1 - this.emaAlpha) * this.emaValue;
+    }
+    
+    this.rawMagBuffer.push(magForDetection);
+    this.accelBuffer.push(this.emaValue); // Use smoothed signal for peak/valley detection
     this.timeBuffer.push(ts);
     
     // Process window immediately when we have enough samples
@@ -304,16 +319,16 @@ export class RepCounter {
     const currentGlobalIndex = this.accelBuffer.length - 1;
     
     // Anti-tremor: Check if we're in refractory period
-    // For slow rep mode, reduce refractory period to allow continuous slow movement
+    // Use adaptive refractory based on recent rep tempo (40% of avg rep duration, min 400ms)
     const now = Date.now();
-    const effectiveRefractory = this.slowRepMode ? this.refractoryPeriod * 0.6 : this.refractoryPeriod;
+    const effectiveRefractory = this.adaptiveRefractoryMs;
     if (this.lastRepCountedTime && (now - this.lastRepCountedTime) < effectiveRefractory) {
-      // Still in refractory period - skip peak/valley detection to prevent tremor-induced double counting
       return;
     }
     
-    // Peak detection window size: 3 for slow movements (catches gradual transitions), 5 for normal
-    const peakWindow = this.slowRepMode ? 3 : 5;
+    // Peak detection window size: 5 for slow movements (EMA-smoothed signal has fewer false peaks),
+    // 5 for normal — with EMA pre-filtering we can use a consistent, wider window
+    const peakWindow = 5;
     
     // Find all peaks (local maxima)
     const peaks = [];
@@ -487,6 +502,11 @@ export class RepCounter {
               
               this.completeRep(pending.valleyStart, pending.peak, lastValley);
               this.lastRepCountedTime = Date.now();
+              if (this.repTimes.length > 0) {
+                const recentReps = this.repTimes.slice(-5);
+                const avgDuration = recentReps.reduce((a, b) => a + b, 0) / recentReps.length;
+                this.adaptiveRefractoryMs = Math.max(400, Math.min(2000, avgDuration * 1000 * 0.4));
+              }
               this.lastDetectedValleyIndex = lastValley.index;
               this.lastDetectedPeakIndex = pending.peak.index;
               this.lastValleyIndex = lastValley.index;
@@ -577,6 +597,11 @@ export class RepCounter {
                 
                 this.completeRep(fcs.startValley, fcs.peak, endValley);
                 this.lastRepCountedTime = Date.now();
+                if (this.repTimes.length > 0) {
+                  const recentReps = this.repTimes.slice(-5);
+                  const avgDuration = recentReps.reduce((a, b) => a + b, 0) / recentReps.length;
+                  this.adaptiveRefractoryMs = Math.max(400, Math.min(2000, avgDuration * 1000 * 0.4));
+                }
                 this.lastDetectedValleyIndex = endValley.index;
                 this.lastDetectedPeakIndex = fcs.peak.index;
                 // DON'T update lastValleyIndex/lastPeakIndex here - they gate valley/peak detection
@@ -659,6 +684,13 @@ export class RepCounter {
           // Count the rep and start refractory period
           this.completeRep(startPoint, peakPoint, endPoint);
           this.lastRepCountedTime = Date.now(); // Start refractory period
+          
+          // Update adaptive refractory: 40% of average rep duration, clamped [400ms, 2000ms]
+          if (this.repTimes.length > 0) {
+            const recentReps = this.repTimes.slice(-5);
+            const avgDuration = recentReps.reduce((a, b) => a + b, 0) / recentReps.length;
+            this.adaptiveRefractoryMs = Math.max(400, Math.min(2000, avgDuration * 1000 * 0.4));
+          }
           
           // Mark these indices as used
           this.lastDetectedValleyIndex = lastValley.index;
@@ -988,8 +1020,11 @@ export class RepCounter {
   reset() {
     this.repCount = 0;
     this.accelBuffer = [];
+    this.rawMagBuffer = [];
     this.timeBuffer = [];
     this.allSamples = [];
+    this.emaValue = null;
+    this.adaptiveRefractoryMs = 500;
     this.reps = [];
     this.currentRep = null;
     this.lastRepEndTime = 0;
@@ -1089,9 +1124,23 @@ export class RepCounter {
     // 2. Truncate sample buffer
     this.allSamples = this.allSamples.slice(0, sampleIndex);
 
-    // 3. Rebuild accelBuffer/timeBuffer from remaining samples
-    this.accelBuffer = this.allSamples.map(s => s.filteredMagnitude || s.accelMag || 0);
-    this.timeBuffer = this.allSamples.map(s => s.relativeTime ?? s.timestamp ?? 0);
+    // 3. Rebuild accelBuffer/timeBuffer from remaining samples (re-apply EMA)
+    this.emaValue = null;
+    this.rawMagBuffer = [];
+    this.accelBuffer = [];
+    this.timeBuffer = [];
+    for (const s of this.allSamples) {
+      const mag = s.filteredMagnitude || s.accelMag || 0;
+      if (this.emaValue === null) {
+        this.emaValue = mag;
+      } else {
+        this.emaValue = this.emaAlpha * mag + (1 - this.emaAlpha) * this.emaValue;
+      }
+      this.rawMagBuffer.push(mag);
+      this.accelBuffer.push(this.emaValue);
+      this.timeBuffer.push(s.relativeTime ?? s.timestamp ?? 0);
+    }
+    this.adaptiveRefractoryMs = 500;
 
     // 4. Reset detection state so it can resume cleanly
     this.state = 'IDLE';
