@@ -6,11 +6,11 @@ const BLE_SERVICE_UUIDS = [
   '6e400001-b5a3-f393-e0a9-e50e24dcca9e',
   '0000ffe0-0000-1000-8000-00805f9b34fb',
   '4fafc201-1fb5-459e-8fcc-c5c9c331914b', // AppLift IMU service
-  '0000180f-0000-1000-8000-00805f9b34fb', // Standard Battery Service
 ];
 
 const IMU_SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
 const IMU_CHARACTERISTIC_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
+const BATTERY_CHARACTERISTIC_UUID = 'feb5483e-36e1-4688-b7f5-ea07361b26a8';
 
 // Filter out nameless/unknown devices
 const isValidDevice = (device) => {
@@ -34,59 +34,29 @@ export function BluetoothProvider({ children }) {
   const [batteryPercent, setBatteryPercent] = useState(null);
   const batteryCharRef = useRef(null);
   const batteryListenerRef = useRef(null);
-  const stdBatteryCharRef = useRef(null);
-  const stdBatteryListenerRef = useRef(null);
 
-  // Try standard BLE Battery Service (0x180F) first, then fall back to IMU byte 58
+  // Subscribe to the dedicated battery characteristic on the AppLift IMU service
   const startBatteryListener = useCallback(async (server) => {
-    // Method 1: Standard BLE Battery Service
-    try {
-      const batteryService = await server.getPrimaryService('battery_service');
-      const batteryChar = await batteryService.getCharacteristic('battery_level');
-      // Read initial value
-      const initialValue = await batteryChar.readValue();
-      if (initialValue.byteLength >= 1) {
-        setBatteryPercent(initialValue.getUint8(0));
-        console.log('Battery (standard service):', initialValue.getUint8(0) + '%');
-      }
-      // Subscribe to updates
-      await batteryChar.startNotifications();
-      const onBatteryUpdate = (event) => {
-        try {
-          const val = event.target.value;
-          if (val.byteLength >= 1) setBatteryPercent(val.getUint8(0));
-        } catch (_) {}
-      };
-      batteryChar.addEventListener('characteristicvaluechanged', onBatteryUpdate);
-      stdBatteryCharRef.current = batteryChar;
-      stdBatteryListenerRef.current = onBatteryUpdate;
-      console.log('✅ Battery listener started (standard BLE Battery Service)');
-      // Still also listen on IMU packets as supplementary
-    } catch (e) {
-      console.log('Standard Battery Service not available:', e.message);
-    }
-
-    // Method 2: IMU packet byte 58 (always try as fallback / supplement)
     try {
       const imuService = await server.getPrimaryService(IMU_SERVICE_UUID);
-      const imuChar = await imuService.getCharacteristic(IMU_CHARACTERISTIC_UUID);
-      
-      const onPacket = (event) => {
+      const battChar = await imuService.getCharacteristic(BATTERY_CHARACTERISTIC_UUID);
+      await battChar.startNotifications();
+
+      const onBatteryData = (event) => {
         try {
-          const value = event.target.value;
-          if (value.byteLength >= 59) {
-            setBatteryPercent(value.getUint8(58));
+          const val = event.target.value;
+          if (val.byteLength >= 1) {
+            setBatteryPercent(val.getUint8(0));
           }
         } catch (_) {}
       };
-      
-      await imuChar.startNotifications();
-      imuChar.addEventListener('characteristicvaluechanged', onPacket);
-      batteryCharRef.current = imuChar;
-      batteryListenerRef.current = onPacket;
-      console.log('✅ Battery listener started (IMU byte 58, packet size monitored)');
+
+      battChar.addEventListener('characteristicvaluechanged', onBatteryData);
+      batteryCharRef.current = battChar;
+      batteryListenerRef.current = onBatteryData;
+      console.log('✅ Battery characteristic subscribed!');
     } catch (e) {
-      console.log('Could not start IMU battery listener:', e.message);
+      console.warn('Battery characteristic not available:', e.message);
     }
   }, []);
 
@@ -99,14 +69,6 @@ export function BluetoothProvider({ children }) {
     }
     batteryCharRef.current = null;
     batteryListenerRef.current = null;
-    if (stdBatteryCharRef.current && stdBatteryListenerRef.current) {
-      try {
-        stdBatteryCharRef.current.removeEventListener('characteristicvaluechanged', stdBatteryListenerRef.current);
-        stdBatteryCharRef.current.stopNotifications();
-      } catch (_) {}
-    }
-    stdBatteryCharRef.current = null;
-    stdBatteryListenerRef.current = null;
   }, []);
 
   // Track availability changes
