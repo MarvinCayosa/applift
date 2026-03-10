@@ -279,7 +279,7 @@ export default function BestSessionsCard({ logs = [], hasData = false }) {
                   <>
                     {/* Main value */}
                     <div className="flex-1 flex flex-col items-end justify-center">
-                      <span className="font-extrabold text-white leading-none" style={{ fontSize: '2.2rem' }}>
+                      <span className="font-extrabold text-white leading-none" style={{ fontSize: '2.75rem' }}>
                         {slide.value}
                       </span>
                       {slide.unit && (
@@ -289,14 +289,14 @@ export default function BestSessionsCard({ logs = [], hasData = false }) {
                       )}
                     </div>
 
-                    {/* Footer: exercise name + time */}
-                    <div className="mt-auto flex items-center justify-between">
-                      <span className="text-[10px] text-white/60 font-medium truncate max-w-[60%]">
+                    {/* Footer: exercise name stacked */}
+                    <div className="mt-auto">
+                      <p className="text-[11px] text-white/80 font-semibold truncate leading-tight">
                         {s.exercise}
-                      </span>
-                      <span className="text-[10px] text-white/50 font-medium whitespace-nowrap">
-                        {s.time}{s.duration ? ` · ${s.duration}` : ''}
-                      </span>
+                      </p>
+                      <p className="text-[10px] text-white/50 font-medium">
+                        {s.duration || ''}
+                      </p>
                     </div>
                   </>
                 ) : (

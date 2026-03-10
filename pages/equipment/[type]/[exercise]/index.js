@@ -1,6 +1,7 @@
 import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react'
+import ReactDOM from 'react-dom'
 import {
   ResponsiveContainer,
   AreaChart, Area,
@@ -159,15 +160,38 @@ export default function ExerciseDetailPage() {
   const [activeQualitySlide, setActiveQualitySlide] = useState(0)
   const [selectedMuscle, setSelectedMuscle] = useState(null)
   
-  /* ── progressive overload carousel ── */
-  const overloadCarouselRef = useRef(null)
-  const [activeOverloadSlide, setActiveOverloadSlide] = useState(0)
-  const overloadUserTouchRef = useRef(false)
-  const handleOverloadCarouselScroll = useCallback(() => {
-    const el = overloadCarouselRef.current
-    if (!el) return
-    setActiveOverloadSlide(Math.round(el.scrollLeft / el.clientWidth))
-  }, [])
+  /* ── progressive overload bottom sheet ── */
+  const [showOverloadInfo, setShowOverloadInfo] = useState(false)
+  const [overloadDragStartY, setOverloadDragStartY] = useState(0)
+  const [overloadDragCurrentY, setOverloadDragCurrentY] = useState(0)
+  const [isOverloadDragging, setIsOverloadDragging] = useState(false)
+  const [isOverloadClosing, setIsOverloadClosing] = useState(false)
+  
+  const handleOverloadTouchStart = (e) => {
+    setOverloadDragStartY(e.touches[0].clientY)
+    setIsOverloadDragging(true)
+  }
+  const handleOverloadTouchMove = (e) => {
+    if (!isOverloadDragging) return
+    const diff = e.touches[0].clientY - overloadDragStartY
+    if (diff > 0) setOverloadDragCurrentY(diff)
+  }
+  const closeOverloadSheet = () => {
+    setIsOverloadClosing(true)
+    setTimeout(() => {
+      setShowOverloadInfo(false)
+      setIsOverloadClosing(false)
+      setOverloadDragCurrentY(0)
+    }, 250)
+  }
+  const handleOverloadTouchEnd = () => {
+    setIsOverloadDragging(false)
+    if (overloadDragCurrentY > 100) {
+      closeOverloadSheet()
+    } else {
+      setOverloadDragCurrentY(0)
+    }
+  }
   
   const handleCarouselScroll = useCallback(() => {
     const el = carouselRef.current
@@ -210,21 +234,6 @@ export default function ExerciseDetailPage() {
       el.scrollTo({ left: next * el.clientWidth, behavior: 'smooth' })
     }, INTERVAL)
     return () => clearInterval(qualityAutoRef.current)
-  }, [activeTab])
-
-  /* ── auto-scroll: progressive overload (3 slides, 5s interval) ── */
-  const overloadAutoRef = useRef(null)
-  useEffect(() => {
-    if (activeTab !== 'statistics') return
-    const TOTAL = 3, INTERVAL = 5000
-    overloadAutoRef.current = setInterval(() => {
-      if (overloadUserTouchRef.current) return
-      const el = overloadCarouselRef.current
-      if (!el) return
-      const next = ((Math.round(el.scrollLeft / el.clientWidth) + 1) % TOTAL)
-      el.scrollTo({ left: next * el.clientWidth, behavior: 'smooth' })
-    }, INTERVAL)
-    return () => clearInterval(overloadAutoRef.current)
   }, [activeTab])
 
   /* ── computed stats (all use analytics when available) ── */
@@ -517,10 +526,11 @@ export default function ExerciseDetailPage() {
                       </svg>
                     </button>
 
-                    {/* Progressive Overload Score Pill - Overlaid on Chart (indicator only) */}
+                    {/* Progressive Overload Score Pill - Opens Info Sheet */}
                     <div className="absolute top-3 right-4 z-10">
-                      <div
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold backdrop-blur-sm ${
+                      <button
+                        onClick={() => setShowOverloadInfo(true)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold backdrop-blur-sm transition-all duration-200 hover:scale-105 active:scale-95 ${
                         progressiveOverload.status === 'progressive' ? 'bg-green-500/30 text-green-500' :
                         progressiveOverload.status === 'regressive' ? 'bg-red-500/30 text-red-300' :
                         progressiveOverload.status === 'maintained' ? 'bg-yellow-500/30 text-yellow-300' :
@@ -542,7 +552,10 @@ export default function ExerciseDetailPage() {
                           </svg>
                         )}
                         <span>{progressiveOverload.label}</span>
-                      </div>
+                        <svg className="w-3 h-3 opacity-50" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                        </svg>
+                      </button>
                     </div>
 
                     {chartData.length > 0 ? (
@@ -625,139 +638,6 @@ export default function ExerciseDetailPage() {
                         </div>
                       </div>
                     ) : null}
-
-                    {/* ═══ Progressive Overload Info Carousel ═══ */}
-                    {sessions.length >= 2 && (
-                      <div className="mt-4 bg-white/[0.05] rounded-2xl overflow-hidden">
-                        <div className="p-4 pb-2 flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <p className="text-sm font-semibold text-white">Progressive Overload</p>
-                            <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                              progressiveOverload.status === 'progressive' ? 'bg-green-500/20 text-green-500' :
-                              progressiveOverload.status === 'regressive' ? 'bg-red-500/20 text-red-300' :
-                              progressiveOverload.status === 'maintained' ? 'bg-yellow-500/20 text-yellow-300' :
-                              'bg-white/10 text-white/50'
-                            }`}>
-                              {progressiveOverload.status === 'progressive' && (
-                                <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M3.293 9.707a1 1 0 010-1.414l6-6a1 1 0 011.414 0l6 6a1 1 0 01-1.414 1.414L11 5.414V17a1 1 0 11-2 0V5.414L4.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                                </svg>
-                              )}
-                              {progressiveOverload.status === 'regressive' && (
-                                <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M16.707 10.293a1 1 0 010 1.414l-6 6a1 1 0 01-1.414 0l-6-6a1 1 0 111.414-1.414L9 14.586V3a1 1 0 012 0v11.586l4.293-4.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                </svg>
-                              )}
-                              {progressiveOverload.status === 'maintained' && (
-                                <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
-                                </svg>
-                              )}
-                              <span>{progressiveOverload.label}</span>
-                            </div>
-                          </div>
-                          {/* Slide indicators */}
-                          <div className="flex gap-1">
-                            {[0, 1, 2].map(i => (
-                              <div key={i} className={`h-1 rounded-full transition-all ${activeOverloadSlide === i ? 'w-4 bg-white/60' : 'w-1 bg-white/20'}`} />
-                            ))}
-                          </div>
-                        </div>
-
-                        <div
-                          ref={overloadCarouselRef}
-                          onScroll={handleOverloadCarouselScroll}
-                          onTouchStart={() => { overloadUserTouchRef.current = true }}
-                          onTouchEnd={() => { setTimeout(() => { overloadUserTouchRef.current = false }, 8000) }}
-                          className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide scroll-smooth"
-                          style={{ scrollSnapType: 'x mandatory' }}
-                        >
-                          {/* Slide 1: Current Status */}
-                          <div className="w-full shrink-0 snap-center snap-always p-4 pt-2" style={{ minWidth: '100%' }}>
-                            <div className="space-y-3">
-                              <div className="flex items-center gap-3">
-                                <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                                  progressiveOverload.status === 'progressive' ? 'bg-green-500/20' :
-                                  progressiveOverload.status === 'regressive' ? 'bg-red-500/20' :
-                                  'bg-yellow-500/20'
-                                }`}>
-                                  {progressiveOverload.status === 'progressive' && (
-                                    <svg className="w-6 h-6 text-green-500" fill="currentColor" viewBox="0 0 20 20">
-                                      <path fillRule="evenodd" d="M3.293 9.707a1 1 0 010-1.414l6-6a1 1 0 011.414 0l6 6a1 1 0 01-1.414 1.414L11 5.414V17a1 1 0 11-2 0V5.414L4.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                                    </svg>
-                                  )}
-                                  {progressiveOverload.status === 'regressive' && (
-                                    <svg className="w-6 h-6 text-red-400" fill="currentColor" viewBox="0 0 20 20">
-                                      <path fillRule="evenodd" d="M16.707 10.293a1 1 0 010 1.414l-6 6a1 1 0 01-1.414 0l-6-6a1 1 0 111.414-1.414L9 14.586V3a1 1 0 012 0v11.586l4.293-4.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                    </svg>
-                                  )}
-                                  {progressiveOverload.status === 'maintained' && (
-                                    <svg className="w-6 h-6 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
-                                      <path fillRule="evenodd" d="M3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
-                                    </svg>
-                                  )}
-                                </div>
-                                <div>
-                                  <p className="text-white font-semibold">{
-                                    progressiveOverload.status === 'progressive' ? 'Great Progress!' :
-                                    progressiveOverload.status === 'regressive' ? 'Needs Attention' :
-                                    'Staying Consistent'
-                                  }</p>
-                                  <p className="text-xs text-white/50">
-                                    {progressiveOverload.status === 'progressive' 
-                                      ? 'Your training load is increasing'
-                                      : progressiveOverload.status === 'regressive'
-                                      ? 'Your training load has decreased'
-                                      : 'Maintaining your current level'}
-                                  </p>
-                                </div>
-                              </div>
-                              <p className="text-xs text-white/40">
-                                Based on {Math.min(sessions.length, 5)} recent sessions
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* Slide 2: Breakdown */}
-                          <div className="w-full shrink-0 snap-center snap-always p-4 pt-2" style={{ minWidth: '100%' }}>
-                            <div className="space-y-2">
-                              {[
-                                { label: 'Load Trend', weight: '50%', desc: 'Total volume (sets × reps × weight)' },
-                                { label: 'Weight Progression', weight: '30%', desc: 'Weight increases over sessions' },
-                                { label: 'Volume (Reps)', weight: '15%', desc: 'Rep count changes' },
-                                { label: 'Execution Quality', weight: '5%', desc: 'ML-classified clean rep %' },
-                              ].map((item) => (
-                                <div key={item.label} className="flex justify-between items-center">
-                                  <div>
-                                    <p className="text-xs text-white/70">{item.label}</p>
-                                    <p className="text-[10px] text-white/30">{item.desc}</p>
-                                  </div>
-                                  <span className="text-xs text-white font-medium">{item.weight}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-
-                          {/* Slide 3: How It Works */}
-                          <div className="w-full shrink-0 snap-center snap-always p-4 pt-2" style={{ minWidth: '100%' }}>
-                            <div className="space-y-2 text-xs text-white/70 leading-relaxed">
-                              <div>
-                                <p className="text-white font-semibold text-[11px] mb-0.5">What is Progressive Overload?</p>
-                                <p className="text-[11px]">
-                                  The gradual increase of stress placed on the body during training — the fundamental mechanism behind strength gains.
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-white font-semibold text-[11px] mb-0.5">Score Calculation</p>
-                                <p className="text-[11px]">
-                                  &gt; +2% = Progressive · &lt; −2% = Regressive · In between = Maintained
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 </section>
 
@@ -1158,7 +1038,151 @@ export default function ExerciseDetailPage() {
           </div>
         </div>
 
+        {/* ═══ Progressive Overload Info Bottom Sheet ═══ */}
+        {showOverloadInfo && typeof document !== 'undefined' && ReactDOM.createPortal(
+          <div
+            className="fixed inset-0 z-[9999] flex items-end justify-center"
+            onClick={closeOverloadSheet}
+          >
+            <div className={`absolute inset-0 bg-black/60 transition-opacity duration-250 ${isOverloadClosing ? 'opacity-0' : 'opacity-100'}`} />
+            <div
+              className={`relative w-full max-w-lg rounded-t-3xl bg-[#1e1e1e] border-t border-white/10 pb-8 ${isOverloadClosing ? 'animate-slideDown' : 'animate-slideUp'}`}
+              style={{ transform: isOverloadDragging ? `translateY(${overloadDragCurrentY}px)` : undefined }}
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Drag Handle */}
+              <div
+                className="flex justify-center pt-3 pb-2 cursor-grab active:cursor-grabbing"
+                onTouchStart={handleOverloadTouchStart}
+                onTouchMove={handleOverloadTouchMove}
+                onTouchEnd={handleOverloadTouchEnd}
+              >
+                <div className="w-10 h-1 rounded-full bg-white/20" />
+              </div>
+
+              <div className="px-5 overflow-y-auto" style={{ maxHeight: '70vh' }}>
+                {/* Header */}
+                <div className="flex items-center gap-3 mb-4">
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+                    progressiveOverload.status === 'progressive' ? 'bg-green-500/20' :
+                    progressiveOverload.status === 'regressive' ? 'bg-red-500/20' :
+                    'bg-yellow-500/20'
+                  }`}>
+                    {progressiveOverload.status === 'progressive' && (
+                      <svg className="w-6 h-6 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M3.293 9.707a1 1 0 010-1.414l6-6a1 1 0 011.414 0l6 6a1 1 0 01-1.414 1.414L11 5.414V17a1 1 0 11-2 0V5.414L4.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                      </svg>
+                    )}
+                    {progressiveOverload.status === 'regressive' && (
+                      <svg className="w-6 h-6 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 10.293a1 1 0 010 1.414l-6 6a1 1 0 01-1.414 0l-6-6a1 1 0 111.414-1.414L9 14.586V3a1 1 0 012 0v11.586l4.293-4.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                    )}
+                    {progressiveOverload.status === 'maintained' && (
+                      <svg className="w-6 h-6 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+                      </svg>
+                    )}
+                  </div>
+                  <div>
+                    <h4 className="text-[16px] font-bold text-white">Progressive Overload</h4>
+                    <p className={`text-sm font-semibold ${
+                      progressiveOverload.status === 'progressive' ? 'text-green-500' :
+                      progressiveOverload.status === 'regressive' ? 'text-red-400' :
+                      'text-yellow-400'
+                    }`}>
+                      {progressiveOverload.label}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Description */}
+                <p className="text-[13px] text-white/60 leading-relaxed mb-5">
+                  Progressive overload is the gradual increase of stress placed on the body during training.
+                  It&apos;s the fundamental mechanism behind strength and hypertrophy adaptation.
+                </p>
+
+                {/* Score Breakdown */}
+                <div className="mb-5">
+                  <p className="text-[13px] font-semibold text-white mb-3">Score Breakdown</p>
+                  <div className="space-y-3">
+                    {[
+                      { label: 'Load Trend', weight: '50%', desc: 'Total volume (sets × reps × weight)', color: 'bg-cyan-400' },
+                      { label: 'Weight Progression', weight: '30%', desc: 'Weight increases over sessions', color: 'bg-blue-400' },
+                      { label: 'Volume (Reps)', weight: '15%', desc: 'Rep count changes', color: 'bg-purple-400' },
+                      { label: 'Execution Quality', weight: '5%', desc: 'ML-classified clean rep %', color: 'bg-green-400' },
+                    ].map((item) => (
+                      <div key={item.label} className="flex items-start gap-3">
+                        <div className={`w-2 h-2 rounded-full ${item.color} mt-1.5 shrink-0`} />
+                        <div className="flex-1">
+                          <div className="flex justify-between items-center">
+                            <span className="text-[13px] text-white/80 font-medium">{item.label}</span>
+                            <span className="text-[13px] text-white font-semibold">{item.weight}</span>
+                          </div>
+                          <p className="text-[11px] text-white/40">{item.desc}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Threshold Visual */}
+                <div className="rounded-xl bg-gradient-to-r from-red-500/10 via-yellow-500/10 to-green-500/10 p-4 mb-5">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] text-red-400 font-medium">Regressive</span>
+                    <span className="text-[11px] text-yellow-400 font-medium">Maintained</span>
+                    <span className="text-[11px] text-green-400 font-medium">Progressive</span>
+                  </div>
+                  <div className="relative h-2 rounded-full overflow-hidden bg-gradient-to-r from-red-400 via-yellow-400 to-green-400" />
+                  <div className="flex items-center justify-between mt-2 text-[10px] text-white/40">
+                    <span>&lt; -2%</span>
+                    <span>-2% to +2%</span>
+                    <span>&gt; +2%</span>
+                  </div>
+                </div>
+
+                {/* Current Status */}
+                <div className="rounded-xl bg-white/[0.05] p-4 mb-4">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[13px] text-white/70">Your Status</span>
+                    <span className={`text-[13px] font-bold ${
+                      progressiveOverload.status === 'progressive' ? 'text-green-500' :
+                      progressiveOverload.status === 'regressive' ? 'text-red-400' :
+                      'text-yellow-400'
+                    }`}>
+                      {progressiveOverload.status === 'progressive' ? 'Great Progress!' :
+                       progressiveOverload.status === 'regressive' ? 'Needs Attention' :
+                       'Staying Consistent'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-white/40 mt-1">
+                    Based on last {Math.min(sessions.length, 5)} sessions with weighted analysis
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
         <BottomNav />
+
+        <style jsx>{`
+          @keyframes slideUp {
+            from { opacity: 0; transform: translateY(100%); }
+            to { opacity: 1; transform: translateY(0); }
+          }
+          @keyframes slideDown {
+            from { opacity: 1; transform: translateY(0); }
+            to { opacity: 0; transform: translateY(100%); }
+          }
+          .animate-slideUp {
+            animation: slideUp 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+          }
+          .animate-slideDown {
+            animation: slideDown 0.25s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+          }
+        `}</style>
       </div>
     </>
   )
