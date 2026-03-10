@@ -174,7 +174,7 @@ export class MovementQualityService {
   static calculateSmoothnessScore(data) {
     if (!data || data.length < 2) return 75; // Default score
 
-    // Calculate jerk (derivative of acceleration)
+    // Calculate jerk (derivative of acceleration magnitude)
     const jerks = [];
     for (let i = 1; i < data.length; i++) {
       jerks.push(Math.abs(data[i] - data[i - 1]));
@@ -183,11 +183,15 @@ export class MovementQualityService {
     // Average jerk magnitude
     const avgJerk = jerks.reduce((a, b) => a + b, 0) / jerks.length;
 
-    // Convert to score (lower jerk = higher score)
-    // Normalize assuming typical jerk range 0-10
-    const normalizedJerk = Math.min(avgJerk / 10, 1);
-    const score = Math.round(100 - (normalizedJerk * 50));
-    return Math.max(50, Math.min(100, score));
+    // Normalize by peak acceleration for speed/load invariance
+    const peakAccel = Math.max(...data.map(Math.abs), 1);
+    const normalizedJerk = avgJerk / peakAccel;
+
+    // Map normalized jerk to 0-100 (0.3 = smooth → 100, 3.0 = jerky → 0)
+    const score = Math.round(Math.max(0, Math.min(100,
+      100 - ((normalizedJerk - 0.3) * (100 / 2.7))
+    )));
+    return score;
   }
 
   /**

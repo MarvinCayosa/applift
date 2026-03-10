@@ -287,6 +287,7 @@ export default function CalibrationModal({ isOpen, onClose, onCalibrate, onDisca
       const dataView = new DataView(value.buffer);
       const byteLength = value.byteLength;
       const hasQuaternions = byteLength >= 56;
+      const hasBattery = byteLength >= 59;
       
       const imuData = {
         accelX: dataView.getFloat32(0, true),
@@ -302,7 +303,9 @@ export default function CalibrationModal({ isOpen, onClose, onCalibrate, onDisca
         qx: hasQuaternions ? dataView.getFloat32(40, true) : undefined,
         qy: hasQuaternions ? dataView.getFloat32(44, true) : undefined,
         qz: hasQuaternions ? dataView.getFloat32(48, true) : undefined,
-        timestamp: hasQuaternions ? dataView.getUint32(52, true) : dataView.getUint32(36, true)
+        timestamp: hasQuaternions ? dataView.getUint32(52, true) : dataView.getUint32(36, true),
+        sequence: hasBattery ? dataView.getUint16(56, true) : undefined,
+        batteryPercent: hasBattery ? dataView.getUint8(58) : undefined,
       };
       
       sampleCountRef.current++;

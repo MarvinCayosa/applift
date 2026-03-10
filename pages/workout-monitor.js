@@ -116,6 +116,7 @@ export default function WorkoutMonitor() {
     scanning,
     devicesFound,
     availability,
+    batteryPercent,
     scanDevices,
     connectToDevice,
     disconnect,
@@ -1415,6 +1416,7 @@ export default function WorkoutMonitor() {
             scanning={scanning}
             devicesFound={devicesFound}
             availability={availability}
+            batteryPercent={batteryPercent}
             collapse={1}
             onExpandChange={setIsPillExpanded}
           />

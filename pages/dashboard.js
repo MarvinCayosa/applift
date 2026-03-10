@@ -125,6 +125,7 @@ export default function Dashboard() {
     scanning,
     pairMessage,
     error,
+    batteryPercent,
     scanDevices,
     connectToDevice,
     disconnect,
@@ -946,6 +947,7 @@ export default function Dashboard() {
               scanning={scanning}
               devicesFound={devicesFound}
               availability={availability}
+              batteryPercent={batteryPercent}
             />
           </div>
 

@@ -7,7 +7,7 @@ const CHARACTERISTIC_UUID_IMU = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
 const CHARACTERISTIC_UUID_NFC = 'ceb5483e-36e1-4688-b7f5-ea07361b26a8';
 
 export function useIMUData(onIMUData, onNFCData) {
-  const { device, connected } = useBluetooth();
+  const { device, connected, setBatteryPercent } = useBluetooth();
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [error, setError] = useState(null);
   const characteristicRef = useRef(null);
@@ -26,9 +26,10 @@ export function useIMUData(onIMUData, onNFCData) {
       const dataView = new DataView(value.buffer);
       
       // Parse IMU data - support both 40-byte (legacy) and 56-byte (with quaternions) packets
-      // 56-byte format matches index.html: accel(12) + gyro(12) + euler(12) + quat(16) + timestamp(4)
+      // 59-byte format: accel(12) + gyro(12) + euler(12) + quat(16) + timestamp(4) + sequence(2) + battery(1)
       const byteLength = value.byteLength;
       const hasQuaternions = byteLength >= 56;
+      const hasBattery = byteLength >= 59;
       
       const imuData = {
         accelX: dataView.getFloat32(0, true),
@@ -45,8 +46,15 @@ export function useIMUData(onIMUData, onNFCData) {
         qx: hasQuaternions ? dataView.getFloat32(40, true) : undefined,
         qy: hasQuaternions ? dataView.getFloat32(44, true) : undefined,
         qz: hasQuaternions ? dataView.getFloat32(48, true) : undefined,
-        timestamp: hasQuaternions ? dataView.getUint32(52, true) : dataView.getUint32(36, true)
+        timestamp: hasQuaternions ? dataView.getUint32(52, true) : dataView.getUint32(36, true),
+        sequence: hasBattery ? dataView.getUint16(56, true) : undefined,
+        batteryPercent: hasBattery ? dataView.getUint8(58) : undefined,
       };
+
+      // Update battery in Bluetooth context
+      if (hasBattery && setBatteryPercent) {
+        setBatteryPercent(imuData.batteryPercent);
+      }
       
       // Calculate raw magnitude
       const rawMagnitude = Math.sqrt(
@@ -161,11 +169,11 @@ export function useIMUData(onIMUData, onNFCData) {
     return () => {
       mounted = false;
       
-      // Cleanup subscriptions
+      // Cleanup subscriptions — only remove listeners, don't stop notifications
+      // (BluetoothProvider keeps notifications active for battery monitoring)
       if (characteristicRef.current) {
         try {
           characteristicRef.current.removeEventListener('characteristicvaluechanged', handleIMUData);
-          characteristicRef.current.stopNotifications();
         } catch (e) {
           console.error('Error cleaning up IMU characteristic:', e);
         }

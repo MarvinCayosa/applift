@@ -748,6 +748,7 @@ export default function SelectedWorkout() {
     permissionGranted,
     availability,
     devicesFound,
+    batteryPercent,
     scanDevices,
     connectToDevice,
     disconnect,
@@ -862,6 +863,7 @@ export default function SelectedWorkout() {
             scanning={scanning}
             devicesFound={devicesFound}
             availability={availability}
+            batteryPercent={batteryPercent}
             autoCollapse={true}
             onExpandChange={setIsPillExpanded}
           />

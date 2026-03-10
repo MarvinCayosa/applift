@@ -9,6 +9,7 @@ export default function ConnectPill({
   scanning, 
   devicesFound = [],
   availability,
+  batteryPercent,
   collapse = 0,
   autoCollapse = false,
   onExpandChange
@@ -80,6 +81,32 @@ export default function ConnectPill({
     if (onExpandChange) onExpandChange(false);
   };
 
+  // Battery fill color based on percentage
+  const getBatteryGradient = (pct) => {
+    if (pct == null) return 'radial-gradient(circle, rgb(141, 184, 11) 0%, rgb(56, 139, 42) 50%, rgb(59, 105, 2) 100%)';
+    if (pct <= 20) return 'linear-gradient(90deg, #ff6b3d 0%, #e53e1a 40%, #c62828 100%)';
+    if (pct <= 50) return 'linear-gradient(90deg, #f9a825 0%, #f57f17 40%, #e65100 100%)';
+    return 'linear-gradient(90deg, rgb(141, 184, 11) 0%, rgb(56, 139, 42) 50%, rgb(59, 105, 2) 100%)';
+  };
+
+  const getBatteryShadow = (pct) => {
+    if (pct == null) return '0 18px 50px rgba(16, 185, 129, 0.25)';
+    if (pct <= 20) return '0 18px 50px rgba(229, 62, 26, 0.25)';
+    if (pct <= 50) return '0 18px 50px rgba(245, 127, 23, 0.25)';
+    return '0 18px 50px rgba(16, 185, 129, 0.25)';
+  };
+
+  const getBatteryBorder = (pct) => {
+    if (pct == null) return 'rgba(5, 150, 105, 0.55)';
+    if (pct <= 20) return 'rgba(229, 62, 26, 0.45)';
+    if (pct <= 50) return 'rgba(245, 127, 23, 0.45)';
+    return 'rgba(5, 150, 105, 0.55)';
+  };
+
+  // Whether to show battery bar (connected + has battery data + not expanded)
+  const showBatteryBar = connected && batteryPercent != null && !isExpanded;
+  const batteryFillPct = batteryPercent != null ? Math.max(0, Math.min(100, batteryPercent)) : 100;
+
   return (
     <>
       {/* Pill - stays in place, expands like accordion */}
@@ -97,18 +124,26 @@ export default function ConnectPill({
           paddingRight: isExpanded ? '24px' : effectiveCollapse > 0 ? '0' : '20px',
           maxHeight: isExpanded ? '520px' : effectiveCollapse > 0 ? '48px' : '88px',
           background: connected
-            ? 'radial-gradient(circle, rgb(141, 184, 11) 0%, rgb(56, 139, 42) 50%, rgb(59, 105, 2) 100%)'
+            ? (showBatteryBar ? '#4a4a4a' : getBatteryGradient(batteryPercent))
             : 'linear-gradient(90deg, #2A2A2A 0%, #3A3A3A 100%)',
-          borderColor: connected ? 'rgba(5, 150, 105, 0.55)' : 'rgba(107, 114, 128, 0.45)',
+          borderColor: connected ? getBatteryBorder(batteryPercent) : 'rgba(107, 114, 128, 0.45)',
           boxShadow: connected
-            ? '0 18px 50px rgba(16, 185, 129, 0.25)'
+            ? getBatteryShadow(batteryPercent)
             : '0 14px 40px rgba(0, 0, 0, 0.25)',
           transition: 'all 500ms cubic-bezier(0.4, 0, 0.2, 1)',
-          animation: connected ? 'shimmer 12s linear infinite' : 'none',
-          backgroundSize: connected ? '150% 100%' : '100% 100%',
-          backgroundPosition: 'left center'
         }}
       >
+        {/* Battery fill bar - absolute positioned behind content */}
+        {showBatteryBar && (
+          <div
+            className="absolute inset-0 rounded-[32px]"
+            style={{
+              width: `${batteryFillPct}%`,
+              background: getBatteryGradient(batteryPercent),
+              transition: 'width 1s cubic-bezier(0.4, 0, 0.2, 1), background 1s ease',
+            }}
+          />
+        )}
         {!isExpanded && effectiveCollapse < 1 ? (
           // Collapsed Pill View
           <button 
@@ -116,7 +151,7 @@ export default function ConnectPill({
               setIsExpanded(true);
               if (onExpandChange) onExpandChange(true);
             }}
-            className="flex flex-1 items-center gap-3 w-full cursor-pointer active:scale-98 transition-transform duration-200"
+            className="relative z-10 flex flex-1 items-center gap-3 w-full cursor-pointer active:scale-98 transition-transform duration-200"
             style={{ opacity: effectiveCollapse === 0 ? 1 : 0 }}
           >
             <div className={`flex h-10 w-10 items-center justify-center rounded-full transition-all duration-300 flex-shrink-0 ${
@@ -134,6 +169,16 @@ export default function ConnectPill({
                 {connected ? 'Connected' : 'Not Connected'}
               </span>
             </div>
+            {connected && batteryPercent != null && (
+              <div className="ml-auto flex items-center gap-1.5" style={{ opacity: textOpacity }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+                  <rect x="2" y="6" width="18" height="12" rx="2" stroke="white" strokeWidth="2"/>
+                  <rect x="20" y="10" width="2" height="4" rx="0.5" fill="white"/>
+                  <rect x="4" y="8" width={`${Math.round(batteryPercent / 100 * 14)}`} height="8" rx="1" fill="white"/>
+                </svg>
+                <span className="text-xs font-semibold text-white/90 tabular-nums">{batteryPercent}%</span>
+              </div>
+            )}
           </button>
         ) : effectiveCollapse >= 1 && !isExpanded ? (
           // Fully Collapsed - Icon Only (centered)
@@ -142,7 +187,7 @@ export default function ConnectPill({
               setIsExpanded(true);
               if (onExpandChange) onExpandChange(true);
             }}
-            className="flex items-center justify-center w-full h-full cursor-pointer hover:opacity-80 transition-opacity duration-200"
+            className="relative z-10 flex items-center justify-center w-full h-full cursor-pointer hover:opacity-80 transition-opacity duration-200"
             aria-label="Bluetooth"
           >
             <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg" aria-hidden>
@@ -151,7 +196,7 @@ export default function ConnectPill({
           </button>
         ) : (
           // Expanded Modal View
-          <div className="space-y-4">
+          <div className="relative z-10 space-y-4">
             {/* Header */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -190,6 +235,16 @@ export default function ConnectPill({
                 <div className="rounded-2xl bg-white/10 p-4">
                   <div className="text-xs text-white/60 mb-1">Connected Device</div>
                   <div className="text-sm font-semibold text-white">{device.name ?? device.id ?? 'Unknown Device'}</div>
+                  {batteryPercent != null && (
+                    <div className="flex items-center gap-1.5 mt-2">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+                        <rect x="2" y="6" width="18" height="12" rx="2" stroke="white" strokeWidth="2"/>
+                        <rect x="20" y="10" width="2" height="4" rx="0.5" fill="white"/>
+                        <rect x="4" y="8" width={`${Math.round(batteryPercent / 100 * 14)}`} height="8" rx="1" fill={batteryPercent <= 20 ? '#ef4444' : batteryPercent <= 50 ? '#eab308' : 'white'}/>
+                      </svg>
+                      <span className="text-xs font-medium text-white/80">Battery: {batteryPercent}%</span>
+                    </div>
+                  )}
                 </div>
                 <button
                   onClick={handleDisconnect}
@@ -247,15 +302,6 @@ export default function ConnectPill({
         @keyframes fadeIn {
           from { opacity: 0; }
           to { opacity: 1; }
-        }
-        
-        @keyframes shimmer {
-          0% {
-            background-position: -150% center;
-          }
-          100% {
-            background-position: 150% center;
-          }
         }
       `}</style>
     </>

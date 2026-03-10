@@ -683,27 +683,40 @@ function findPeaks(signal, prominenceThreshold = 0.05) {
 }
 
 /**
- * Compute smoothness using Mean Jerk Magnitude
+ * Compute smoothness using Peak-Normalized Mean Jerk Magnitude
  * 
  * References:
  *   - Flash & Hogan (1985) - Minimum jerk model for arm movements
  *   - Rohrer et al. (2002) - Jerk metrics in stroke rehabilitation
  *   - Balasubramanian et al. (2012) - Smoothness metric validation
  * 
- * Formula: Mean Jerk = (1/N) × Σ|j(t)| where j(t) = da/dt
+ * Formula: Normalized Jerk = (1/N) × Σ|j(t)| / a_peak
+ *   where j(t) = da/dt and a_peak = max acceleration magnitude
  * 
- * Lower jerk = smoother movement (fewer sudden acceleration changes)
+ * Normalizing by peak acceleration makes the score invariant to:
+ *   - Movement speed (fast vs slow reps)
+ *   - Load (heavy vs light weight)
+ * 
+ * Lower normalized jerk = smoother movement
  * We normalize to 0-100 scale where higher = smoother.
  */
 function computeSmoothnessMetrics(accelX, accelY, accelZ, timestamps, filteredMag = null) {
   if (!accelX || accelX.length < 4) {
-    return { smoothnessScore: 50, meanJerk: 0 };
+    return { smoothnessScore: 50, meanJerk: 0, normalizedJerk: 0 };
   }
   
   const T = (timestamps[timestamps.length - 1] - timestamps[0]) / 1000; // duration in seconds
-  if (T <= 0) return { smoothnessScore: 50, meanJerk: 0 };
+  if (T <= 0) return { smoothnessScore: 50, meanJerk: 0, normalizedJerk: 0 };
   
   const dt = T / (timestamps.length - 1); // sampling interval
+  
+  // Compute peak acceleration magnitude for normalization
+  let peakAccel = 0;
+  for (let i = 0; i < accelX.length; i++) {
+    const mag = Math.sqrt(accelX[i] * accelX[i] + accelY[i] * accelY[i] + accelZ[i] * accelZ[i]);
+    if (mag > peakAccel) peakAccel = mag;
+  }
+  if (peakAccel <= 0) peakAccel = 1; // prevent division by zero
   
   // Compute jerk magnitude at each timestep
   // Jerk = derivative of acceleration: j = da/dt
@@ -721,22 +734,25 @@ function computeSmoothnessMetrics(accelX, accelY, accelZ, timestamps, filteredMa
   // Mean jerk magnitude (m/s³)
   const meanJerk = totalJerkMagnitude / (accelX.length - 1);
   
+  // Normalize by peak acceleration — makes score invariant to speed & load
+  const normalizedJerk = meanJerk / peakAccel;
+  
   // Normalize to 0-100 scale
-  // Based on empirical data from resistance training:
-  //   5 m/s³ = very smooth (controlled movement) → 100
-  //   40 m/s³ = very jerky (abrupt/uncontrolled) → 0
-  // Linear mapping: score = 100 - (meanJerk - 5) × (100 / 35)
-  const JERK_MIN = 5;   // m/s³ - smooth threshold
-  const JERK_MAX = 40;  // m/s³ - jerky threshold
-  const JERK_RANGE = JERK_MAX - JERK_MIN;
+  // Based on empirical data from resistance training (normalized values):
+  //   0.3 = very smooth (controlled movement) → 100
+  //   3.0 = very jerky (abrupt/uncontrolled) → 0
+  const NORM_JERK_MIN = 0.3;
+  const NORM_JERK_MAX = 3.0;
+  const NORM_JERK_RANGE = NORM_JERK_MAX - NORM_JERK_MIN;
   
   const smoothnessScore = Math.max(0, Math.min(100, 
-    100 - ((meanJerk - JERK_MIN) * (100 / JERK_RANGE))
+    100 - ((normalizedJerk - NORM_JERK_MIN) * (100 / NORM_JERK_RANGE))
   ));
   
   return {
     smoothnessScore: Math.round(smoothnessScore * 100) / 100,
-    meanJerk: Math.round(meanJerk * 100) / 100
+    meanJerk: Math.round(meanJerk * 100) / 100,
+    normalizedJerk: Math.round(normalizedJerk * 1000) / 1000
   };
 }
 

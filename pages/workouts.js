@@ -110,6 +110,7 @@ export default function Workouts() {
     permissionGranted,
     availability,
     devicesFound,
+    batteryPercent,
     scanDevices,
     connectToDevice,
     disconnect,
@@ -351,6 +352,7 @@ export default function Workouts() {
             scanning={scanning}
             devicesFound={devicesFound}
             availability={availability}
+            batteryPercent={batteryPercent}
           />
         </div>
 
