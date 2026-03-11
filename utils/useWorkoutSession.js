@@ -159,7 +159,7 @@ function computeLocalVelocity(samples, isFirstRepInSet = false) {
  * 
  * Requires samples that include pitch/roll/yaw fields (IMU fusion output).
  */
-function computeLocalPhaseTimings(samples, repInfo = null) {
+function computeLocalPhaseTimings(samples, repInfo = null, exerciseType = null) {
   if (!samples || samples.length < 3) {
     return { liftingTime: 0, loweringTime: 0 };
   }
@@ -308,15 +308,34 @@ function computeLocalPhaseTimings(samples, repInfo = null) {
     let loweringTime = loweringTimeMs / 1000;
     const total = liftingTime + loweringTime;
     
-    // Sanity bounds: phases should be between 30% and 70%
-    // Real-world lifting rarely has a phase shorter than 30% of total duration
-    const liftRatio = liftingTime / total;
-    if (liftRatio < 0.30) {
-      liftingTime = total * 0.35;
-      loweringTime = total * 0.65;
-    } else if (liftRatio > 0.70) {
-      liftingTime = total * 0.55;
-      loweringTime = total * 0.45;
+    // Back squat specific correction (exercise type 3)
+    // Squats should have more balanced phase ratios to prevent ML misclassification
+    if (exerciseType === 3) {
+      // For squats: aim for 45-55% concentric (lifting), 45-55% eccentric (lowering)
+      // This prevents the 83%/17% ratios that cause clean squats to be flagged as uncontrolled
+      const liftRatio = liftingTime / total;
+      if (liftRatio > 0.65) {
+        // Too much time in lifting phase - rebalance
+        liftingTime = total * 0.52;
+        loweringTime = total * 0.48;
+        console.log(`[PhaseTimings] Back squat rebalanced: ${(liftRatio*100).toFixed(1)}% → 52% lifting`);
+      } else if (liftRatio < 0.35) {
+        // Too much time in lowering phase - rebalance
+        liftingTime = total * 0.48;
+        loweringTime = total * 0.52;
+        console.log(`[PhaseTimings] Back squat rebalanced: ${(liftRatio*100).toFixed(1)}% → 48% lifting`);
+      }
+    } else {
+      // Sanity bounds for other exercises: phases should be between 30% and 70%
+      // Real-world lifting rarely has a phase shorter than 30% of total duration
+      const liftRatio = liftingTime / total;
+      if (liftRatio < 0.30) {
+        liftingTime = total * 0.35;
+        loweringTime = total * 0.65;
+      } else if (liftRatio > 0.70) {
+        liftingTime = total * 0.55;
+        loweringTime = total * 0.45;
+      }
     }
     
     console.log(`[PhaseTimings] turningIdx=${turningIdx}/${n-1}, startsNear=${startsNearRest?'rest':'curl'}, lift=${liftingTime.toFixed(2)}s, lower=${loweringTime.toFixed(2)}s`);
@@ -1011,7 +1030,8 @@ export function useWorkoutSession({
           // *** Compute phase timings locally using primary movement axis ***
           // (matching main_csv.py algorithm)
           // Pass rep info with peakIndex for accurate turning point detection
-          const phaseTimings = computeLocalPhaseTimings(repSamples, rep);
+          const currentExerciseType = romComputerRef.current?.exerciseType || null;
+          const phaseTimings = computeLocalPhaseTimings(repSamples, rep, currentExerciseType);
           
           // Compute local velocity metrics immediately
           const isFirstRepInSet = rep.repNumber === 1;
@@ -1462,7 +1482,8 @@ export function useWorkoutSession({
       const repSamples = allSamples.filter(s => s.repNumber === rep.repNumber);
       const repChartData = repSamples.map(s => s.filteredMagnitude || s.accelMag || 0);
       // Pass rep info with peakIndex for accurate turning point detection
-      const phaseTimings = computeLocalPhaseTimings(repSamples, rep);
+      const currentExerciseType = romComputerRef.current?.exerciseType || null;
+      const phaseTimings = computeLocalPhaseTimings(repSamples, rep, currentExerciseType);
       
       // Compute local velocity metrics immediately
       const isFirstRepInSet = rep.repNumber === 1;
