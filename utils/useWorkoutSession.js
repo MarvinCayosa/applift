@@ -308,23 +308,20 @@ function computeLocalPhaseTimings(samples, repInfo = null, exerciseType = null) 
     let loweringTime = loweringTimeMs / 1000;
     const total = liftingTime + loweringTime;
     
-    // Back squat specific correction (exercise type 3)
-    // Squats should have more balanced phase ratios to prevent ML misclassification
+    // Back squat specific correction (exercise type 3) - use OLD logic
+    // Revert to original 30-70% bounds for back squats to restore previous behavior
     if (exerciseType === 3) {
-      // For squats: aim for 45-55% concentric (lifting), 45-55% eccentric (lowering)
-      // This prevents the 83%/17% ratios that cause clean squats to be flagged as uncontrolled
+      // Original sanity bounds: phases should be between 30% and 70%
+      // Real-world lifting rarely has a phase shorter than 30% of total duration
       const liftRatio = liftingTime / total;
-      if (liftRatio > 0.65) {
-        // Too much time in lifting phase - rebalance
-        liftingTime = total * 0.52;
-        loweringTime = total * 0.48;
-        console.log(`[PhaseTimings] Back squat rebalanced: ${(liftRatio*100).toFixed(1)}% → 52% lifting`);
-      } else if (liftRatio < 0.35) {
-        // Too much time in lowering phase - rebalance
-        liftingTime = total * 0.48;
-        loweringTime = total * 0.52;
-        console.log(`[PhaseTimings] Back squat rebalanced: ${(liftRatio*100).toFixed(1)}% → 48% lifting`);
+      if (liftRatio < 0.30) {
+        liftingTime = total * 0.35;
+        loweringTime = total * 0.65;
+      } else if (liftRatio > 0.70) {
+        liftingTime = total * 0.55;
+        loweringTime = total * 0.45;
       }
+      console.log(`[PhaseTimings] Back squat (OLD logic): turningIdx=${exerciseType}, lift=${liftingTime.toFixed(2)}s, lower=${loweringTime.toFixed(2)}s`);
     } else {
       // Sanity bounds for other exercises: phases should be between 30% and 70%
       // Real-world lifting rarely has a phase shorter than 30% of total duration
