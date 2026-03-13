@@ -64,6 +64,7 @@ function MyApp({ Component, pageProps }) {
   const router = useRouter();
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [showInstallButton, setShowInstallButton] = useState(false);
+  const isSplashRoute = router.pathname === '/splash';
 
   useEffect(() => {
     // Log PWA status for debugging
@@ -151,16 +152,26 @@ function MyApp({ Component, pageProps }) {
     }
   }
 
+  const appTree = (
+    <BluetoothProvider>
+      <WorkoutLoggingProvider>
+        <UserProfileProvider>
+          <Component {...pageProps} />
+        </UserProfileProvider>
+      </WorkoutLoggingProvider>
+    </BluetoothProvider>
+  );
+
+  // Avoid initializing Firebase Auth on the splash route to keep LCP-critical
+  // network chains short. Auth initializes once user continues to app flows.
+  if (isSplashRoute) {
+    return appTree;
+  }
+
   return (
     <AuthProvider>
       <GlobalOfflineSync />
-      <BluetoothProvider>
-        <WorkoutLoggingProvider>
-          <UserProfileProvider>
-            <Component {...pageProps} />
-          </UserProfileProvider>
-        </WorkoutLoggingProvider>
-      </BluetoothProvider>
+      {appTree}
     </AuthProvider>
   );
 }

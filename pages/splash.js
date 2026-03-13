@@ -1,11 +1,9 @@
 import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { useState, useRef, useEffect } from 'react'
-import { useAuth } from '../context/AuthContext'
 
 export default function Splash() {
   const router = useRouter()
-  const { user, loading, isAuthenticated, isOnboardingComplete } = useAuth()
   const [currentSlide, setCurrentSlide] = useState(0)
   const touchStartX = useRef(0)
   const touchEndX = useRef(0)
@@ -63,15 +61,65 @@ export default function Splash() {
     },
   ]
 
-  // Check for authentication and redirect to dashboard if user is logged in
+  // Keep signed-in users out of splash, but defer auth bootstrap so LCP is not
+  // blocked by Firebase auth iframe/project-config requests.
   useEffect(() => {
-    if (loading) return // Wait for auth to be determined
-    
-    if (isAuthenticated && isOnboardingComplete) {
-      // User is authenticated and has completed onboarding, redirect to dashboard
-      router.replace('/dashboard')
+    if (typeof window === 'undefined') return
+
+    let cancelled = false
+    let unsubscribe = null
+
+    const runDeferredAuthCheck = async () => {
+      try {
+        const [{ auth }, authModule, firestoreModule, { db }] = await Promise.all([
+          import('../config/firebase'),
+          import('firebase/auth'),
+          import('firebase/firestore'),
+          import('../config/firestore'),
+        ])
+
+        if (cancelled) return
+
+        const { onAuthStateChanged } = authModule
+        const { doc, getDoc } = firestoreModule
+
+        unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+          if (cancelled || !firebaseUser) return
+
+          try {
+            const profileRef = doc(db, 'users', firebaseUser.uid)
+            const profileSnap = await getDoc(profileRef)
+
+            if (!cancelled && profileSnap.exists() && profileSnap.data()?.onboardingCompleted) {
+              router.replace('/dashboard')
+            }
+          } catch (error) {
+            console.warn('Deferred splash auth check failed:', error)
+          }
+        })
+      } catch (error) {
+        console.warn('Unable to initialize deferred auth check:', error)
+      }
     }
-  }, [loading, isAuthenticated, isOnboardingComplete, router])
+
+    const timerId = window.setTimeout(() => {
+      if ('requestIdleCallback' in window) {
+        window.requestIdleCallback(() => {
+          void runDeferredAuthCheck()
+        }, { timeout: 1500 })
+      } else {
+        void runDeferredAuthCheck()
+      }
+    }, 900)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timerId)
+      if (typeof unsubscribe === 'function') {
+        unsubscribe()
+      }
+    }
+  }, [router])
 
   // Prevent scrolling on splash screen
   useEffect(() => {
