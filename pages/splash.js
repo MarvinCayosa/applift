@@ -292,7 +292,7 @@ export default function Splash() {
 
     return (
       <div className="flex items-center justify-center gap-3 mb-6">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-0">
           {SPLASH_SLIDES.map((_, index) => {
             const active = currentSlide === index
             return (
@@ -301,18 +301,19 @@ export default function Splash() {
                 onClick={() => setCurrentSlide(index)}
                 className="transition-all duration-300 flex items-center justify-center"
                 style={{
-                  width: '44px',
-                  height: '44px',
+                  width: '15px',
+                  height: '15px',
                   borderRadius: '22px',
                 }}
                 aria-label={`Go to slide ${index + 1}`}
               >
                 <span
+                  className={active ? 'indicator-dot indicator-dot-active' : 'indicator-dot indicator-dot-idle'}
                   style={{
-                    width: active ? '12px' : '8px',
-                    height: active ? '12px' : '8px',
-                    borderRadius: '999px',
-                    backgroundColor: active ? currentSlideData.highlightColor : 'rgba(255, 255, 255, 0.5)',
+                    width: active ? '10px' : '5px',
+                    height: '5px',
+                    borderRadius: '4px',
+                    backgroundColor: active ? currentSlideData.highlightColor : 'rgba(255, 255, 255, 0.3)',
                   }}
                 />
               </button>
@@ -495,6 +496,34 @@ export default function Splash() {
 
         .splash-bg-fade {
           animation: splashBgFadeIn 240ms ease-out;
+        }
+
+        @keyframes indicatorPulse {
+          0% {
+            transform: scale(1);
+            opacity: 0.92;
+          }
+          50% {
+            transform: scale(1.08);
+            opacity: 1;
+          }
+          100% {
+            transform: scale(1);
+            opacity: 0.92;
+          }
+        }
+
+        .indicator-dot {
+          transition: width 240ms ease, background-color 240ms ease, transform 240ms ease;
+        }
+
+        .indicator-dot-active {
+          animation: indicatorPulse 1.6s ease-in-out infinite;
+        }
+
+        .indicator-dot-idle {
+          animation: none;
+          opacity: 0.75;
         }
       `}</style>
     </div>
