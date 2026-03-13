@@ -172,15 +172,21 @@ export default function Splash() {
     }
   }, [router.query.slide])
 
-  // Preload only the next slide background to avoid fetching all full-size
-  // images up-front while keeping swipe transitions responsive.
+  // Preload all slide backgrounds once so swipe transitions feel instant.
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const nextIndex = currentSlide + 1
-    if (nextIndex >= SPLASH_SLIDES.length) return
-    const img = new window.Image()
-    img.src = SPLASH_SLIDES[nextIndex].imageSet.preload
-  }, [currentSlide])
+    const images = SPLASH_SLIDES.map((slide) => {
+      const img = new window.Image()
+      img.src = slide.imageSet.preload
+      return img
+    })
+
+    return () => {
+      images.forEach((img) => {
+        img.src = ''
+      })
+    }
+  }, [])
 
   const handleNext = () => {
     if (currentSlide < SPLASH_SLIDES.length - 1) {
@@ -293,15 +299,23 @@ export default function Splash() {
               <button
                 key={index}
                 onClick={() => setCurrentSlide(index)}
-                className="transition-all duration-300"
+                className="transition-all duration-300 flex items-center justify-center"
                 style={{
-                  width: active ? '12px' : '5px',
-                  height: '5px',
-                  borderRadius: '4px',
-                  backgroundColor: active ? currentSlideData.highlightColor : 'rgba(255, 255, 255, 0.3)',
+                  width: '44px',
+                  height: '44px',
+                  borderRadius: '22px',
                 }}
                 aria-label={`Go to slide ${index + 1}`}
-              />
+              >
+                <span
+                  style={{
+                    width: active ? '12px' : '8px',
+                    height: active ? '12px' : '8px',
+                    borderRadius: '999px',
+                    backgroundColor: active ? currentSlideData.highlightColor : 'rgba(255, 255, 255, 0.5)',
+                  }}
+                />
+              </button>
             )
           })}
         </div>
@@ -347,8 +361,7 @@ export default function Splash() {
           className="absolute bottom-0 left-0 right-0"
           style={{
             height: '60%',
-            background: `linear-gradient(to top, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.7) 30%, ${currentSlideData.highlightColor}20 50%, transparent 100%)`,
-            filter: 'blur(2px)',
+            background: 'linear-gradient(to top, rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.62) 35%, transparent 100%)',
           }}
         />
       </div>
@@ -358,8 +371,7 @@ export default function Splash() {
         className="absolute bottom-0 left-0 right-0 pointer-events-none z-5"
         style={{
           height: '70%',
-          background: 'linear-gradient(to top, rgba(0, 0, 0, 0.98) 0%, rgba(0, 0, 0, 0.85) 20%, rgba(139, 92, 246, 0.2) 35%, rgba(16, 185, 129, 0.15) 50%, transparent 100%)',
-          filter: 'blur(1px)',
+          background: 'linear-gradient(to top, rgba(0, 0, 0, 0.96) 0%, rgba(0, 0, 0, 0.78) 25%, transparent 100%)',
         }}
       />
       <div 
