@@ -2,64 +2,64 @@ import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { useState, useRef, useEffect } from 'react'
 
+const SPLASH_SLIDES = [
+  {
+    background: '/images/landing-page/introduction-pic.jpg',
+    title: 'Welcome to',
+    titleHighlight: 'AppLift!',
+    highlightColor: '#8b5cf6',
+    subtitle: 'Build better habits and make progressive improvements to turn every workout into measurable progress.',
+    buttonText: 'Get Started',
+    showSkip: true,
+    highlightOnNewLine: true,
+    titleSmaller: true,
+    highlightBigger: true,
+  },
+  {
+    background: '/images/landing-page/introduction-pic1.jpg',
+    title: 'Track and learn',
+    titleHighlight: 'your progress',
+    highlightColor: '#10b981',
+    subtitle: 'Monitor and understand your performance to see small efforts lead to big results over time.',
+    buttonText: 'Continue',
+    showSkip: true,
+    highlightOnNewLine: true,
+  },
+  {
+    background: '/images/landing-page/introduction-pic2.jpg',
+    title: 'Train smarter,',
+    titleHighlight: 'not just harder',
+    highlightColor: '#f59e0b',
+    subtitle: 'Get insights to help you improve your execution, strength and condition every session.',
+    buttonText: 'Continue',
+    showSkip: true,
+    highlightOnNewLine: true,
+  },
+  {
+    background: '/images/landing-page/introduction-pic3.jpg',
+    title: 'Start achieving',
+    titleParts: [
+      { text: 'Start achieving ', color: 'white' },
+      { text: 'strength', color: '#8b5cf6' },
+      { text: ' with ', color: 'white' },
+      { text: 'insights', color: '#8b5cf6' },
+    ],
+    titleHighlight: '',
+    highlightColor: '#8b5cf6',
+    subtitle: 'Powered by IoT Technology for elevating your lifts based on data.',
+    buttonText: 'Create an Account',
+    showSkip: false,
+    isFinal: true,
+    hideLogo: true,
+    highlightOnNewLine: false,
+  },
+]
+
 export default function Splash() {
   const router = useRouter()
   const [currentSlide, setCurrentSlide] = useState(0)
   const touchStartX = useRef(0)
   const touchEndX = useRef(0)
-
-  const slides = [
-    {
-      background: '/images/landing-page/introduction-pic.jpg',
-      title: 'Welcome to',
-      titleHighlight: 'AppLift!',
-      highlightColor: '#8b5cf6',
-      subtitle: 'Build better habits and make progressive improvements to turn every workout into measurable progress.',
-      buttonText: 'Get Started',
-      showSkip: true,
-      highlightOnNewLine: true,
-      titleSmaller: true,
-      highlightBigger: true,
-    },
-    {
-      background: '/images/landing-page/introduction-pic1.jpg',
-      title: 'Track and learn',
-      titleHighlight: 'your progress',
-      highlightColor: '#10b981',
-      subtitle: 'Monitor and understand your performance to see small efforts lead to big results over time.',
-      buttonText: 'Continue',
-      showSkip: true,
-      highlightOnNewLine: true,
-    },
-    {
-      background: '/images/landing-page/introduction-pic2.jpg',
-      title: 'Train smarter,',
-      titleHighlight: 'not just harder',
-      highlightColor: '#f59e0b',
-      subtitle: 'Get insights to help you improve your execution, strength and condition every session.',
-      buttonText: 'Continue',
-      showSkip: true,
-      highlightOnNewLine: true,
-    },
-    {
-      background: '/images/landing-page/introduction-pic3.jpg',
-      title: 'Start achieving',
-      titleParts: [
-        { text: 'Start achieving ', color: 'white' },
-        { text: 'strength', color: '#8b5cf6' },
-        { text: ' with ', color: 'white' },
-        { text: 'insights', color: '#8b5cf6' },
-      ],
-      titleHighlight: '',
-      highlightColor: '#8b5cf6',
-      subtitle: 'Powered by IoT Technology for elevating your lifts based on data.',
-      buttonText: 'Create an Account',
-      showSkip: false,
-      isFinal: true,
-      hideLogo: true,
-      highlightOnNewLine: false,
-    },
-  ]
 
   // Keep signed-in users out of splash, but defer auth bootstrap so LCP is not
   // blocked by Firebase auth iframe/project-config requests.
@@ -146,20 +146,30 @@ export default function Splash() {
     // Handle slide query parameter
     if (router.query.slide) {
       const slideNum = parseInt(router.query.slide, 10)
-      if (!isNaN(slideNum) && slideNum >= 0 && slideNum < slides.length) {
+      if (!isNaN(slideNum) && slideNum >= 0 && slideNum < SPLASH_SLIDES.length) {
         setCurrentSlide(slideNum)
       }
     }
-  }, [router.query.slide, slides.length])
+  }, [router.query.slide])
+
+  // Preload only the next slide background to avoid fetching all full-size
+  // images up-front while keeping swipe transitions responsive.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const nextIndex = currentSlide + 1
+    if (nextIndex >= SPLASH_SLIDES.length) return
+    const img = new window.Image()
+    img.src = SPLASH_SLIDES[nextIndex].background
+  }, [currentSlide])
 
   const handleNext = () => {
-    if (currentSlide < slides.length - 1) {
+    if (currentSlide < SPLASH_SLIDES.length - 1) {
       setCurrentSlide(currentSlide + 1)
     }
   }
 
   const handleSkip = () => {
-    setCurrentSlide(slides.length - 1)
+    setCurrentSlide(SPLASH_SLIDES.length - 1)
   }
 
   const handleTouchStart = (e) => {
@@ -187,7 +197,7 @@ export default function Splash() {
     touchEndX.current = 0
   }
 
-  const currentSlideData = slides[currentSlide]
+  const currentSlideData = SPLASH_SLIDES[currentSlide]
 
   const renderTextContent = () => (
     <div className="mb-6">
@@ -257,7 +267,7 @@ export default function Splash() {
     return (
       <div className="flex items-center justify-center gap-3 mb-6">
         <div className="flex items-center gap-2">
-          {slides.map((_, index) => {
+          {SPLASH_SLIDES.map((_, index) => {
             const active = currentSlide === index
             return (
               <button
@@ -297,36 +307,27 @@ export default function Splash() {
         <meta name="description" content="Elevate every rep - Powered by IoT Technology" />
       </Head>
 
-      {/* Background carousel - crossfade transition */}
+      {/* Render only the active background image to reduce startup payload. */}
       <div className="absolute inset-0">
-        {slides.map((slide, index) => (
-          <div
-            key={index}
-            className="absolute inset-0 transition-opacity duration-700 ease-in-out"
-            style={{
-              opacity: currentSlide === index ? 1 : 0,
-              zIndex: currentSlide === index ? 1 : 0,
-            }}
-          >
-            <img 
-              src={slide.background} 
-              alt="" 
-              className="w-full h-full object-cover" 
-              loading={index === 0 ? 'eager' : 'lazy'}
-              decoding="async"
-            />
-            <div className="absolute inset-0 bg-black/50" />
-            {/* Per-slide gradient with button color aura */}
-            <div 
-              className="absolute bottom-0 left-0 right-0"
-              style={{
-                height: '60%',
-                background: `linear-gradient(to top, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.7) 30%, ${slide.highlightColor}20 50%, transparent 100%)`,
-                filter: 'blur(2px)',
-              }}
-            />
-          </div>
-        ))}
+        <img
+          key={currentSlideData.background}
+          src={currentSlideData.background}
+          alt=""
+          className="w-full h-full object-cover splash-bg-fade"
+          loading={currentSlide === 0 ? 'eager' : 'lazy'}
+          decoding={currentSlide === 0 ? 'sync' : 'async'}
+          fetchPriority={currentSlide === 0 ? 'high' : 'auto'}
+        />
+        <div className="absolute inset-0 bg-black/50" />
+        {/* Per-slide gradient with button color aura */}
+        <div
+          className="absolute bottom-0 left-0 right-0"
+          style={{
+            height: '60%',
+            background: `linear-gradient(to top, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.7) 30%, ${currentSlideData.highlightColor}20 50%, transparent 100%)`,
+            filter: 'blur(2px)',
+          }}
+        />
       </div>
 
       {/* Bottom gradient overlay */}
@@ -446,6 +447,19 @@ export default function Splash() {
         }
         .logo-zoom {
           animation: logoZoom 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        }
+
+        @keyframes splashBgFadeIn {
+          from {
+            opacity: 0.15;
+          }
+          to {
+            opacity: 1;
+          }
+        }
+
+        .splash-bg-fade {
+          animation: splashBgFadeIn 240ms ease-out;
         }
       `}</style>
     </div>

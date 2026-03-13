@@ -67,6 +67,8 @@ function MyApp({ Component, pageProps }) {
   const isSplashRoute = router.pathname === '/splash';
 
   useEffect(() => {
+    if (isSplashRoute) return;
+
     // Log PWA status for debugging
     logPWAStatus();
     
@@ -128,7 +130,7 @@ function MyApp({ Component, pageProps }) {
       mqStandalone.removeEventListener?.('change', detectFullscreen);
       mqFullscreen.removeEventListener?.('change', detectFullscreen);
     };
-  }, []);
+  }, [isSplashRoute]);
 
   // Simple back button handler - let router manage history
   useEffect(() => {
