@@ -162,10 +162,16 @@ function MyApp({ Component, pageProps }) {
     </BluetoothProvider>
   );
 
+  const splashTree = (
+    <UserProfileProvider>
+      <Component {...pageProps} />
+    </UserProfileProvider>
+  );
+
   // Avoid initializing Firebase Auth on the splash route to keep LCP-critical
   // network chains short. Auth initializes once user continues to app flows.
   if (isSplashRoute) {
-    return appTree;
+    return splashTree;
   }
 
   return (
