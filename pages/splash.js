@@ -4,7 +4,12 @@ import { useState, useRef, useEffect } from 'react'
 
 const SPLASH_SLIDES = [
   {
-    background: '/images/landing-page/introduction-pic.jpg',
+    imageSet: {
+      jpg: '/images/landing-page/introduction-pic.jpg',
+      webp: '/images/landing-page/optimized/introduction-pic-960.webp 960w, /images/landing-page/optimized/introduction-pic-1440.webp 1440w',
+      avif: '/images/landing-page/optimized/introduction-pic-960.avif 960w, /images/landing-page/optimized/introduction-pic-1440.avif 1440w',
+      preload: '/images/landing-page/optimized/introduction-pic-960.webp',
+    },
     title: 'Welcome to',
     titleHighlight: 'AppLift!',
     highlightColor: '#8b5cf6',
@@ -16,7 +21,12 @@ const SPLASH_SLIDES = [
     highlightBigger: true,
   },
   {
-    background: '/images/landing-page/introduction-pic1.jpg',
+    imageSet: {
+      jpg: '/images/landing-page/introduction-pic1.jpg',
+      webp: '/images/landing-page/optimized/introduction-pic1-960.webp 960w, /images/landing-page/optimized/introduction-pic1-1440.webp 1440w',
+      avif: '/images/landing-page/optimized/introduction-pic1-960.avif 960w, /images/landing-page/optimized/introduction-pic1-1440.avif 1440w',
+      preload: '/images/landing-page/optimized/introduction-pic1-960.webp',
+    },
     title: 'Track and learn',
     titleHighlight: 'your progress',
     highlightColor: '#10b981',
@@ -26,7 +36,12 @@ const SPLASH_SLIDES = [
     highlightOnNewLine: true,
   },
   {
-    background: '/images/landing-page/introduction-pic2.jpg',
+    imageSet: {
+      jpg: '/images/landing-page/introduction-pic2.jpg',
+      webp: '/images/landing-page/optimized/introduction-pic2-960.webp 960w, /images/landing-page/optimized/introduction-pic2-1440.webp 1440w',
+      avif: '/images/landing-page/optimized/introduction-pic2-960.avif 960w, /images/landing-page/optimized/introduction-pic2-1440.avif 1440w',
+      preload: '/images/landing-page/optimized/introduction-pic2-960.webp',
+    },
     title: 'Train smarter,',
     titleHighlight: 'not just harder',
     highlightColor: '#f59e0b',
@@ -36,7 +51,12 @@ const SPLASH_SLIDES = [
     highlightOnNewLine: true,
   },
   {
-    background: '/images/landing-page/introduction-pic3.jpg',
+    imageSet: {
+      jpg: '/images/landing-page/introduction-pic3.jpg',
+      webp: '/images/landing-page/optimized/introduction-pic3-960.webp 960w, /images/landing-page/optimized/introduction-pic3-1440.webp 1440w',
+      avif: '/images/landing-page/optimized/introduction-pic3-960.avif 960w, /images/landing-page/optimized/introduction-pic3-1440.avif 1440w',
+      preload: '/images/landing-page/optimized/introduction-pic3-960.webp',
+    },
     title: 'Start achieving',
     titleParts: [
       { text: 'Start achieving ', color: 'white' },
@@ -159,7 +179,7 @@ export default function Splash() {
     const nextIndex = currentSlide + 1
     if (nextIndex >= SPLASH_SLIDES.length) return
     const img = new window.Image()
-    img.src = SPLASH_SLIDES[nextIndex].background
+    img.src = SPLASH_SLIDES[nextIndex].imageSet.preload
   }, [currentSlide])
 
   const handleNext = () => {
@@ -309,15 +329,18 @@ export default function Splash() {
 
       {/* Render only the active background image to reduce startup payload. */}
       <div className="absolute inset-0">
-        <img
-          key={currentSlideData.background}
-          src={currentSlideData.background}
-          alt=""
-          className="w-full h-full object-cover splash-bg-fade"
-          loading={currentSlide === 0 ? 'eager' : 'lazy'}
-          decoding={currentSlide === 0 ? 'sync' : 'async'}
-          fetchPriority={currentSlide === 0 ? 'high' : 'auto'}
-        />
+        <picture key={currentSlideData.imageSet.jpg}>
+          <source type="image/avif" srcSet={currentSlideData.imageSet.avif} sizes="100vw" />
+          <source type="image/webp" srcSet={currentSlideData.imageSet.webp} sizes="100vw" />
+          <img
+            src={currentSlideData.imageSet.jpg}
+            alt=""
+            className="w-full h-full object-cover splash-bg-fade"
+            loading={currentSlide === 0 ? 'eager' : 'lazy'}
+            decoding={currentSlide === 0 ? 'sync' : 'async'}
+            fetchPriority={currentSlide === 0 ? 'high' : 'auto'}
+          />
+        </picture>
         <div className="absolute inset-0 bg-black/50" />
         {/* Per-slide gradient with button color aura */}
         <div

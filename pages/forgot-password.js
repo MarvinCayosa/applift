@@ -50,7 +50,7 @@ export default function ForgotPassword() {
       <Head>
         <title>Reset Password | Applift</title>
         <meta name="description" content="Reset your Applift password" />
-        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
       </Head>
 
       <style jsx>{`

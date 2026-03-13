@@ -1,69 +1,15 @@
 // pages/_app.js
 import '../styles/globals.css';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/router';
+import dynamic from 'next/dynamic';
 import { UserProfileProvider } from '../utils/userProfileStore';
-import { AuthProvider, useAuth } from '../context/AuthContext';
 import { isPWA, logPWAStatus } from '../utils/pwaDetection';
-import { BluetoothProvider } from '../context/BluetoothProvider';
-import { WorkoutLoggingProvider } from '../context/WorkoutLoggingContext';
-import { useNetworkConnectionWatcher } from '../hooks/useNetworkConnectionWatcher';
-import { flushQueue } from '../utils/offlineQueue';
 
-/**
- * Global offline-queue flusher.
- * Runs on every online → restored transition, regardless of which page the
- * user is on, so queued GCS uploads from a disconnected workout get synced
- * even if the user already navigated to workout-finished or dashboard.
- */
-function GlobalOfflineSync() {
-  const { user } = useAuth();
-
-  const uploadJob = useCallback(async (job) => {
-    if (job.type !== 'gcs_upload') return;
-    const { filePath, content, contentType, userId: jobUserId } = job.payload;
-    const token = user ? await user.getIdToken() : null;
-    if (!token) throw new Error('No auth token');
-
-    const resp = await fetch('/api/imu-stream', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ action: 'upload', userId: jobUserId, filePath, contentType: contentType || 'application/json' }),
-    });
-    if (!resp.ok) throw new Error(`Signed URL failed: ${resp.status}`);
-    const { signedUrl } = await resp.json();
-
-    const up = await fetch(signedUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': contentType || 'application/json' },
-      body: content,
-    });
-    if (!up.ok) throw new Error(`GCS upload failed: ${up.status}`);
-    console.log('[GlobalSync] ✅ Uploaded:', filePath);
-  }, [user]);
-
-  const handleOnline = useCallback(async () => {
-    if (!user) return;
-    try {
-      const result = await flushQueue(uploadJob);
-      if (result.uploaded > 0) {
-        console.log(`[GlobalSync] Flushed ${result.uploaded} offline job(s)`);
-      }
-    } catch (err) {
-      console.warn('[GlobalSync] Flush failed:', err);
-    }
-  }, [user, uploadJob]);
-
-  // Listen for connectivity restoration
-  useNetworkConnectionWatcher({ onOnline: handleOnline, activeProbe: false });
-
-  return null;
-}
+const AppProviders = dynamic(() => import('../components/AppProviders'));
 
 function MyApp({ Component, pageProps }) {
   const router = useRouter();
-  const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const [showInstallButton, setShowInstallButton] = useState(false);
   const isSplashRoute = router.pathname === '/splash';
 
   useEffect(() => {
@@ -74,7 +20,6 @@ function MyApp({ Component, pageProps }) {
     
     // Hide install button if already running as PWA
     if (isPWA()) {
-      setShowInstallButton(false);
       console.log('✅ Running as installed PWA - install button hidden');
     }
     
@@ -109,15 +54,11 @@ function MyApp({ Component, pageProps }) {
     // Capture beforeinstallprompt to show a custom install UI
     function handleBeforeInstallPrompt(e) {
       e.preventDefault();
-      setDeferredPrompt(e);
-      setShowInstallButton(true);
       console.log('beforeinstallprompt captured');
     }
 
     // Optional: hide install UI if app already installed
     function handleAppInstalled() {
-      setDeferredPrompt(null);
-      setShowInstallButton(false);
       console.log('PWA installed');
     }
 
@@ -140,30 +81,6 @@ function MyApp({ Component, pageProps }) {
     // The app will handle back navigation via router
   }, []);
 
-  // Trigger the browser install prompt (user gesture required)
-  async function handleInstallClick() {
-    if (!deferredPrompt) return;
-    try {
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      console.log('User response to the install prompt:', outcome);
-      setDeferredPrompt(null);
-      setShowInstallButton(false);
-    } catch (err) {
-      console.error('Error during install prompt:', err);
-    }
-  }
-
-  const appTree = (
-    <BluetoothProvider>
-      <WorkoutLoggingProvider>
-        <UserProfileProvider>
-          <Component {...pageProps} />
-        </UserProfileProvider>
-      </WorkoutLoggingProvider>
-    </BluetoothProvider>
-  );
-
   const splashTree = (
     <UserProfileProvider>
       <Component {...pageProps} />
@@ -176,12 +93,7 @@ function MyApp({ Component, pageProps }) {
     return splashTree;
   }
 
-  return (
-    <AuthProvider>
-      <GlobalOfflineSync />
-      {appTree}
-    </AuthProvider>
-  );
+  return <AppProviders><Component {...pageProps} /></AppProviders>;
 }
 
 export default MyApp;

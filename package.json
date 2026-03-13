@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "optimize:splash-images": "node scripts/optimize-splash-images.mjs"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.7.0",

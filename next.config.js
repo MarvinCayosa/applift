@@ -4,17 +4,28 @@ const withPWA = require('next-pwa')({
   register: true,
   skipWaiting: true,
   disable: process.env.NODE_ENV === 'development', // only enable PWA in production
+  buildExcludes: [/\.map$/],
 })
 
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
+  productionBrowserSourceMaps: true,
   // Vercel-specific optimizations
   experimental: {
     serverComponentsExternalPackages: ['@google-cloud/storage'],
   },
   async headers() {
     return [
+      {
+        source: '/images/landing-page/optimized/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
       {
         source: '/:path*',
         headers: [
