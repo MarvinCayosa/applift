@@ -46,6 +46,7 @@ import {
 import { classifyReps } from '../services/mlClassificationService';
 import { isNetworkOffline } from '../hooks/useNetworkConnectionWatcher';
 import { enqueueJob, getAllPendingJobs } from '../utils/offlineQueue';
+import { appendLatencyRow } from '../utils/latencyDiagnostics';
 
 const WorkoutLoggingContext = createContext(null);
 
@@ -231,8 +232,46 @@ export function WorkoutLoggingProvider({ children }) {
       const token = await user.getIdToken();
       
       // Call ML classification API
+      const setClassificationStartMs = Date.now();
       console.log(`[WorkoutLogging] 🔄 Calling ML API for Set ${setNumber}...`);
       const result = await classifyReps(exercise, setData.reps, token);
+      const setRoundTripMs = Date.now() - setClassificationStartMs;
+
+      if (result?.latencyDiagnostics) {
+        const d = result.latencyDiagnostics;
+        console.log(`[WorkoutLogging] ⏱️ Set ${setNumber} latency (app -> cloud -> app): ${setRoundTripMs}ms`);
+        console.log('[WorkoutLogging] ⏱️ Latency breakdown:', {
+          setRoundTripMs,
+          clientRoundTripMs: d.clientRoundTripMs ?? null,
+          apiTotalMs: d.apiTotalMs ?? null,
+          featureExtractionMs: d.featureExtractionMs ?? null,
+          warmupMs: d.warmupMs ?? null,
+          totalCloudMs: d.totalCloudMs ?? null,
+          perRepCloudMs: d.perRepCloudMs ?? [],
+          perRepAttempts: d.perRepAttempts ?? [],
+          repsRequested: d.repsRequested ?? null,
+          repsCloudClassified: d.repsCloudClassified ?? null,
+          fallbackReps: d.fallbackReps ?? null,
+        });
+
+        appendLatencyRow({
+          setNumber,
+          exercise,
+          repsRequested: d.repsRequested ?? setData.reps.length,
+          repsCloudClassified: d.repsCloudClassified ?? null,
+          fallbackReps: d.fallbackReps ?? null,
+          setRoundTripMs,
+          clientRoundTripMs: d.clientRoundTripMs ?? null,
+          apiTotalMs: d.apiTotalMs ?? null,
+          featureExtractionMs: d.featureExtractionMs ?? null,
+          warmupMs: d.warmupMs ?? null,
+          totalCloudMs: d.totalCloudMs ?? null,
+          perRepCloudMs: d.perRepCloudMs ?? [],
+          perRepAttempts: d.perRepAttempts ?? [],
+        });
+
+        console.log('[WorkoutLogging] 📄 Latency row saved. Export with window.__latencyDiagnostics.download()');
+      }
       
       console.log(`[WorkoutLogging] 📬 ML API response for Set ${setNumber}:`, {
         modelAvailable: result?.modelAvailable,

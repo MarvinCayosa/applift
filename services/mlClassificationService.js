@@ -294,6 +294,7 @@ export async function classifyReps(exercise, reps, authToken) {
   // so this only needs to guard against truly hung requests.
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 30000);
+  const requestStartedAtMs = Date.now();
 
   try {
     const response = await fetch('/api/classify-rep', {
@@ -336,11 +337,28 @@ export async function classifyReps(exercise, reps, authToken) {
         error: errorData.error || `Classification failed: ${response.status}`,
         details: errorData.details,
         hint: errorData.hint,
-        apiUrl: errorData.apiUrl
+        apiUrl: errorData.apiUrl,
+        latencyDiagnostics: {
+          clientRequestStartedAtMs: requestStartedAtMs,
+          clientRoundTripMs: Date.now() - requestStartedAtMs,
+          ...(errorData.latencyDiagnostics || {}),
+        }
       };
     }
     
     const result = await response.json();
+    const clientRoundTripMs = Date.now() - requestStartedAtMs;
+
+    result.latencyDiagnostics = {
+      clientRequestStartedAtMs: requestStartedAtMs,
+      clientRoundTripMs,
+      ...(result.latencyDiagnostics || {}),
+    };
+
+    console.log(
+      `[ClassificationService] ⏱️ Client RTT ${clientRoundTripMs}ms, API ${result.latencyDiagnostics.apiTotalMs ?? 'n/a'}ms, Cloud ${result.latencyDiagnostics.totalCloudMs ?? 'n/a'}ms`
+    );
+
     console.log(`[ClassificationService] ✅ Success: ${result.classifications?.length || 0} classifications, modelAvailable=${result.modelAvailable}`);
     return result;
   } catch (error) {
@@ -369,7 +387,11 @@ export async function classifyReps(exercise, reps, authToken) {
       exercise,
       modelAvailable: false,
       classifications: [],
-      error: error.message
+      error: error.message,
+      latencyDiagnostics: {
+        clientRequestStartedAtMs: requestStartedAtMs,
+        clientRoundTripMs: Date.now() - requestStartedAtMs,
+      }
     };
   }
 }

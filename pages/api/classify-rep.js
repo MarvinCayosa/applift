@@ -314,6 +314,7 @@ function extractFeatures(repData) {
 
 // Warm up Cloud Run (trigger cold start without waiting for full classify)
 async function warmUpCloudRun() {
+  const t0 = Date.now();
   try {
     await fetch(`${ML_API_URL}/`, {
       method: 'GET',
@@ -324,11 +325,14 @@ async function warmUpCloudRun() {
     // Warm-up failures are expected during cold start, ignore
     console.log('[Classify API] Cloud Run warm-up ping sent (cold start may be in progress)');
   }
+
+  return Date.now() - t0;
 }
 
 // Call Cloud Run ML API with retry logic for cold starts
 async function classifyWithCloudRun(modelType, features, retries = 2) {
   let lastError = null;
+  const callStart = Date.now();
   
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
@@ -368,7 +372,11 @@ async function classifyWithCloudRun(modelType, features, retries = 2) {
       if (attempt > 1) {
         console.log(`[Classify API] Succeeded on attempt ${attempt} (cold start recovered)`);
       }
-      return result;
+      return {
+        result,
+        latencyMs: Date.now() - callStart,
+        attempts: attempt,
+      };
       
     } catch (error) {
       lastError = error;
@@ -399,6 +407,7 @@ export default async function handler(req, res) {
   }
   
   try {
+    const apiStartedAtMs = Date.now();
     const { exercise, reps, features: precomputedFeatures } = req.body;
     
     console.log(`[Classify API] Request received for exercise: ${exercise}, reps: ${reps?.length || 0}`);
@@ -415,6 +424,7 @@ export default async function handler(req, res) {
     const qualityLabels = getQualityLabels(exercise);
     
     // Extract features if raw rep data provided
+    const featureExtractionStartMs = Date.now();
     let allFeatures = [];
     if (reps && Array.isArray(reps)) {
       for (let i = 0; i < reps.length; i++) {
@@ -429,6 +439,7 @@ export default async function handler(req, res) {
     } else if (precomputedFeatures) {
       allFeatures = precomputedFeatures;
     }
+    const featureExtractionMs = Date.now() - featureExtractionStartMs;
   
   // If no model mapping exists for this exercise
   if (!modelType) {
@@ -446,16 +457,21 @@ export default async function handler(req, res) {
   console.log(`[Classify API] Processing ${allFeatures.length} reps, features extracted: ${allFeatures.filter(f => f !== null).length}`);
   
   // Send a warm-up ping first (helps with cold starts)
-  await warmUpCloudRun();
+  const warmupMs = await warmUpCloudRun();
   
   try {
     const classifications = [];
+    const perRepCloudMs = [];
+    const perRepAttempts = [];
+    let totalCloudMs = 0;
+    let fallbackReps = 0;
     
     for (let idx = 0; idx < allFeatures.length; idx++) {
       const feat = allFeatures[idx];
       
       if (!feat) {
         console.log(`[Classify API] Rep ${idx}: No features extracted, using fallback`);
+        fallbackReps++;
         classifications.push({
           repIndex: idx,
           prediction: 0,
@@ -474,7 +490,11 @@ export default async function handler(req, res) {
       console.log(`[Classify API] Rep ${idx}: Calling Cloud Run with ${Object.keys(feat).length} features`);
       console.log(`[Classify API] Rep ${idx}: Key features - duration=${feat.rep_duration_ms}ms, samples=${feat.sample_count}, accelMag_range=${feat.accelMag_range?.toFixed(2) || 'N/A'}`);
       
-      const result = await classifyWithCloudRun(modelType, feat);
+      const cloudCall = await classifyWithCloudRun(modelType, feat);
+      const result = cloudCall.result;
+      totalCloudMs += cloudCall.latencyMs;
+      perRepCloudMs.push(cloudCall.latencyMs);
+      perRepAttempts.push(cloudCall.attempts);
       
       console.log(`[Classify API] Rep ${idx}: ✅ Classified as "${result.class_name}" (${(result.confidence * 100).toFixed(1)}%)`);
         
@@ -500,7 +520,19 @@ export default async function handler(req, res) {
       modelType,
       apiUrl: ML_API_URL,
       qualityLabels,
-      classifications
+      classifications,
+      latencyDiagnostics: {
+        apiStartedAtMs,
+        apiTotalMs: Date.now() - apiStartedAtMs,
+        featureExtractionMs,
+        warmupMs,
+        totalCloudMs,
+        perRepCloudMs,
+        perRepAttempts,
+        repsRequested: allFeatures.length,
+        repsCloudClassified: perRepCloudMs.length,
+        fallbackReps,
+      }
     });
     
   } catch (error) {
@@ -531,7 +563,13 @@ export default async function handler(req, res) {
       apiUrl: ML_API_URL,
       exercise,
       modelType,
-      hint
+      hint,
+      latencyDiagnostics: {
+        apiStartedAtMs,
+        apiTotalMs: Date.now() - apiStartedAtMs,
+        featureExtractionMs,
+        warmupMs,
+      }
     });
   }
   } catch (outerError) {
