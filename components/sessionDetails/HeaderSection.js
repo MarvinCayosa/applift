@@ -72,7 +72,7 @@ export default function HeaderSection({
       )}
 
       {/* ── Content ── */}
-      <div className="relative z-10 px-5 pt-4 pt-pwa-dynamic pb-5">
+      <div className="relative z-10 px-5 pt-4 pt-pwa-dynamic pb-5 md:max-w-4xl md:mx-auto">
         {/* ── Back chevron + Title + Date ── */}
         <div className="flex items-start mb-5">
           {!hideBack ? (

@@ -48,6 +48,9 @@ export default function BestSessionsCard({ logs = [], hasData = false }) {
   const autoTimer = useRef(null)
   const isUserScrolling = useRef(false)
   const userScrollTimeout = useRef(null)
+  const [isDragging, setIsDragging] = useState(false)
+  const [startX, setStartX] = useState(0)
+  const [scrollLeft, setScrollLeft] = useState(0)
 
   /* ── derive best sessions for this week ───────────────────── */
   const { heaviest, bestClean, longest } = useMemo(() => {
@@ -150,20 +153,6 @@ export default function BestSessionsCard({ logs = [], hasData = false }) {
     })
 
     list.push({
-      key: 'clean',
-      title: 'Best Clean Session This Week',
-      icon: (
-        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
-        </svg>
-      ),
-      gradient: 'linear-gradient(135deg, #10B981 0%, #064E3B 100%)',
-      session: bestClean,
-      value: bestClean?.cleanPct != null ? `${Math.round(bestClean.cleanPct)}%` : null,
-      unit: 'clean',
-    })
-
-    list.push({
       key: 'longest',
       title: 'Longest Session This Week',
       icon: (
@@ -178,7 +167,7 @@ export default function BestSessionsCard({ logs = [], hasData = false }) {
     })
 
     return list
-  }, [heaviest, bestClean, longest])
+  }, [heaviest, longest])
 
   /* ── auto-scroll ──────────────────────────────────────────── */
   const scrollTo = useCallback(
@@ -221,6 +210,37 @@ export default function BestSessionsCard({ logs = [], hasData = false }) {
     }
   }, [])
 
+  /* ── mouse drag handlers ──────────────────────────────────── */
+  const handleMouseDown = useCallback((e) => {
+    if (!containerRef.current) return
+    setIsDragging(true)
+    setStartX(e.pageX - containerRef.current.offsetLeft)
+    setScrollLeft(containerRef.current.scrollLeft)
+    containerRef.current.style.cursor = 'grabbing'
+    isUserScrolling.current = true
+  }, [])
+
+  const handleMouseMove = useCallback((e) => {
+    if (!isDragging || !containerRef.current) return
+    e.preventDefault()
+    const x = e.pageX - containerRef.current.offsetLeft
+    const walk = (x - startX) * 2
+    containerRef.current.scrollLeft = scrollLeft - walk
+  }, [isDragging, startX, scrollLeft])
+
+  const handleMouseUp = useCallback(() => {
+    if (!containerRef.current) return
+    setIsDragging(false)
+    containerRef.current.style.cursor = 'grab'
+  }, [])
+
+  const handleMouseLeave = useCallback(() => {
+    if (isDragging && containerRef.current) {
+      setIsDragging(false)
+      containerRef.current.style.cursor = 'grab'
+    }
+  }, [isDragging])
+
   /* ── navigate to session detail ───────────────────────────── */
   const goToSession = useCallback(
     (session) => {
@@ -253,8 +273,12 @@ export default function BestSessionsCard({ logs = [], hasData = false }) {
       {/* Slide container */}
       <div
         ref={containerRef}
-        className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide h-full"
+        className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide h-full cursor-grab"
         style={{ scrollSnapType: 'x mandatory' }}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
       >
         {slides.map((slide) => {
           const s = slide.session
@@ -277,24 +301,26 @@ export default function BestSessionsCard({ logs = [], hasData = false }) {
 
                 {s && slide.value ? (
                   <>
-                    {/* Main value */}
+                    {/* Main value - right aligned with unit on same line */}
                     <div className="flex-1 flex flex-col items-end justify-center">
-                      <span className="font-black text-white leading-none" style={{ fontSize: '2.75rem' }}>
-                        {slide.value}
-                      </span>
-                      {slide.unit && (
-                        <span className="text-sm font-bold text-white/80 mt-0.5">
-                          {slide.unit}
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="font-black text-white leading-none" style={{ fontSize: '2.75rem' }}>
+                          {slide.value}
                         </span>
-                      )}
+                        {slide.unit && (
+                          <span className="text-sm font-bold text-white/80">
+                            {slide.unit}
+                          </span>
+                        )}
+                      </div>
                     </div>
 
-                    {/* Footer: exercise name + time stacked */}
-                    <div className="mt-auto flex flex-col items-start">
-                      <span className="text-[11px] text-white/70 font-semibold truncate max-w-full leading-tight">
+                    {/* Footer: exercise name + time stacked - right aligned */}
+                    <div className="mt-auto flex flex-col items-end">
+                      <span className="text-[11px] text-white/70 font-semibold truncate max-w-full leading-tight text-right">
                         {s.exercise}
                       </span>
-                      <span className="text-[10px] text-white/50 font-medium">
+                      <span className="text-[10px] text-white/50 font-medium text-right">
                         {s.time}
                       </span>
                     </div>

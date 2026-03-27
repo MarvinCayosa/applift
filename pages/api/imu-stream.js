@@ -149,45 +149,17 @@ function sanitizeForPath(str) {
     .replace(/^-|-$/g, '');
 }
 
-/**
- * MET values for equipment types
- * Based on Compendium of Physical Activities
- */
-const EQUIPMENT_MET = {
-  'dumbbell': 5.0,
-  'barbell': 6.0,
-  'weight-stack': 4.5,
-  'kettlebell': 6.0,
-  'bodyweight': 4.0,
-  'cable': 4.5,
-  'default': 5.0,
-};
-
-/**
- * Calculate calories using MET formula
- * Calories = Duration (min) × (MET × 3.5 × Body Weight (kg)) / 200
- * 
- * @param {number} durationMs - Duration in milliseconds
- * @param {string} equipment - Equipment type
- * @param {number} bodyWeightKg - Body weight (default: 70kg)
- */
-function calculateCaloriesMET(durationMs, equipment, bodyWeightKg = 70) {
-  if (!durationMs || durationMs <= 0) return 0;
-  
-  const durationMinutes = durationMs / 60000;
-  const normalizedEquipment = (equipment || 'default').toLowerCase().replace(/\s+/g, '-');
-  const met = EQUIPMENT_MET[normalizedEquipment] || EQUIPMENT_MET.default;
-  
-  const calories = durationMinutes * (met * 3.5 * bodyWeightKg) / 200;
-  return Math.round(calories);
-}
+// REMOVED: Server-side calorie calculation and MET values
+// Calories are now calculated ONLY client-side in workout-monitor.js
+// using the proper calculateWorkoutCalories() function from utils/calorieCalculator.js
+// which has accurate MET values and uses ACTIVE time only (rep durations)
 
 /**
  * Save workout metadata to Firestore
  * PRIMARY Structure: userWorkouts/{userId}/{equipment}/{exercise}/{workoutId}
  * This is the main structure - organized by user, then equipment, then exercise
  */
-async function saveWorkoutToFirestore(userId, workoutId, metadata) {
+async function saveWorkoutToFirestore(userId, workoutId, metadata, workoutData = null) {
   try {
     const db = getFirestore();
     
@@ -198,15 +170,60 @@ async function saveWorkoutToFirestore(userId, workoutId, metadata) {
     // Get the GCS path from metadata or construct it
     const gcsPath = metadata.gcsPath || `users/${userId}/${equipment}/${exercise}`;
     
-    // Calculate workout duration from timestamps
-    let durationMs = 0;
-    if (metadata.startTime && metadata.endTime) {
-      durationMs = new Date(metadata.endTime).getTime() - new Date(metadata.startTime).getTime();
+    // Calculate ACTIVE workout duration (exclude rest periods)
+    let activeDurationMs = 0;
+    
+    // If we have workoutData with set/rep details, use that (most accurate)
+    if (workoutData?.sets && Array.isArray(workoutData.sets)) {
+      workoutData.sets.forEach(set => {
+        if (set.reps && Array.isArray(set.reps)) {
+          set.reps.forEach(rep => {
+            // Sum up actual rep durations (active time only, no rest)
+            activeDurationMs += (rep.duration || 3000); // Default 3s per rep if no duration
+          });
+        }
+      });
+      console.log('[IMU-Stream] Calculated active duration from workoutData:', {
+        totalSets: workoutData.sets.length,
+        totalReps: workoutData.sets.reduce((sum, set) => sum + (set.reps?.length || 0), 0),
+        activeDurationMs,
+        activeMinutes: (activeDurationMs / 60000).toFixed(2),
+      });
+    }
+    // Fallback: Check if metadata has setsData (from rich setData save)
+    else if (metadata.setsData && Array.isArray(metadata.setsData)) {
+      metadata.setsData.forEach(set => {
+        if (set.repsData && Array.isArray(set.repsData)) {
+          set.repsData.forEach(rep => {
+            // Sum up actual rep durations (active time only, no rest)
+            activeDurationMs += (rep.durationMs || rep.duration * 1000 || 3000); // Default 3s per rep
+          });
+        }
+      });
+      console.log('[IMU-Stream] Calculated active duration from metadata.setsData:', {
+        totalSets: metadata.setsData.length,
+        activeDurationMs,
+        activeMinutes: (activeDurationMs / 60000).toFixed(2),
+      });
+    }
+    // Fallback: Estimate from total reps (3 seconds per rep)
+    else if (metadata.totalReps) {
+      activeDurationMs = metadata.totalReps * 3000;
+      console.log('[IMU-Stream] Estimated active duration from reps:', {
+        totalReps: metadata.totalReps,
+        activeDurationMs,
+        activeMinutes: (activeDurationMs / 60000).toFixed(2),
+      });
     }
     
-    // Calculate calories using MET formula (default 70kg body weight)
-    // TODO: Get actual user body weight from profile
-    const calories = calculateCaloriesMET(durationMs, metadata.equipment, 70);
+    // Last resort: Use total time (includes rest, less accurate)
+    if (activeDurationMs === 0 && metadata.startTime && metadata.endTime) {
+      activeDurationMs = new Date(metadata.endTime).getTime() - new Date(metadata.startTime).getTime();
+      console.warn('[IMU-Stream] Using total time (includes rest) - less accurate');
+    }
+    
+    // Calories are calculated client-side in workout-monitor.js using MET formula
+    // and saved via saveRichSetDataToFirestore() - no server-side calculation needed
     
     // Document data
     const workoutData = {
@@ -230,8 +247,11 @@ async function saveWorkoutToFirestore(userId, workoutId, metadata) {
         completedReps: metadata.completedReps,
         totalReps: metadata.totalReps,
         sets: metadata.sets,
-        calories: calories,
-        durationMs: durationMs,
+        // calories field is set by client-side calculation in workout-monitor.js
+        activeDurationMs: activeDurationMs, // Active exercise time (no rest)
+        totalDurationMs: metadata.startTime && metadata.endTime 
+          ? new Date(metadata.endTime).getTime() - new Date(metadata.startTime).getTime()
+          : activeDurationMs, // Total time including rest
       },
       status: metadata.status,
       setType: metadata.setType,
@@ -389,7 +409,7 @@ export default async function handler(req, res) {
           });
         }
 
-        const saved = await saveWorkoutToFirestore(userId, workoutId, metadata);
+        const saved = await saveWorkoutToFirestore(userId, workoutId, metadata, req.body.workoutData);
         
         return res.status(200).json({
           success: saved,
@@ -406,7 +426,7 @@ export default async function handler(req, res) {
           });
         }
 
-        const saved = await saveWorkoutToFirestore(userId, workoutId, metadata);
+        const saved = await saveWorkoutToFirestore(userId, workoutId, metadata, req.body.workoutData);
         
         return res.status(200).json({
           success: saved,

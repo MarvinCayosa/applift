@@ -550,12 +550,15 @@ export default function SelectedWorkout() {
     if (!user?.uid || !equipment || !workout) return;
     
     const fetchPastSessions = async () => {
+      console.log('[SelectedWorkout] Fetching past sessions for AI context...');
       try {
         const equipmentPath = sanitizeForPath(equipment);
         const exercisePath = sanitizeForPath(workout);
         const logsRef = collection(db, 'userWorkouts', user.uid, equipmentPath, exercisePath, 'logs');
         const q = query(logsRef, orderBy('timestamps.completed', 'desc'), firestoreLimit(5));
         const snapshot = await getDocs(q);
+        
+        console.log('[SelectedWorkout] Found', snapshot.docs.length, 'past sessions');
         
         // Fetch analytics for each log in parallel
         const sessionsWithAnalytics = await Promise.all(
@@ -681,6 +684,20 @@ export default function SelectedWorkout() {
     };
     
     fetchPastSessions();
+    
+    // Refresh pastSessions when page becomes visible (user returns from workout)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.log('[SelectedWorkout] Page became visible - refreshing past sessions for AI context');
+        fetchPastSessions();
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [user?.uid, equipment, workout, sanitizeForPath]);
 
   // AI Recommendation
@@ -873,8 +890,8 @@ export default function SelectedWorkout() {
         <title>{workout} — AppLift</title>
       </Head>
 
-      <main ref={mainRef} className="flex-1 w-full px-4 sm:px-6 md:px-8 pt-2.5 sm:pt-3.5 pt-pwa-dynamic pb-32 flex flex-col overflow-y-auto">
-        <div className="mx-auto w-full max-w-4xl flex flex-col flex-1 space-y-4">
+      <main ref={mainRef} className="flex-1 w-full px-4 sm:px-6 md:px-8 pt-2.5 sm:pt-3.5 pt-pwa-dynamic pb-48 flex flex-col overflow-y-auto">
+        <div className="mx-auto w-full md:max-w-3xl flex flex-col flex-1 space-y-4">
         {/* Header with back button and connection pill */}
         <div className="flex items-center justify-between content-fade-up-1 flex-shrink-0 relative">
           {/* Back button - stays visible */}
@@ -932,7 +949,7 @@ export default function SelectedWorkout() {
             customSets={customSets}
             customReps={customReps}
             customWeightUnit={customWeightUnit}
-            customBarWeight={customBarWeight}
+            customBarWeight={isBarbell ? selectedBarWeight : customBarWeight}
             restMinutes={Math.floor(customRestTime / 60)}
             restSeconds={customRestTime % 60}
             onRestTimeChange={setCustomRestTime}
@@ -949,7 +966,7 @@ export default function SelectedWorkout() {
 
         {/* Bar Weight Picker — barbell exercises only, always accessible */}
         {isBarbell && carouselActiveIndex === 0 && (
-          <div className="flex-shrink-0 px-1 content-fade-up-2" style={{ animationDelay: '0.5s' }}>
+          <div className="flex-shrink-0 content-fade-up-2" style={{ animationDelay: '0.5s' }}>
             <div className="relative">
               <button
                 type="button"
@@ -1053,7 +1070,7 @@ export default function SelectedWorkout() {
         {/* AI Reasoning Panel - auto-collapse with smooth animation */}
         {aiEnabled && aiReasoning && !aiLoading && (
           <div 
-            className="flex-shrink-0 px-1 overflow-hidden"
+            className="flex-shrink-0 overflow-hidden"
             style={{ 
               maxHeight: carouselActiveIndex === 0 ? '600px' : '0px',
               opacity: carouselActiveIndex === 0 ? 1 : 0,
@@ -1077,7 +1094,7 @@ export default function SelectedWorkout() {
 
         {/* AI Error Notice */}
         {aiEnabled && aiError && !aiLoading && (
-          <div className="content-fade-up-2 flex-shrink-0 px-1 mt-3" style={{ animationDelay: '0.5s' }}>
+          <div className="content-fade-up-2 flex-shrink-0 mt-3" style={{ animationDelay: '0.5s' }}>
             <div className="rounded-xl bg-red-500/10 border border-red-500/20 px-4 py-3">
               <p className="text-xs text-red-400/80">
                 AI recommendation unavailable — using default values. {aiError}
@@ -1108,7 +1125,7 @@ export default function SelectedWorkout() {
       <div className="fixed bottom-0 left-0 right-0 z-50 px-3 sm:px-4 md:px-6 py-4 sm:py-5 md:py-6" style={{
         background: 'linear-gradient(to top, rgba(0,0,0,1) 0%, rgba(0,0,0,0.98) 60%, rgba(0,0,0,0) 100%)',
       }}>
-        <div className="mx-auto w-full max-w-4xl">
+        <div className="mx-auto w-full md:max-w-3xl">
           {/* Error message with fade animation */}
           {customSetError && (
             <div 
@@ -1220,13 +1237,17 @@ export default function SelectedWorkout() {
                     // Use selectedBarWeight (global bar picker) for barbell
                     const barW = isBarbell ? selectedBarWeight : (customBarWeight || 20);
                     const plateW = customWeight || 0;
-                    if (plateW <= 0) return `Bar only (${barW}${unit})`;
-                    return `${barW}${unit} bar + ${plateW}${unit} plates`;
+                    const total = barW + plateW;
+                    // Show 0 for bar only (like dumbbells), otherwise show breakdown
+                    if (plateW <= 0) return `${barW}${unit} bar + 0${unit} = ${total}${unit}`;
+                    return `${barW}${unit} bar + ${plateW}${unit} = ${total}${unit}`;
                   } else if (eqLower === 'dumbbell') {
                     const handleW = customBarWeight || 2;
                     const plateW = customWeight || 0;
-                    if (plateW <= 0) return `Handle only (${handleW}${unit})`;
-                    return `${handleW}${unit} handle + ${plateW}${unit} plates`;
+                    const total = handleW + plateW;
+                    // Show 0 for handle only, otherwise show breakdown
+                    if (plateW <= 0) return `${handleW}${unit} handle + 0${unit} = ${total}${unit}`;
+                    return `${handleW}${unit} handle + ${plateW}${unit} = ${total}${unit}`;
                   } else {
                     return `${customWeight}${unit} on stack`;
                   }

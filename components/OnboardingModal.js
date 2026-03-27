@@ -109,19 +109,43 @@ export default function InstructionModal({
 
   // ── Touch / swipe-to-dismiss (only on the handle) ─────────────
   const handleHandleTouchStart = (e) => {
-    setDragStartY(e.touches[0].clientY);
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    setDragStartY(clientY);
     setIsDragging(true);
   };
+  
   const handleHandleTouchMove = (e) => {
     if (!isDragging) return;
-    const diff = e.touches[0].clientY - dragStartY;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const diff = clientY - dragStartY;
     if (diff > 0) setDragCurrentY(diff);
   };
+  
   const handleHandleTouchEnd = () => {
     if (!isDragging) return;
     setIsDragging(false);
     if (dragCurrentY > 100) handleSkip();
     setDragCurrentY(0);
+  };
+
+  const handleHandleMouseDown = (e) => {
+    e.preventDefault();
+    setDragStartY(e.clientY);
+    setIsDragging(true);
+    document.addEventListener('mousemove', handleHandleMouseMove);
+    document.addEventListener('mouseup', handleHandleMouseUp);
+  };
+
+  const handleHandleMouseMove = (e) => {
+    if (!isDragging) return;
+    const diff = e.clientY - dragStartY;
+    if (diff > 0) setDragCurrentY(diff);
+  };
+
+  const handleHandleMouseUp = () => {
+    handleHandleTouchEnd();
+    document.removeEventListener('mousemove', handleHandleMouseMove);
+    document.removeEventListener('mouseup', handleHandleMouseUp);
   };
 
   if (!isOpen) return null;
@@ -492,7 +516,7 @@ export default function InstructionModal({
     >
       {/* Slide-up panel */}
       <div
-        className={`w-full transition-transform ease-out ${
+        className={`w-full max-w-4xl mx-auto transition-transform ease-out ${
           isClosing ? 'translate-y-full' : 'translate-y-0'
         }`}
         onClick={(e) => e.stopPropagation()}
@@ -514,6 +538,7 @@ export default function InstructionModal({
             onTouchStart={handleHandleTouchStart}
             onTouchMove={handleHandleTouchMove}
             onTouchEnd={handleHandleTouchEnd}
+            onMouseDown={handleHandleMouseDown}
           >
             <div className="w-9 h-1 rounded-full bg-white/30" />
           </div>

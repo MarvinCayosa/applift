@@ -241,15 +241,43 @@ function MovementPhasesCard({ liftingTime, loweringTime, liftingPercent, lowerin
     setIsClosingInfo(true);
     setTimeout(() => { setShowInfo(false); setIsClosingInfo(false); setDragCurrentY(0); }, 250);
   };
-  const handleTouchStart = (e) => { setDragStartY(e.touches[0].clientY); setIsDragging(true); };
+  
+  const handleTouchStart = (e) => { 
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    setDragStartY(clientY); 
+    setIsDragging(true); 
+  };
+  
   const handleTouchMove = (e) => {
     if (!isDragging) return;
-    const diff = e.touches[0].clientY - dragStartY;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const diff = clientY - dragStartY;
     if (diff > 0) setDragCurrentY(diff);
   };
+  
   const handleTouchEnd = () => {
     setIsDragging(false);
     if (dragCurrentY > 80) closeInfo(); else setDragCurrentY(0);
+  };
+
+  const handleMouseDown = (e) => {
+    e.preventDefault();
+    setDragStartY(e.clientY);
+    setIsDragging(true);
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  const handleMouseMove = (e) => {
+    if (!isDragging) return;
+    const diff = e.clientY - dragStartY;
+    if (diff > 0) setDragCurrentY(diff);
+  };
+
+  const handleMouseUp = () => {
+    handleTouchEnd();
+    document.removeEventListener('mousemove', handleMouseMove);
+    document.removeEventListener('mouseup', handleMouseUp);
   };
 
   return (
@@ -298,7 +326,7 @@ function MovementPhasesCard({ liftingTime, loweringTime, liftingPercent, lowerin
             style={{ transform: isDragging ? `translateY(${dragCurrentY}px)` : undefined }}
             onClick={e => e.stopPropagation()}
           >
-            <div className="flex justify-center pt-3 pb-2 cursor-grab" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
+            <div className="flex justify-center pt-3 pb-2 cursor-grab active:cursor-grabbing" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} onMouseDown={handleMouseDown}>
               <div className="w-10 h-1 rounded-full bg-white/20" />
             </div>
             <div className="px-5 pb-2">

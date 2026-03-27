@@ -24,6 +24,7 @@ import { clearCurrentRepBuffer } from '../services/imuStreamingService';
 import LoadingScreen from '../components/LoadingScreen';
 import { db } from '../config/firestore';
 import { doc, setDoc } from 'firebase/firestore';
+import { calculateWorkoutCalories } from '../utils/calorieCalculator';
 
 export default function WorkoutMonitor() {
   const router = useRouter();
@@ -472,6 +473,7 @@ export default function WorkoutMonitor() {
             userId: user.uid,
             workoutId: result.workoutId,
             metadata: result.metadata,
+            workoutData: result.workoutData, // Include detailed set/rep data for calorie calculation
           }),
         });
         if (fsResp.ok) {
@@ -519,7 +521,7 @@ export default function WorkoutMonitor() {
           workoutName: workout,
           equipment: equipment,
           totalReps: finalStats?.totalReps ?? 0,
-          calories: Math.round((finalStats?.totalReps ?? 0) * 5),
+          calories: 0, // Calculated server-side in imu-stream API
           totalTime: finalStats?.totalTime ?? 0,
           avgConcentric: '0.0',
           avgEccentric: '0.0',
@@ -599,7 +601,7 @@ export default function WorkoutMonitor() {
         totalSets: finalStats.completedSets,
         totalReps: finalStats.totalReps,
         totalTime: finalStats.totalTime,
-        calories: Math.round(finalStats.totalReps * 5),
+        calories: 0, // Calculated server-side in imu-stream API
         avgConcentric: avgConcentricVal.toFixed(1),
         avgEccentric: avgEccentricVal.toFixed(1),
         setData: mergedSetData,
@@ -614,8 +616,18 @@ export default function WorkoutMonitor() {
    * The streaming metadata only has a simple tracking object for sets,
    * so ROM-related fields (targetROM, romCalibrated, romUnit, romFulfillment)
    * would otherwise be lost. This update merges them into the existing doc.
+   * 
+   * ALSO calculates and saves calories using MET formula with ACTIVE time only.
    */
   async function saveRichSetDataToFirestore(mergedSetData, result) {
+    console.log('[WorkoutMonitor] 🔥 saveRichSetDataToFirestore called:', {
+      hasUser: !!user?.uid,
+      hasSetData: !!mergedSetData?.length,
+      hasWorkoutId: !!result?.workoutId,
+      setDataLength: mergedSetData?.length,
+      workoutId: result?.workoutId,
+    });
+    
     if (!user?.uid || !mergedSetData?.length || !result?.workoutId) return;
 
     try {
@@ -649,6 +661,30 @@ export default function WorkoutMonitor() {
         })),
       }));
 
+      // Calculate calories using MET formula with ACTIVE time only
+      const totalReps = cleanSetData.reduce((sum, set) => sum + (set.reps || 0), 0);
+      
+      // DEBUG: Log the actual rep durations we're working with
+      console.log('[WorkoutMonitor] 🔍 Rep duration debug:', {
+        totalSets: cleanSetData.length,
+        totalReps,
+        sampleSet: cleanSetData[0]?.repsData?.slice(0, 3).map(r => ({
+          repNumber: r.repNumber,
+          duration: r.duration,
+          durationMs: r.durationMs,
+          time: r.time,
+        })),
+      });
+      
+      const calorieResult = calculateWorkoutCalories({
+        exercise: result.metadata?.exercise || workout,
+        equipment: result.metadata?.equipment || equipment,
+        totalReps,
+        setData: cleanSetData, // Has rep durations for accurate active time
+      });
+      
+      console.log('[WorkoutMonitor] 💪 Calculated calories:', calorieResult.calories, 'kcal', calorieResult.breakdown);
+
       // Build Firestore doc path: userWorkouts/{uid}/{equipment}/{exercise}/logs/{workoutId}
       const sanitize = (str) =>
         (str || 'unknown').trim()
@@ -664,8 +700,13 @@ export default function WorkoutMonitor() {
       const ex = sanitize(result.metadata?.exercise || workout);
 
       const docRef = doc(db, 'userWorkouts', user.uid, eq, ex, 'logs', result.workoutId);
-      await setDoc(docRef, { results: { setData: cleanSetData } }, { merge: true });
-      console.log('[WorkoutMonitor] ✅ Rich setData (with ROM) saved to Firestore');
+      await setDoc(docRef, { 
+        results: { 
+          setData: cleanSetData,
+          calories: calorieResult.calories,
+        } 
+      }, { merge: true });
+      console.log('[WorkoutMonitor] ✅ Rich setData (with ROM) and calories saved to Firestore');
     } catch (err) {
       console.warn('[WorkoutMonitor] Failed to save rich setData:', err.message);
     }
@@ -679,7 +720,7 @@ export default function WorkoutMonitor() {
         workoutName: workout,
         equipment: equipment,
         totalReps: finalStats.totalReps,
-        calories: Math.round(finalStats.totalReps * 5),
+        calories: 0, // Calculated server-side in imu-stream API
         totalTime: finalStats.totalTime,
         avgConcentric: avgConcentricVal.toFixed(1),
         avgEccentric: avgEccentricVal.toFixed(1),
@@ -748,6 +789,13 @@ export default function WorkoutMonitor() {
     // Rollback already happened in handleBleDisconnect
     // Just show resume countdown and continue from last completed rep
     console.log('[WorkoutMonitor] ✅ BLE reconnected - resuming from last completed rep');
+
+    // Reset rep detection state to prevent false rep on resume
+    // This ensures the first motion after reconnection doesn't immediately trigger a rep
+    if (repStatsRef.current) {
+      repStatsRef.current.inRep = false;
+      repStatsRef.current.lastPeakTime = 0;
+    }
 
     // Show resume countdown
     transition(SESSION_STATES.RESUMING_COUNTDOWN);
@@ -1401,21 +1449,32 @@ export default function WorkoutMonitor() {
       <div className="absolute top-0 left-0 right-0 z-30 px-4 pt-2.5 sm:pt-3.5 pt-pwa-dynamic pb-4" style={{
         background: 'linear-gradient(to bottom, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.6) 70%, rgba(0,0,0,0) 100%)'
       }}>
-        {/* Top row - Back button and Connection Pill */}
+        {/* Top row - Back Button and Connection Pill */}
         <div className="flex items-center justify-between mb-2">
+          {/* Back Button - fades out when workout starts */}
           <button
             onClick={() => router.back()}
-            className="flex items-center justify-center h-10 w-10 rounded-full hover:bg-white/20 transition-all"
+            className={`flex items-center gap-2 text-white transition-opacity duration-500 ${
+              sessionState === SESSION_STATES.IDLE ? 'opacity-100' : 'opacity-0 pointer-events-none'
+            }`}
             aria-label="Go back"
           >
-            <img
-              src="/images/icons/arrow-point-to-left.png"
-              alt="Back"
-              className="w-5 h-5 filter brightness-0 invert"
-            />
+            <svg 
+              className="w-6 h-6" 
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                strokeWidth={2} 
+                d="M15 19l-7-7 7-7" 
+              />
+            </svg>
           </button>
 
-          {/* Workout Title - between back button and pill */}
+          {/* Workout Title - centered */}
           <div 
             className={`absolute left-1/2 transform -translate-x-1/2 text-center transition-opacity duration-300 px-16 max-w-full ${
               isPillExpanded ? 'opacity-0' : 'opacity-0 animate-fade-in'
@@ -1423,6 +1482,8 @@ export default function WorkoutMonitor() {
           >
             <h1 className="text-xl sm:text-2xl font-bold text-white truncate">{workout}</h1>
           </div>
+
+          <div className="flex-1"></div>
 
           <ConnectPill
             connected={connected}
@@ -1467,10 +1528,10 @@ export default function WorkoutMonitor() {
         </div>
       </div>
 
-      <main className="relative h-full w-full">
+      <main className="relative h-full w-full flex items-center justify-center">
 
-        {/* Chart - Full Screen Background */}
-        <div className="absolute inset-0 z-10">
+        {/* Chart - Constrained Size */}
+        <div className="w-full md:max-w-3xl h-[40vh] md:h-[45vh] z-10">
           <AccelerationChart
             timeData={timeData}
             filteredData={filteredAccelData}

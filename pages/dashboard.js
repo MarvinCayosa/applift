@@ -990,7 +990,7 @@ export default function Dashboard() {
                   {/* Card 2: Recent Workouts */}
                   <article className="min-w-[calc(100vw-24px)] w-[calc(100vw-24px)] max-w-[384px] shrink-0 snap-center rounded-3xl bg-white/10 p-4 xs:p-5 shadow-2xl h-[290px] xs:h-[320px] flex flex-col">
                     <div className="flex items-center justify-between mb-3 xs:mb-4">
-                      <h3 className="text-lg xs:text-xl font-semibold text-white/90">Recent Workouts</h3>
+                      <h3 className="text-base font-bold text-white md:text-lg">Recent Workouts</h3>
                       <button
                         onClick={() => router.push('/statistics')}
                         className="text-white/40 hover:text-white/60 transition-colors"
@@ -1074,7 +1074,7 @@ export default function Dashboard() {
                 {/* Card 2: Recent Workouts */}
                 <div className="backdrop-blur-md bg-white/10 rounded-3xl p-6 shadow-2xl hover:shadow-3xl transition-all duration-300 h-[320px] flex flex-col">
                   <div className="flex items-center justify-between mb-5">
-                    <h3 className="text-sm font-semibold text-white/90 uppercase tracking-wide">Recent Workouts</h3>
+                    <h3 className="text-lg font-bold text-white">Recent Workouts</h3>
                     <button
                       onClick={() => router.push('/statistics')}
                       className="text-white/40 hover:text-white/60 transition-colors"

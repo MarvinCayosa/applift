@@ -229,6 +229,17 @@ export function calculateCaloriesFromMET({
   const adjustedMET = met * intensityMultiplier;
   const calories = durationMinutes * (adjustedMET * 3.5 * bodyWeightKg) / 200;
   
+  // DEBUG: Log calorie calculation
+  console.log('[CalorieCalculator] Calculation:', {
+    durationMinutes: durationMinutes.toFixed(2),
+    met,
+    bodyWeightKg,
+    intensityMultiplier: intensityMultiplier.toFixed(2),
+    adjustedMET: adjustedMET.toFixed(2),
+    formula: `${durationMinutes.toFixed(2)} × (${adjustedMET.toFixed(2)} × 3.5 × ${bodyWeightKg}) / 200`,
+    result: Math.round(calories),
+  });
+  
   return Math.round(calories);
 }
 
@@ -251,21 +262,59 @@ export function calculateCaloriesFromMET({
  * @returns {Object} Calorie calculation result with breakdown
  */
 export function calculateWorkoutCalories(workout, userBodyWeightKg = DEFAULT_BODY_WEIGHT_KG) {
-  // Get duration in minutes
+  // DEBUG: Log input
+  console.log('[CalorieCalculator] Input:', {
+    exercise: workout.exercise,
+    equipment: workout.equipment,
+    durationMs: workout.durationMs,
+    durationMinutes: workout.durationMinutes,
+    totalTime: workout.totalTime,
+    totalReps: workout.totalReps,
+    totalSets: workout.totalSets,
+    userBodyWeightKg,
+  });
+
+  // Get duration in minutes - ONLY ACTIVE TIME (exclude rest periods)
   let durationMinutes = workout.durationMinutes;
+  
   if (!durationMinutes && workout.durationMs) {
     durationMinutes = workout.durationMs / 60000;
   }
+  
   if (!durationMinutes && workout.totalTime) {
     // totalTime might be in seconds
     durationMinutes = workout.totalTime / 60;
   }
   
-  // Minimum 1 minute for any workout
-  if (!durationMinutes || durationMinutes < 1) {
-    // Estimate duration from reps: ~3 seconds per rep average
+  // If we have set data with rep durations, calculate ACTIVE time only
+  if (!durationMinutes && workout.setData && Array.isArray(workout.setData)) {
+    let totalActiveSeconds = 0;
+    workout.setData.forEach(set => {
+      if (set.repsData && Array.isArray(set.repsData)) {
+        set.repsData.forEach(rep => {
+          // Sum up actual rep durations (active time only, no rest)
+          totalActiveSeconds += rep.duration || 3; // Default 3 seconds per rep if no duration
+        });
+      }
+    });
+    if (totalActiveSeconds > 0) {
+      durationMinutes = totalActiveSeconds / 60;
+      console.log('[CalorieCalculator] Calculated active time from rep durations:', {
+        totalActiveSeconds,
+        durationMinutes: durationMinutes.toFixed(2),
+      });
+    }
+  }
+  
+  // Fallback: Estimate from reps (ACTIVE time only: ~3 seconds per rep)
+  if (!durationMinutes || durationMinutes < 0.5) {
     const estimatedSeconds = (workout.totalReps || 0) * 3;
-    durationMinutes = Math.max(estimatedSeconds / 60, 1);
+    durationMinutes = Math.max(estimatedSeconds / 60, 0.5); // Minimum 30 seconds
+    console.log('[CalorieCalculator] Estimated duration from reps:', {
+      totalReps: workout.totalReps,
+      estimatedSeconds,
+      durationMinutes: durationMinutes.toFixed(2),
+    });
   }
   
   // Get MET value
@@ -285,6 +334,13 @@ export function calculateWorkoutCalories(workout, userBodyWeightKg = DEFAULT_BOD
     met,
     bodyWeightKg: userBodyWeightKg,
     intensityMultiplier,
+  });
+  
+  console.log('[CalorieCalculator] Final result:', {
+    calories,
+    durationMinutes: Math.round(durationMinutes * 10) / 10,
+    met,
+    intensityMultiplier: Math.round(intensityMultiplier * 100) / 100,
   });
   
   return {

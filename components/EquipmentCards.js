@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useRef, useState } from 'react'
 import Link from 'next/link'
 
 /**
@@ -31,7 +31,7 @@ const equipmentData = [
  */
 function EquipmentCard({ equipment }) {
   return (
-    <Link href={equipment.href} className="flex-shrink-0 block" style={{ width: '45vw', maxWidth: '200px' }}>
+    <Link href={equipment.href} className="flex-shrink-0 block w-[45vw] max-w-[200px] md:w-[30vw] md:max-w-[280px]">
       <div className="relative rounded-2xl overflow-hidden group" style={{ aspectRatio: '3/4' }}>
         {/* Background image */}
         <img
@@ -76,14 +76,53 @@ function EquipmentCard({ equipment }) {
  * Links to individual equipment pages with exercise history and summaries
  */
 export default function EquipmentCards() {
+  const scrollRef = useRef(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [startX, setStartX] = useState(0);
+  const [scrollLeft, setScrollLeft] = useState(0);
+
+  const handleMouseDown = (e) => {
+    if (!scrollRef.current) return;
+    setIsDragging(true);
+    setStartX(e.pageX - scrollRef.current.offsetLeft);
+    setScrollLeft(scrollRef.current.scrollLeft);
+    scrollRef.current.style.cursor = 'grabbing';
+  };
+
+  const handleMouseMove = (e) => {
+    if (!isDragging || !scrollRef.current) return;
+    e.preventDefault();
+    const x = e.pageX - scrollRef.current.offsetLeft;
+    const walk = (x - startX) * 2;
+    scrollRef.current.scrollLeft = scrollLeft - walk;
+  };
+
+  const handleMouseUp = () => {
+    if (!scrollRef.current) return;
+    setIsDragging(false);
+    scrollRef.current.style.cursor = 'grab';
+  };
+
+  const handleMouseLeave = () => {
+    if (isDragging && scrollRef.current) {
+      setIsDragging(false);
+      scrollRef.current.style.cursor = 'grab';
+    }
+  };
+
   return (
     <div>
       {/* Section title */}
       <h2 className="text-xl font-bold text-white mb-4">Exercises</h2>
       {/* Cards container - horizontally scrollable */}
       <div 
-        className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-2"
+        ref={scrollRef}
+        className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-2 cursor-grab"
         style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
       >
         {equipmentData.map((equipment) => (
           <EquipmentCard key={equipment.id} equipment={equipment} />

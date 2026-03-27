@@ -369,15 +369,18 @@ function generateWeightBreakdown(totalWeight, equipment, barWeight = null) {
   const eq = equipment.toLowerCase();
   if (eq.includes('barbell')) {
     const bar = barWeight ?? 20;
-    if (totalWeight <= bar) return `Bar only (${totalWeight}kg)`;
-    const platePerSide = (totalWeight - bar) / 2;
-    return `${bar}kg bar + ${platePerSide}kg per side`;
+    const plates = totalWeight - bar;
+    // Show 0 for bar only (like dumbbells), otherwise show breakdown
+    if (plates <= 0) return `${bar}kg bar + 0kg = ${totalWeight}kg`;
+    const platePerSide = plates / 2;
+    return `${bar}kg bar + ${platePerSide}kg per side = ${totalWeight}kg`;
   }
   if (eq.includes('dumbbell')) {
     const handle = 2;
-    if (totalWeight <= handle) return `Handle only (${totalWeight}kg)`;
     const plates = totalWeight - handle;
-    return `${handle}kg handle + ${plates}kg plates`;
+    // Show 0 for handle only, otherwise show breakdown
+    if (plates <= 0) return `${handle}kg handle + 0kg = ${totalWeight}kg`;
+    return `${handle}kg handle + ${plates}kg = ${totalWeight}kg`;
   }
   if (eq.includes('weight stack') || eq.includes('machine') || eq.includes('cable')) {
     return `${totalWeight}kg on stack`;

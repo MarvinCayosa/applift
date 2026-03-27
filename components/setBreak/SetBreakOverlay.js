@@ -405,7 +405,7 @@ export default function SetBreakOverlay({
           </div>
 
           {/* Scrollable content */}
-          <div className="flex-1 overflow-y-auto px-6 pb-6 space-y-4">
+          <div className="flex-1 overflow-y-auto px-6 pb-6 space-y-4 md:max-w-3xl md:mx-auto md:w-full">
             {hasSetData && (
               <div className="animate-slideUp" style={{ animationDelay: '0.05s', animationFillMode: 'backwards' }}>
                 <SetRepCarousel repsData={displayReps} isClassifying={isClassifying} targetROM={setData.targetROM} romUnit={setData.romUnit} />

@@ -43,7 +43,7 @@ export default function EquipmentPage() {
         <EquipmentHero label={config.label} heroImage={config.heroImage} />
 
         {/* Content - overlaps hero */}
-        <div className="px-4 space-y-6 relative z-10" style={{ marginTop: '-130px' }}>
+        <div className="px-4 space-y-6 relative z-10 md:max-w-4xl md:mx-auto md:px-6 lg:px-8" style={{ marginTop: '-130px' }}>
           {/* Stats */}
           <div className="content-fade-up-1">
             <EquipmentStatsRow stats={stats} primaryColor={config.primary} />

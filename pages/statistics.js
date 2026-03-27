@@ -68,6 +68,9 @@ function MetricCardsCarousel({
 }) {
   const scrollRef = useRef(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const [startX, setStartX] = useState(0);
+  const [scrollLeft, setScrollLeft] = useState(0);
 
   const cards = [
     {
@@ -109,6 +112,38 @@ function MetricCardsCarousel({
     }
   };
 
+  const handleMouseDown = (e) => {
+    if (!scrollRef.current) return;
+    setIsDragging(true);
+    setStartX(e.pageX - scrollRef.current.offsetLeft);
+    setScrollLeft(scrollRef.current.scrollLeft);
+    scrollRef.current.style.cursor = 'grabbing';
+    scrollRef.current.style.userSelect = 'none';
+  };
+
+  const handleMouseMove = (e) => {
+    if (!isDragging || !scrollRef.current) return;
+    e.preventDefault();
+    const x = e.pageX - scrollRef.current.offsetLeft;
+    const walk = (x - startX) * 2; // Scroll speed multiplier
+    scrollRef.current.scrollLeft = scrollLeft - walk;
+  };
+
+  const handleMouseUp = () => {
+    if (!scrollRef.current) return;
+    setIsDragging(false);
+    scrollRef.current.style.cursor = 'grab';
+    scrollRef.current.style.userSelect = 'auto';
+  };
+
+  const handleMouseLeave = () => {
+    if (isDragging && scrollRef.current) {
+      setIsDragging(false);
+      scrollRef.current.style.cursor = 'grab';
+      scrollRef.current.style.userSelect = 'auto';
+    }
+  };
+
   useEffect(() => {
     const scrollEl = scrollRef.current;
     if (scrollEl) {
@@ -122,8 +157,12 @@ function MetricCardsCarousel({
       {/* Scrollable Cards Container */}
       <div
         ref={scrollRef}
-        className="flex gap-3 overflow-x-auto snap-x snap-mandatory scrollbar-hide pb-4"
+        className="flex gap-3 overflow-x-auto snap-x snap-mandatory scrollbar-hide pb-4 cursor-grab"
         style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
       >
         {cards.map((card, index) => (
           <div
@@ -213,7 +252,7 @@ export default function Statistics() {
   };
 
   // Calculate daily load data for the CURRENT WEEK (Sun-Sat)
-  const calculateWeekLoadData = () => {
+  const calculateWeekLoadData = useMemo(() => {
     const today = new Date();
     const dayOfWeek = today.getDay();
     
@@ -252,25 +291,22 @@ export default function Statistics() {
     });
     
     return weekData;
-  };
+  }, [logs]);
 
-  // Calculate DAILY load data for the entire current month (zoomed out daily view)
-  // Labels show W1, W2, W3, etc. on the first day of each week
-  const calculateMonthLoadData = () => {
+  // Calculate WEEKLY load data for the current month (aggregated by week)
+  const calculateMonthLoadData = useMemo(() => {
     const today = new Date();
-    const currentDay = today.getDate();
     const currentMonth = today.getMonth();
     const currentYear = today.getFullYear();
+    const currentWeekNum = Math.ceil(today.getDate() / 7);
     
-    // Build array with one entry per day up to today
-    const days = [];
-    for (let d = 1; d <= currentDay; d++) {
-      const weekNum = Math.ceil(d / 7);
-      const isFirstDayOfWeek = (d - 1) % 7 === 0; // 1, 8, 15, 22, 29...
-      days.push({
-        label: isFirstDayOfWeek ? `W${weekNum}` : '',
+    // Build array with one entry per week
+    const weeks = [];
+    for (let w = 1; w <= currentWeekNum; w++) {
+      weeks.push({
+        label: `W${w}`,
         load: 0,
-        isToday: d === currentDay,
+        isCurrentWeek: w === currentWeekNum,
         isFuture: false
       });
     }
@@ -281,38 +317,31 @@ export default function Statistics() {
       const logDate = new Date(createdAt);
       if (logDate.getMonth() === currentMonth && logDate.getFullYear() === currentYear) {
         const dayNum = logDate.getDate();
-        if (dayNum <= currentDay && days[dayNum - 1]) {
-          days[dayNum - 1].load += getLogLoad(log);
+        const weekNum = Math.ceil(dayNum / 7);
+        if (weekNum <= currentWeekNum && weeks[weekNum - 1]) {
+          weeks[weekNum - 1].load += getLogLoad(log);
         }
       }
     });
     
-    return days;
-  };
+    return weeks;
+  }, [logs]);
 
-  // Calculate DAILY load data for the entire current year (zoomed out daily view)
-  // Labels show Jan, Feb, Mar, etc. on the first day of each month
-  const calculateYearLoadData = () => {
+  // Calculate MONTHLY load data for the current year (aggregated by month)
+  const calculateYearLoadData = useMemo(() => {
     const today = new Date();
     const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth();
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     
-    // Build daily entries from Jan 1 to today
-    const days = [];
-    const start = new Date(currentYear, 0, 1);
-    const end = new Date(today);
-    end.setHours(23, 59, 59, 999);
-    
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      const monthIdx = d.getMonth();
-      const dayOfMonth = d.getDate();
-      const isFirstOfMonth = dayOfMonth === 1;
-      days.push({
-        label: isFirstOfMonth ? monthNames[monthIdx] : '',
+    // Build array with one entry per month up to current month
+    const months = [];
+    for (let m = 0; m <= currentMonth; m++) {
+      months.push({
+        label: monthNames[m],
         load: 0,
-        isToday: d.getDate() === today.getDate() && d.getMonth() === today.getMonth(),
-        isFuture: false,
-        _date: new Date(d)
+        isCurrentMonth: m === currentMonth,
+        isFuture: false
       });
     }
     
@@ -320,27 +349,23 @@ export default function Statistics() {
       const createdAt = getLogDate(log);
       if (!createdAt) return;
       const logDate = new Date(createdAt);
-      if (logDate.getFullYear() !== currentYear) return;
-      
-      // Find the index for this date (days since Jan 1)
-      const jan1 = new Date(currentYear, 0, 1);
-      const diffDays = Math.floor((logDate - jan1) / 86400000);
-      if (diffDays >= 0 && diffDays < days.length) {
-        days[diffDays].load += getLogLoad(log);
+      if (logDate.getFullYear() === currentYear) {
+        const monthIdx = logDate.getMonth();
+        if (monthIdx <= currentMonth && months[monthIdx]) {
+          months[monthIdx].load += getLogLoad(log);
+        }
       }
     });
     
-    // Clean up _date helper
-    days.forEach(d => delete d._date);
-    return days;
-  };
+    return months;
+  }, [logs]);
 
-  // Load lifted data for different time periods (all daily granularity)
+  // Load lifted data for different time periods
   const loadLiftedDataByPeriod = useMemo(() => ({
-    week: calculateWeekLoadData(),
-    month: calculateMonthLoadData(),
-    year: calculateYearLoadData(),
-  }), [logs]);
+    week: calculateWeekLoadData,
+    month: calculateMonthLoadData,
+    year: calculateYearLoadData,
+  }), [calculateWeekLoadData, calculateMonthLoadData, calculateYearLoadData]);
 
   // Cycle through view types
   const cycleViewType = () => {

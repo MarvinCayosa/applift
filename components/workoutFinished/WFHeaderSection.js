@@ -75,19 +75,9 @@ export default function WFHeaderSection({
       )}
 
       {/* ── Content ── */}
-      <div className="relative z-10 px-5 pt-4 pt-pwa-dynamic pb-5">
-        {/* ── Back chevron + Title block ── */}
+      <div className="relative z-10 px-5 pt-4 pt-pwa-dynamic pb-5 md:max-w-3xl md:mx-auto">
+        {/* ── Title block (no back button) ── */}
         <div className="flex items-start mb-1">
-          <button
-            onClick={onBack || (() => router.back())}
-            className="-ml-1.5 p-1.5 shrink-0"
-            aria-label="Go back"
-          >
-            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-
           <div className="flex-1 text-center">
             <h1 className="text-[22px] font-bold text-white leading-tight tracking-tight">
               Workout Completed!
@@ -101,7 +91,7 @@ export default function WFHeaderSection({
           {onShare && (
             <button
               onClick={onShare}
-              className="p-1.5 shrink-0"
+              className="p-1.5 shrink-0 absolute right-5 top-4"
               aria-label="Share workout"
             >
               <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -171,7 +171,7 @@ export default function TotalCaloriesCard({ logs = [], hasData = false }) {
           background: 'linear-gradient(135deg, #FF9012 0%, #AD380A 100%)',
         }}
       >
-        <h3 className="text-sm font-extrabold text-white/90">Calories Burned</h3>
+        <h3 className="text-sm font-bold text-white md:text-lg">Calories Burned</h3>
         <button
           onClick={cycleFilter}
           className="px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-white/20 text-white/80 flex items-center gap-1 w-fit mt-1"
@@ -196,7 +196,7 @@ export default function TotalCaloriesCard({ logs = [], hasData = false }) {
       }}
     >
       {/* Title */}
-      <h3 className="text-xs font-semibold text-white/90">Calories Burned</h3>
+      <h3 className="text-sm font-bold text-white md:text-lg">Calories Burned</h3>
       {/* Filter pill below title */}
       <button
         onClick={cycleFilter}

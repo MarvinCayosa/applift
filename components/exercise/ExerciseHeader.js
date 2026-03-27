@@ -32,7 +32,7 @@ const ExerciseHeader = memo(({
     />
 
     {/* ── Top row: back + title ── */}
-    <div className="absolute top-4 left-4 right-4 flex items-center z-10">
+    <div className="absolute top-4 left-0 right-0 flex items-center z-10 max-w-4xl mx-auto px-4">
       <button
         onClick={onBack}
         className="pt-5 w-10 h-10 flex items-center justify-center rounded-full active:scale-90 transition-transform"
@@ -59,7 +59,7 @@ const ExerciseHeader = memo(({
     </div>
 
     {/* ── Tab bar ── */}
-    <div className="absolute left-0 right-0 z-10 flex justify-center gap-8" style={{marginTop:"90px"}}>
+    <div className="absolute left-0 right-0 z-10 flex justify-center gap-8 max-w-4xl mx-auto" style={{marginTop:"90px"}}>
       {['statistics', 'history'].map((tab) => (
         <button
           key={tab}

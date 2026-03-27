@@ -222,7 +222,7 @@ export default function SharedWorkoutPage() {
         <ExpiryCountdown expiresAt={s.expiresAt} />
 
         {/* Content cards — identical to session-details layout */}
-        <div className="px-4 pt-2.5 sm:pt-3.5 space-y-3 max-w-2xl mx-auto">
+        <div className="px-4 pt-2.5 sm:pt-3.5 space-y-3 md:max-w-4xl md:mx-auto">
           {/* AI Session Summary — collapsible accordion */}
           {s.aiInsights && (
             <AIInsightsAccordion insights={s.aiInsights} />

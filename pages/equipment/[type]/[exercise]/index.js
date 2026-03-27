@@ -337,11 +337,11 @@ export default function ExerciseDetailPage() {
         />
 
         {/* ═══════════ TAB CONTENT ═══════════ */}
-        <div className="overflow-hidden relative" style={{marginTop:"-90px"}}>
+        <div className="overflow-hidden relative md:max-w-4xl md:mx-auto" style={{marginTop:"-90px"}}>
           {/* ─── STATISTICS ─── */}
           <div
             key="statistics"
-            className={`px-4 space-y-5 ${
+            className={`px-4 space-y-5 md:px-6 lg:px-8 ${
               activeTab === 'statistics'
                 ? 'tab-panel-enter'
                 : slideDir === 'left' ? 'tab-panel-exit-left' : 'tab-panel-exit-right'
@@ -526,38 +526,6 @@ export default function ExerciseDetailPage() {
                       </svg>
                     </button>
 
-                    {/* Progressive Overload Score Pill - Opens Info Sheet */}
-                    <div className="absolute top-3 right-4 z-10">
-                      <button
-                        onClick={() => setShowOverloadInfo(true)}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold backdrop-blur-sm transition-all duration-200 hover:scale-105 active:scale-95 ${
-                        progressiveOverload.status === 'progressive' ? 'bg-green-500/30 text-green-500' :
-                        progressiveOverload.status === 'regressive' ? 'bg-red-500/30 text-red-300' :
-                        progressiveOverload.status === 'maintained' ? 'bg-yellow-500/30 text-yellow-300' :
-                        'bg-white/20 text-white/60'
-                      }`}>
-                        {progressiveOverload.status === 'progressive' && (
-                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M3.293 9.707a1 1 0 010-1.414l6-6a1 1 0 011.414 0l6 6a1 1 0 01-1.414 1.414L11 5.414V17a1 1 0 11-2 0V5.414L4.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                          </svg>
-                        )}
-                        {progressiveOverload.status === 'regressive' && (
-                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M16.707 10.293a1 1 0 010 1.414l-6 6a1 1 0 01-1.414 0l-6-6a1 1 0 111.414-1.414L9 14.586V3a1 1 0 012 0v11.586l4.293-4.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                          </svg>
-                        )}
-                        {progressiveOverload.status === 'maintained' && (
-                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
-                          </svg>
-                        )}
-                        <span>{progressiveOverload.label}</span>
-                        <svg className="w-3 h-3 opacity-50" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                        </svg>
-                      </button>
-                    </div>
-
                     {chartData.length > 0 ? (
                       <div className="chart-transition">
                         <ResponsiveContainer width="100%" height={170}>
@@ -597,47 +565,45 @@ export default function ExerciseDetailPage() {
                       </div>
                     )}
                     
-                    {/* Weekly Comparison */}
-                    {weeklyComparison.previousWeek > 0 || weeklyComparison.currentWeek > 0 ? (
-                      <div className="mt-4 flex items-center justify-between bg-white/[0.05] rounded-xl px-4 py-3">
-                        <div className="text-left">
-                          <div className="text-xs text-white/50">
-                            {weeklyComparison.currentWeek} {weeklyComparison.label} this week
-                          </div>
-                          <div className="text-xs text-white/40">
-                            vs {weeklyComparison.previousWeek} {weeklyComparison.label} last week
-                          </div>
+                    {/* Weekly Comparison - always show */}
+                    <div className="mt-4 flex items-center justify-between bg-white/[0.05] rounded-xl px-4 py-3">
+                      <div className="text-left">
+                        <div className="text-xs text-white/50">
+                          {weeklyComparison.currentWeek} {weeklyComparison.label} this week
                         </div>
-                        
-                        <div className="flex items-center gap-1.5">
-                          {weeklyComparison.trend === 'up' && (
-                            <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M3.293 9.707a1 1 0 010-1.414l6-6a1 1 0 011.414 0l6 6a1 1 0 01-1.414 1.414L11 5.414V17a1 1 0 11-2 0V5.414L4.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                            </svg>
-                          )}
-                          {weeklyComparison.trend === 'down' && (
-                            <svg className="w-4 h-4 text-red-400" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M16.707 10.293a1 1 0 010 1.414l-6 6a1 1 0 01-1.414 0l-6-6a1 1 0 111.414-1.414L9 14.586V3a1 1 0 012 0v11.586l4.293-4.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                            </svg>
-                          )}
-                          {weeklyComparison.trend === 'same' && (
-                            <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
-                            </svg>
-                          )}
-                          <span className={`text-sm font-bold ${
-                            weeklyComparison.trend === 'up' ? 'text-green-500' :
-                            weeklyComparison.trend === 'down' ? 'text-red-400' :
-                            'text-gray-400'
-                          }`}>
-                            {weeklyComparison.change > 0 ? 
-                              `${weeklyComparison.trend === 'up' ? '+' : '-'}${weeklyComparison.change.toFixed(1)}%` : 
-                              'No change'
-                            }
-                          </span>
+                        <div className="text-xs text-white/40">
+                          vs {weeklyComparison.previousWeek} {weeklyComparison.label} last week
                         </div>
                       </div>
-                    ) : null}
+                      
+                      <div className="flex items-center gap-1.5">
+                        {weeklyComparison.trend === 'up' && weeklyComparison.change > 0 && (
+                          <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M3.293 9.707a1 1 0 010-1.414l6-6a1 1 0 011.414 0l6 6a1 1 0 01-1.414 1.414L11 5.414V17a1 1 0 11-2 0V5.414L4.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                          </svg>
+                        )}
+                        {weeklyComparison.trend === 'down' && weeklyComparison.change > 0 && (
+                          <svg className="w-4 h-4 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 10.293a1 1 0 010 1.414l-6 6a1 1 0 01-1.414 0l-6-6a1 1 0 111.414-1.414L9 14.586V3a1 1 0 012 0v11.586l4.293-4.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                        )}
+                        {weeklyComparison.trend === 'same' && (
+                          <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+                          </svg>
+                        )}
+                        <span className={`text-sm font-bold ${
+                          weeklyComparison.change > 0 && weeklyComparison.trend === 'up' ? 'text-green-500' :
+                          weeklyComparison.change > 0 && weeklyComparison.trend === 'down' ? 'text-red-400' :
+                          'text-gray-400'
+                        }`}>
+                          {weeklyComparison.change > 0 ? 
+                            `${weeklyComparison.trend === 'up' ? '+' : '-'}${weeklyComparison.change.toFixed(1)}%` : 
+                            '0%'
+                          }
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </section>
 

@@ -14,7 +14,7 @@ import { useWorkoutAnalysis, transformAnalysisForUI } from '../hooks/useWorkoutA
 import LoadingScreen from '../components/LoadingScreen';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../config/firestore';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { AIInsightsCard } from '../components/aiInsights';
 import { generateInsights, getCachedInsights } from '../services/aiInsightsService';
 import { bustRecommendationCache } from '../services/aiRecommendationService';
@@ -41,6 +41,20 @@ export default function WorkoutFinished() {
   const [aiInsightsLoading, setAiInsightsLoading] = useState(false);
   const [aiInsightsError, setAiInsightsError] = useState(null);
   const hasTriggeredInsights = useRef(false);
+
+  // Calories from Firestore (calculated server-side with MET formula)
+  const [firestoreCalories, setFirestoreCalories] = useState(null);
+
+  // Debug: Log component mount
+  useEffect(() => {
+    console.log('[WorkoutFinished] 🚀 Component mounted - checking params:', {
+      hasUser: !!user?.uid,
+      workoutId,
+      equipment,
+      workoutName,
+      queryCalories: calories,
+    });
+  }, []);
 
   // Share state
   const [shareUrl, setShareUrl] = useState('');
@@ -97,6 +111,66 @@ export default function WorkoutFinished() {
     });
     console.log('==============================');
   }, [setsData, totalReps, recommendedSets, recommendedReps, parsedSetsData, parsedChartData, workoutId, gcsPath, analysisData]);
+  
+  // Fetch calories from Firestore (calculated client-side with MET formula)
+  useEffect(() => {
+    if (!user?.uid || !workoutId || !equipment || !workoutName) {
+      console.log('[WorkoutFinished] ⚠️ Skipping calorie fetch - missing params:', {
+        hasUser: !!user?.uid,
+        hasWorkoutId: !!workoutId,
+        hasEquipment: !!equipment,
+        hasWorkoutName: !!workoutName,
+      });
+      return;
+    }
+    
+    const fetchCalories = async () => {
+      try {
+        // Sanitize equipment and exercise names for Firestore path
+        const sanitize = (str) =>
+          (str || 'unknown').trim()
+            .replace(/([a-z])([A-Z])/g, '$1-$2')
+            .replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
+            .toLowerCase()
+            .replace(/\s+/g, '-')
+            .replace(/[^a-z0-9-]/g, '')
+            .replace(/-+/g, '-')
+            .replace(/^-|-$/g, '');
+
+        const eq = sanitize(equipment);
+        const ex = sanitize(workoutName);
+        
+        console.log('[WorkoutFinished] 🔍 Fetching calories from Firestore path:', `userWorkouts/${user.uid}/${eq}/${ex}/logs/${workoutId}`);
+        
+        const docRef = doc(db, 'userWorkouts', user.uid, eq, ex, 'logs', workoutId);
+        const docSnap = await getDoc(docRef);
+        
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          const serverCalories = data.results?.calories;
+          console.log('[WorkoutFinished] 📄 Firestore document data:', {
+            hasResults: !!data.results,
+            calories: serverCalories,
+            setData: data.results?.setData?.length,
+            activeDurationMs: data.results?.activeDurationMs,
+            totalDurationMs: data.results?.totalDurationMs,
+          });
+          if (serverCalories != null) {
+            console.log('[WorkoutFinished] ✅ Fetched calories from Firestore:', serverCalories, 'kcal');
+            setFirestoreCalories(serverCalories);
+          } else {
+            console.warn('[WorkoutFinished] ⚠️ No calories found in Firestore document');
+          }
+        } else {
+          console.warn('[WorkoutFinished] ⚠️ Workout document not found in Firestore');
+        }
+      } catch (error) {
+        console.error('[WorkoutFinished] ❌ Error fetching calories from Firestore:', error);
+      }
+    };
+    
+    fetchCalories();
+  }, [user?.uid, workoutId, equipment, workoutName]);
   
   // Transform analysis data when it arrives
   useEffect(() => {
@@ -291,7 +365,7 @@ export default function WorkoutFinished() {
         plannedSets: parseInt(recommendedSets) || 0,
         plannedReps: parseInt(recommendedReps) || 0,
         durationSec: totalSec,
-        calories: analysisData?.calories || parseInt(calories) || 0,
+        calories: (firestoreCalories ?? analysisData?.calories ?? parseInt(calories)) || 0,
         setsData: mergedSetsData,
         fatigueScore: analysisData?.fatigueScore ?? null,
         consistencyScore: analysisData?.consistencyScore ?? null,
@@ -317,7 +391,7 @@ export default function WorkoutFinished() {
     };
 
     run();
-  }, [user?.uid, workoutId, mergedSetsData, isAutoSaving, isAnalyzing, analysis, setType, userProfile, equipment, workoutName, weight, weightUnit, totalReps, totalTime, calories, recommendedSets, recommendedReps, analysisData]);
+  }, [user?.uid, workoutId, mergedSetsData, isAutoSaving, isAnalyzing, analysis, setType, userProfile, equipment, workoutName, weight, weightUnit, totalReps, totalTime, calories, recommendedSets, recommendedReps, analysisData, firestoreCalories]);
 
   // Trigger analysis after workout data is saved
   const triggerAnalysis = async (wkId, path) => {
@@ -686,7 +760,7 @@ export default function WorkoutFinished() {
         restTimeSec: 40,
         plannedRepsPerSet: parseInt(recommendedReps) || 0,
         totalTime: parseInt(totalTime) || 0,
-        calories: analysisData?.calories || parseInt(calories) || 0,
+        calories: (firestoreCalories ?? analysisData?.calories ?? parseInt(calories)) || 0,
         date: new Date().toISOString(),
         setsData: mergedSetsData,
         chartData: analysisData?.chartData || [],
@@ -765,7 +839,16 @@ export default function WorkoutFinished() {
           recommendedSets={parseInt(recommendedSets) || 0}
           recommendedReps={parseInt(recommendedReps) || 0}
           totalTime={parseInt(totalTime) || 0}
-          calories={analysisData?.calories || parseInt(calories) || 0}
+          calories={(() => {
+            const cal = (firestoreCalories ?? analysisData?.calories ?? parseInt(calories)) || 0;
+            console.log('[WorkoutFinished] 🔥 Passing calories to WFHeaderSection:', {
+              firestoreCalories,
+              analysisCalories: analysisData?.calories,
+              queryCalories: parseInt(calories),
+              finalValue: cal,
+            });
+            return cal;
+          })()}
           totalSets={mergedSetsData?.length || 0}
           totalReps={parseInt(totalReps) || 0}
           onBack={handleGoBack}
@@ -773,7 +856,7 @@ export default function WorkoutFinished() {
         />
 
         {/* ── Content cards ── */}
-        <div className="px-4 pt-2.5 sm:pt-3.5 space-y-3 max-w-2xl mx-auto">
+        <div className="px-4 pt-2.5 sm:pt-3.5 space-y-3 md:max-w-4xl md:mx-auto">
           {/* AI Session Insights — only for recommended workouts with AI enabled */}
           {userProfile?.aiRecommendationsEnabled !== false && (
             <AIInsightsCard

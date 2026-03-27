@@ -17,6 +17,7 @@ export default function SetRepCarousel({
   const [currentIndex, setCurrentIndex] = useState(0);
   const [swipeStartX, setSwipeStartX] = useState(null);
   const [swipeX, setSwipeX] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
   const containerRef = useRef(null);
 
   const repCount = repsData.length;
@@ -50,6 +51,42 @@ export default function SetRepCarousel({
     setSwipeStartX(null);
   };
 
+  // Mouse drag handlers
+  const handleMouseDown = (e) => {
+    setIsDragging(true);
+    setSwipeStartX(e.clientX);
+  };
+
+  const handleMouseMove = (e) => {
+    if (!isDragging || swipeStartX === null) return;
+    const dx = e.clientX - swipeStartX;
+    if ((currentIndex === 0 && dx > 0) || (currentIndex === repCount - 1 && dx < 0)) {
+      setSwipeX(dx * 0.25);
+    } else {
+      setSwipeX(dx);
+    }
+  };
+
+  const handleMouseUp = () => {
+    if (!isDragging) return;
+    if (Math.abs(swipeX) > 50) {
+      if (swipeX < 0 && currentIndex < repCount - 1) {
+        setCurrentIndex(currentIndex + 1);
+      } else if (swipeX > 0 && currentIndex > 0) {
+        setCurrentIndex(currentIndex - 1);
+      }
+    }
+    setSwipeX(0);
+    setSwipeStartX(null);
+    setIsDragging(false);
+  };
+
+  const handleMouseLeave = () => {
+    if (isDragging) {
+      handleMouseUp();
+    }
+  };
+
   if (repCount === 0) {
     return (
       <div className="flex items-center justify-center py-6 text-gray-500 text-xs">
@@ -74,7 +111,11 @@ export default function SetRepCarousel({
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        className="overflow-hidden -mx-3 px-3"
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
+        className="overflow-hidden -mx-3 px-3 cursor-grab active:cursor-grabbing"
       >
         <div
           className={`flex gap-2 ${swipeStartX === null ? 'transition-transform duration-300 ease-out' : ''}`}

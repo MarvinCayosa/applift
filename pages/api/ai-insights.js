@@ -377,9 +377,9 @@ export default async function handler(req, res) {
       throw new Error('AI response was not valid JSON');
     }
 
-    const summary = (parsed.summary || '').slice(0, 500);
+    const summary = (parsed.summary || '').slice(0, 800); // Increased from 500 to 800
     const bullets = Array.isArray(parsed.bullets)
-      ? parsed.bullets.map(b => String(b).slice(0, 200)).slice(0, 6)
+      ? parsed.bullets.map(b => String(b).slice(0, 300)).slice(0, 6) // Increased from 200 to 300
       : [];
 
     return res.status(200).json({ summary, bullets });

@@ -120,6 +120,9 @@ export default function Workouts() {
   const [scannedEquipment, setScannedEquipment] = useState(null);
   const [workoutCarouselIndex, setWorkoutCarouselIndex] = useState(0);
   const workoutCarouselRef = useRef(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [startX, setStartX] = useState(0);
+  const [scrollLeft, setScrollLeft] = useState(0);
   const [showEquipmentModal, setShowEquipmentModal] = useState(false);
   const [showInstructionModal, setShowInstructionModal] = useState(false);
   const [showOnboardingModal, setShowOnboardingModal] = useState(false);
@@ -333,6 +336,30 @@ export default function Workouts() {
     };
   }, [workouts.length]);
 
+  // Mouse drag handlers for workout carousel
+  const handleMouseDown = (e) => {
+    if (!workoutCarouselRef.current) return;
+    setIsDragging(true);
+    setStartX(e.pageX - workoutCarouselRef.current.offsetLeft);
+    setScrollLeft(workoutCarouselRef.current.scrollLeft);
+  };
+
+  const handleMouseMove = (e) => {
+    if (!isDragging || !workoutCarouselRef.current) return;
+    e.preventDefault();
+    const x = e.pageX - workoutCarouselRef.current.offsetLeft;
+    const walk = (x - startX) * 2;
+    workoutCarouselRef.current.scrollLeft = scrollLeft - walk;
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  const handleMouseLeave = () => {
+    setIsDragging(false);
+  };
+
   return (
     <div className="relative h-screen bg-black text-white overflow-hidden">
       <Head>
@@ -467,14 +494,19 @@ export default function Workouts() {
           <section className="pt-2.5 sm:pt-5 flex-1 flex flex-col min-h-0 pb-2">
             <h2 className="text-center text-xs sm:text-sm font-semibold text-white/80 px-4 content-fade-up-3 mb-3" style={{ animationDelay: '0.15s' }}>Choose Your Workout</h2>
 
-          {/* Mobile Carousel - compact slides matching Equipment Tag width */}
+          {/* Carousel - constrained width on desktop */}
+          <div className="md:max-w-4xl md:mx-auto md:w-full">
           <div 
             ref={workoutCarouselRef}
-            className="flex overflow-x-auto overflow-y-hidden snap-x snap-mandatory scrollbar-hide scroll-smooth content-fade-up-3 md:hidden mb-3 px-2"
+            className="flex overflow-x-auto overflow-y-hidden snap-x snap-mandatory scrollbar-hide scroll-smooth content-fade-up-3 mb-3 px-2 cursor-grab active:cursor-grabbing"
             style={{
               animationDelay: '0.3s',
               touchAction: 'pan-x'
             }}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseLeave}
           >
             {workouts.map((workout, idx) => (
               <div
@@ -483,9 +515,10 @@ export default function Workouts() {
                 style={{ width: '100%' }}
               >
                 <article
-                  className="h-72 mx-auto rounded-2xl overflow-hidden group relative transition-all duration-300 cursor-pointer hover:scale-105"
+                  className="h-72 md:h-80 mx-auto rounded-2xl overflow-hidden group relative transition-all duration-300 cursor-pointer hover:scale-105"
                   style={{
-                    boxShadow: '0 12px 24px rgba(0, 0, 0, 0.3)'
+                    boxShadow: '0 12px 24px rgba(0, 0, 0, 0.3)',
+                    maxWidth: '500px'
                   }}
                   onClick={() => {
                     if (!workout.isComingSoon) {
@@ -561,83 +594,10 @@ export default function Workouts() {
               </div>
             ))}
           </div>
-
-          {/* Tablet/Desktop Grid - 2 cards on tablet, 3 cards on desktop */}
-          <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6 content-fade-up-3 px-4" style={{ animationDelay: '0.3s' }}>
-            {workouts.map((workout, idx) => (
-              <article
-                key={workout.title + idx}
-                className="rounded-2xl overflow-hidden group relative h-56 transition-all duration-300 cursor-pointer hover:scale-105"
-                style={{
-                  boxShadow: '0 12px 24px rgba(0, 0, 0, 0.3)',
-                }}
-                onClick={() => {
-                  if (!workout.isComingSoon) {
-                    router.push(
-                      `/selectedWorkout?equipment=${encodeURIComponent(
-                        scannedEquipment.type
-                      )}&workout=${encodeURIComponent(workout.title)}`
-                    );
-                  }
-                }}
-              >
-                {workout.isComingSoon ? (
-                  <>
-                    <img
-                      src={workout.image}
-                      alt="Coming Soon"
-                      className="w-full h-full object-cover blur-md scale-110"
-                    />
-                    <div className="absolute inset-0 rounded-2xl sm:rounded-3xl bg-black/35 mix-blend-multiply" />
-                    <div
-                      className="absolute inset-0 rounded-2xl sm:rounded-3xl pointer-events-none"
-                      style={{
-                        background: 'linear-gradient(to bottom, rgba(0,0,0,0) 45%, rgba(0,0,0,0.55) 100%)',
-                      }}
-                    />
-                    <div 
-                      className="absolute bottom-0 left-0 right-0 rounded-b-2xl sm:rounded-b-3xl pointer-events-none"
-                      style={{
-                        height: '45%',
-                        background: 'linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.4) 70%, transparent 100%)',
-                      }}
-                    />
-                    <div className="absolute inset-0 flex flex-col items-center justify-center">
-                      <span className="text-xl sm:text-2xl font-semibold text-white/90">Coming Soon</span>
-                      <span className="text-xs sm:text-sm text-white/60 mt-1.5 sm:mt-2.5">More exercises on the way</span>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <img
-                      src={workout.image}
-                      alt={workout.title}
-                      className="w-full h-full object-cover"
-                    />
-                    <div
-                      className="absolute inset-0 rounded-2xl sm:rounded-3xl pointer-events-none"
-                      style={{
-                        background: 'linear-gradient(to bottom, rgba(0,0,0,0) 45%, rgba(0,0,0,0.55) 100%)',
-                      }}
-                    />
-                    <div 
-                      className="absolute bottom-0 left-0 right-0 rounded-b-2xl sm:rounded-b-3xl pointer-events-none"
-                      style={{
-                        height: '45%',
-                        background: 'linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.4) 70%, transparent 100%)',
-                      }}
-                    />
-                    <div className="absolute inset-0 flex items-end p-3 sm:p-4">
-                      <h3 className="text-2xl sm:text-3xl font-semibold text-white">{workout.title}</h3>
-                    </div>
-                  </>
-                )}
-              </article>
-            ))}
           </div>
 
-          {/* Dots - Mobile only (hidden when all cards visible) */}
-          <div className="flex justify-center gap-2 sm:gap-2.5 px-4 md:hidden">
+          {/* Dots indicator */}
+          <div className="flex justify-center gap-2 sm:gap-2.5 px-4">
             {workouts.map((_, idx) => (
               <span
                 key={idx}

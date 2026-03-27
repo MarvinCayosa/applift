@@ -74,30 +74,93 @@ export default function RecommendedSetCard({
   };
 
   const [activeIndex, setActiveIndex] = useState(0);
-  const carouselRef = useRef(null);
+  const mobileCarouselRef = useRef(null);
+  const desktopCarouselRef = useRef(null);
   const [showTimerModal, setShowTimerModal] = useState(false);
   const [localRestMinutes, setLocalRestMinutes] = useState(restMinutes);
   const [localRestSeconds, setLocalRestSeconds] = useState(restSeconds);
+  const [isDragging, setIsDragging] = useState(false);
+  const [startX, setStartX] = useState(0);
+  const [scrollLeft, setScrollLeft] = useState(0);
+
+  // Debug: Log active index changes
+  useEffect(() => {
+    console.log('[RecommendedSetCard] Active index changed:', activeIndex);
+  }, [activeIndex]);
 
   // Format rest time for display
   const restTimeDisplay = `${localRestMinutes}:${localRestSeconds.toString().padStart(2, '0')}`;
 
   useEffect(() => {
-    const carousel = carouselRef.current;
-    if (!carousel) return;
+    const mobileCarousel = mobileCarouselRef.current;
+    const desktopCarousel = desktopCarouselRef.current;
+    
+    console.log('[RecommendedSetCard] Setting up scroll listeners', { 
+      hasMobile: !!mobileCarousel, 
+      hasDesktop: !!desktopCarousel 
+    });
 
-    const handleScroll = () => {
+    const handleScroll = (e) => {
+      const carousel = e.target;
       const scrollLeft = carousel.scrollLeft;
       const cardWidth = carousel.offsetWidth;
       const index = Math.round(scrollLeft / cardWidth);
-      setActiveIndex(index);
-      // Notify parent of active index change
-      onActiveIndexChange(index);
+      console.log('[RecommendedSetCard] Carousel scrolled:', { 
+        scrollLeft, 
+        cardWidth, 
+        index, 
+        currentActiveIndex: activeIndex,
+        isMobile: carousel === mobileCarousel
+      });
+      
+      if (index !== activeIndex) {
+        setActiveIndex(index);
+        // Notify parent of active index change
+        onActiveIndexChange(index);
+      }
     };
 
-    carousel.addEventListener('scroll', handleScroll);
-    return () => carousel.removeEventListener('scroll', handleScroll);
-  }, [onActiveIndexChange]);
+    // Add listeners to both carousels
+    if (mobileCarousel) {
+      mobileCarousel.addEventListener('scroll', handleScroll, { passive: true });
+    }
+    if (desktopCarousel) {
+      desktopCarousel.addEventListener('scroll', handleScroll, { passive: true });
+    }
+    
+    return () => {
+      if (mobileCarousel) {
+        mobileCarousel.removeEventListener('scroll', handleScroll);
+      }
+      if (desktopCarousel) {
+        desktopCarousel.removeEventListener('scroll', handleScroll);
+      }
+    };
+  }, [onActiveIndexChange, activeIndex]);
+
+  // Mouse drag handlers for desktop carousel
+  const handleMouseDown = (e) => {
+    if (!desktopCarouselRef.current) return;
+    setIsDragging(true);
+    setStartX(e.pageX - desktopCarouselRef.current.offsetLeft);
+    setScrollLeft(desktopCarouselRef.current.scrollLeft);
+  };
+
+  const handleMouseMove = (e) => {
+    if (!isDragging || !desktopCarouselRef.current) return;
+    e.preventDefault();
+    const x = e.pageX - desktopCarouselRef.current.offsetLeft;
+    const walk = (x - startX) * 2;
+    desktopCarouselRef.current.scrollLeft = scrollLeft - walk;
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  const handleMouseLeave = () => {
+    setIsDragging(false);
+  };
 
   // Handle opening modal for specific field - calls parent callback
   const handleCustomFieldClick = (field) => {
@@ -110,19 +173,25 @@ export default function RecommendedSetCard({
   const hasBaseWeight = isBarbell || isDumbbell;
 
   // For dumbbell: show plate weight only (subtract 2kg handle)
-  // For barbell: show total weight as-is (bar is heavy, keep included)
+  // For barbell: show plate weight only (subtract bar weight) - SAME AS DUMBBELL LOGIC
   // For others: show as-is
   const DUMBBELL_HANDLE_WEIGHT = 2;
+  
+  // Get bar weight for barbell (from props or default 20kg)
+  const barWeight = isBarbell ? (customBarWeight || 20) : 0;
+  
   const recommendedDisplayWeight = weight == null
     ? null
     : isDumbbell
       ? Math.max(0, weight - DUMBBELL_HANDLE_WEIGHT)
-      : weight;
+      : isBarbell
+        ? Math.max(0, weight - barWeight) // Show plates only for barbell
+        : weight;
 
-  // Custom set: barbell adds bar weight to plates, dumbbell shows plates only, others as-is
+  // Custom set: show plates only for both barbell and dumbbell
   const customDisplayWeight = customWeight != null 
-    ? (isBarbell ? customWeight + customBarWeight : customWeight)
-    : null;
+    ? customWeight // customWeight already contains plates only
+    : 0; // Show 0 instead of null when no weight is set
 
   const cards = [
     // Only include recommended card when AI is enabled
@@ -176,7 +245,7 @@ export default function RecommendedSetCard({
       
       {/* Mobile Carousel container */}
       <div 
-        ref={carouselRef}
+        ref={mobileCarouselRef}
         className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide scroll-smooth md:hidden content-fade-up-3"
         style={{ 
           animationDelay: '0.2s'
@@ -283,8 +352,8 @@ export default function RecommendedSetCard({
                             >
                               <p className="text-xs text-white/70 mb-0.5">Weight</p>
                               <div className="flex items-baseline justify-center gap-1">
-                                <p className="text-4xl font-bold leading-none" style={{ color: customDisplayWeight ? equipmentColor : 'rgba(255,255,255,0.4)' }}>
-                                  {customDisplayWeight || '-'}
+                                <p className="text-4xl font-bold leading-none" style={{ color: customDisplayWeight != null ? equipmentColor : 'rgba(255,255,255,0.4)' }}>
+                                  {customDisplayWeight != null ? customDisplayWeight : '-'}
                                 </p>
                                 <p className="text-xs text-white/70 leading-none">{card.weightUnit}</p>
                               </div>
@@ -349,8 +418,10 @@ export default function RecommendedSetCard({
                                 </p>
                                 {card.weight != null && <p className="text-xs text-white/70 leading-none">{card.weightUnit}</p>}
                               </div>
-                              {card.weight != null && isDumbbell && card.type === 'recommended' ? (
-                                <p className="text-[9px] text-white/40 mt-0.5 leading-tight">plates only</p>
+                              {card.weight != null && (isDumbbell || isBarbell) && card.type === 'recommended' ? (
+                                <p className="text-[9px] text-white/40 mt-0.5 leading-tight">
+                                  {isDumbbell ? 'plates only' : isBarbell ? `bar: ${barWeight}${card.weightUnit}` : ''}
+                                </p>
                               ) : card.weight != null && card.weightBreakdown ? (
                                 <p className="text-[9px] text-white/40 mt-0.5 leading-tight">{card.weightBreakdown}</p>
                               ) : null}
@@ -439,10 +510,18 @@ export default function RecommendedSetCard({
         ))}
       </div>
 
-      {/* Desktop Grid - Two Cards Side by Side */}
-      <div className="hidden md:grid grid-cols-1 lg:grid-cols-2 gap-4 content-fade-up-3" style={{ animationDelay: '0.2s' }}>
-        {cards.map((card, idx) => (
-          <div key={idx}>
+      {/* Desktop Carousel - constrained width, tighter than workout selection */}
+      <div className="hidden md:block md:max-w-3xl md:mx-auto content-fade-up-3" style={{ animationDelay: '0.2s' }}>
+        <div 
+          ref={desktopCarouselRef}
+          className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide scroll-smooth cursor-grab active:cursor-grabbing"
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseLeave}
+        >
+          {cards.map((card, idx) => (
+          <div key={idx} className="shrink-0 snap-center px-2" style={{ width: '100%' }}>
             {/* Main workout card with animated outer container */}
             <div
               className={`rounded-3xl shadow-lg shadow-black/30 ${card.type === 'custom' ? '' : 'animate-shimmer'}`}
@@ -538,8 +617,8 @@ export default function RecommendedSetCard({
                             >
                               <p className="text-xs text-white/70 mb-0.5">Weight</p>
                               <div className="flex items-baseline justify-center gap-1">
-                                <p className="text-5xl font-bold leading-none" style={{ color: customDisplayWeight ? equipmentColor : 'rgba(255,255,255,0.4)' }}>
-                                  {customDisplayWeight || '-'}
+                                <p className="text-5xl font-bold leading-none" style={{ color: customDisplayWeight != null ? equipmentColor : 'rgba(255,255,255,0.4)' }}>
+                                  {customDisplayWeight != null ? customDisplayWeight : '-'}
                                 </p>
                                 <p className="text-xs text-white/70 leading-none">{card.weightUnit}</p>
                               </div>
@@ -604,8 +683,10 @@ export default function RecommendedSetCard({
                                 </p>
                                 {card.weight != null && <p className="text-xs text-white/70 leading-none">{card.weightUnit}</p>}
                               </div>
-                              {card.weight != null && isDumbbell && card.type === 'recommended' ? (
-                                <p className="text-[10px] text-white/40 mt-1 leading-tight">plates only</p>
+                              {card.weight != null && (isDumbbell || isBarbell) && card.type === 'recommended' ? (
+                                <p className="text-[10px] text-white/40 mt-1 leading-tight">
+                                  {isDumbbell ? 'plates only' : isBarbell ? `bar: ${barWeight}${card.weightUnit}` : ''}
+                                </p>
                               ) : card.weight != null && card.weightBreakdown ? (
                                 <p className="text-[10px] text-white/40 mt-1 leading-tight">{card.weightBreakdown}</p>
                               ) : null}
@@ -691,7 +772,8 @@ export default function RecommendedSetCard({
               </div>
             </div>
           </div>
-        ))}
+          ))}
+        </div>
       </div>
 
       {/* Subtext - only show when AI is enabled and there are 2 cards */}
@@ -704,8 +786,8 @@ export default function RecommendedSetCard({
         </p>
       )}
 
-      {/* Carousel dots - Mobile only, hide when only one card */}
-      <div className={`flex justify-center gap-2.5 px-4 mb-4 md:hidden content-fade-up-3 ${cards.length === 1 ? 'hidden' : ''}`} style={{ animationDelay: '0.3s' }}>
+      {/* Carousel dots - hide when only one card */}
+      <div className={`flex justify-center gap-2.5 px-4 mb-4 content-fade-up-3 ${cards.length === 1 ? 'hidden' : ''}`} style={{ animationDelay: '0.3s' }}>
         {cards.map((_, idx) => (
           <span
             key={idx}

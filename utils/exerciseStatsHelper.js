@@ -296,7 +296,8 @@ export function computeConsistency(logs, analyticsMap = {}) {
 // ─── Progressive Overload Score ─────────────────────────────────────────────
 
 export function computeProgressiveOverloadScore(logs, analyticsMap = {}) {
-  if (logs.length < 2) return { score: 0, status: 'insufficient-data', label: 'No Data' }
+  // Need at least 3 sessions for meaningful progressive overload analysis
+  if (logs.length < 3) return { score: 0, status: 'insufficient-data', label: 'Need 3+ Sessions' }
 
   // Take last 5 sessions for trend analysis (or all if less than 5)
   const recentLogs = logs.slice(0, Math.min(5, logs.length))
@@ -320,44 +321,44 @@ export function computeProgressiveOverloadScore(logs, analyticsMap = {}) {
     return { load, reps, weight, qualityScore, date: getLogDate(log) }
   })
 
-  // Calculate weighted trends (more recent sessions have higher weight)
-  let loadTrend = 0, repsTrend = 0, weightTrend = 0, qualityTrend = 0
-  let totalWeight = 0
-
-  for (let i = 1; i < sessionMetrics.length; i++) {
-    const current = sessionMetrics[i - 1] // More recent
-    const previous = sessionMetrics[i]     // Older
-    const weight = sessionMetrics.length - i // Higher weight for recent comparisons
-    
-    // Calculate percentage changes
-    if (previous.load > 0) {
-      loadTrend += ((current.load - previous.load) / previous.load) * weight
-    }
-    if (previous.reps > 0) {
-      repsTrend += ((current.reps - previous.reps) / previous.reps) * weight
-    }
-    if (previous.weight > 0) {
-      weightTrend += ((current.weight - previous.weight) / previous.weight) * weight
-    }
-    qualityTrend += (current.qualityScore - previous.qualityScore) * weight
-    
-    totalWeight += weight
+  // Calculate simple average comparison: recent half vs older half
+  const midpoint = Math.floor(sessionMetrics.length / 2)
+  const recentHalf = sessionMetrics.slice(0, midpoint)
+  const olderHalf = sessionMetrics.slice(midpoint)
+  
+  // Calculate averages for each half
+  const avgRecent = {
+    load: recentHalf.reduce((sum, s) => sum + s.load, 0) / recentHalf.length,
+    reps: recentHalf.reduce((sum, s) => sum + s.reps, 0) / recentHalf.length,
+    weight: recentHalf.reduce((sum, s) => sum + s.weight, 0) / recentHalf.length,
+    quality: recentHalf.reduce((sum, s) => sum + s.qualityScore, 0) / recentHalf.length,
   }
-
-  if (totalWeight === 0) return { score: 0, status: 'insufficient-data', label: 'No Data' }
-
-  // Normalize trends
-  loadTrend = loadTrend / totalWeight
-  repsTrend = repsTrend / totalWeight
-  weightTrend = weightTrend / totalWeight
-  qualityTrend = qualityTrend / totalWeight
-
+  
+  const avgOlder = {
+    load: olderHalf.reduce((sum, s) => sum + s.load, 0) / olderHalf.length,
+    reps: olderHalf.reduce((sum, s) => sum + s.reps, 0) / olderHalf.length,
+    weight: olderHalf.reduce((sum, s) => sum + s.weight, 0) / olderHalf.length,
+    quality: olderHalf.reduce((sum, s) => sum + s.qualityScore, 0) / olderHalf.length,
+  }
+  
+  // Calculate percentage changes (with safety checks)
+  const loadChange = avgOlder.load > 0 ? ((avgRecent.load - avgOlder.load) / avgOlder.load) : 0
+  const repsChange = avgOlder.reps > 0 ? ((avgRecent.reps - avgOlder.reps) / avgOlder.reps) : 0
+  const weightChange = avgOlder.weight > 0 ? ((avgRecent.weight - avgOlder.weight) / avgOlder.weight) : 0
+  const qualityChange = (avgRecent.quality - avgOlder.quality)
+  
   // Calculate composite score (weighted combination)
   // Load is most important (50%), then weight (30%), reps (15%), quality (5%)
-  const compositeScore = (loadTrend * 0.5) + (weightTrend * 0.3) + (repsTrend * 0.15) + (qualityTrend * 0.05)
+  const compositeScore = (loadChange * 0.5) + (weightChange * 0.3) + (repsChange * 0.15) + (qualityChange * 0.05)
   
-  // Convert to percentage
-  const scorePercent = compositeScore * 100
+  // Convert to percentage and cap at realistic values
+  // Progressive overload should typically be 2-15% per training cycle
+  let scorePercent = compositeScore * 100
+  
+  // Cap unrealistic values (anything over 50% is likely data issues or first-time lifter)
+  if (Math.abs(scorePercent) > 50) {
+    scorePercent = Math.sign(scorePercent) * 50
+  }
   
   let status, label
   if (scorePercent > 2) {
@@ -419,13 +420,24 @@ export function computeWeeklyComparison(logs, analyticsMap = {}, metric = 'load'
   let change = 0
   let trend = 'same'
   
-  if (prevWeekTotal > 0) {
+  if (prevWeekTotal > 0 && currentWeekTotal > 0) {
     change = ((currentWeekTotal - prevWeekTotal) / prevWeekTotal) * 100
+    
+    // Cap unrealistic changes (anything over 100% is likely first-time data or errors)
+    if (Math.abs(change) > 100) {
+      change = Math.sign(change) * 100
+    }
+    
     if (change > 1) trend = 'up'
     else if (change < -1) trend = 'down'
-  } else if (currentWeekTotal > 0) {
-    change = 100 // 100% increase from 0
+  } else if (currentWeekTotal > 0 && prevWeekTotal === 0) {
+    // First week of data - don't show a percentage, just show "New"
+    change = 0
     trend = 'up'
+  } else if (currentWeekTotal === 0 && prevWeekTotal > 0) {
+    // No workouts this week but had some last week
+    change = 100
+    trend = 'down'
   }
   
   return {
@@ -433,6 +445,7 @@ export function computeWeeklyComparison(logs, analyticsMap = {}, metric = 'load'
     previousWeek: prevWeekTotal,
     change: Math.abs(change),
     trend,
-    label: metric === 'load' ? 'kg' : 'reps'
+    label: metric === 'load' ? 'kg' : 'reps',
+    isFirstWeek: prevWeekTotal === 0 && currentWeekTotal > 0
   }
 }

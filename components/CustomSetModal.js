@@ -469,7 +469,7 @@ export default function CustomSetModal({
     >
       {/* Modal */}
       <div 
-        className={`w-full transition-transform ease-out ${isClosing ? 'translate-y-full' : 'translate-y-0'}`}
+        className={`w-full md:max-w-3xl transition-transform ease-out ${isClosing ? 'translate-y-full' : 'translate-y-0'}`}
         onClick={(e) => e.stopPropagation()}
         style={{ 
           animation: !isClosing ? 'slideUp 0.25s cubic-bezier(0.32, 0.72, 0, 1)' : undefined,

@@ -59,11 +59,13 @@ export default function RepCarousel({ repsData, targetROM, romUnit, romCalibrate
   }
 
   const handleTouchStart = (e) => {
-    setTouchStart(e.touches[0].clientX);
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    setTouchStart(clientX);
   };
 
   const handleTouchMove = (e) => {
-    setTouchEnd(e.touches[0].clientX);
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    setTouchEnd(clientX);
   };
 
   const handleTouchEnd = () => {
@@ -84,6 +86,23 @@ export default function RepCarousel({ repsData, targetROM, romUnit, romCalibrate
     setTouchEnd(0);
   };
 
+  const handleMouseDown = (e) => {
+    e.preventDefault();
+    setTouchStart(e.clientX);
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  const handleMouseMove = (e) => {
+    setTouchEnd(e.clientX);
+  };
+
+  const handleMouseUp = () => {
+    handleTouchEnd();
+    document.removeEventListener('mousemove', handleMouseMove);
+    document.removeEventListener('mouseup', handleMouseUp);
+  };
+
   const goToNext = () => {
     if (currentIndex < repsData.length - 1) {
       setCurrentIndex(currentIndex + 1);
@@ -100,10 +119,11 @@ export default function RepCarousel({ repsData, targetROM, romUnit, romCalibrate
     <div className="h-full flex flex-col">
       <div 
         ref={carouselRef}
-        className="flex-1 overflow-hidden relative"
+        className="flex-1 overflow-hidden relative cursor-grab active:cursor-grabbing"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
+        onMouseDown={handleMouseDown}
       >
         <div 
           className="h-full flex transition-transform duration-300 ease-out"

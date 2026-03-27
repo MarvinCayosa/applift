@@ -694,8 +694,13 @@ export function useWorkoutSession({
         // For BOTH, FULL-CYCLE, PEAK-TO-VALLEY, and ORIENTATION-VALLEY modes: 
         // Rep is already counted at end of eccentric (full cycle captured)
         // The samples are complete - fire callback immediately
+        //
+        // ALSO: For VALLEY-TO-PEAK mode, fire immediately because RepCounter
+        // handles the full cycle with pendingRep mechanism (finalized at set end)
+        // This prevents the 1-3 second delay from waiting for pitch/accel return
         if (countDirection === 'both' || countDirection === 'full-cycle' || 
-            countDirection === 'peak-to-valley' || countDirection === 'orientation-valley') {
+            countDirection === 'peak-to-valley' || countDirection === 'orientation-valley' ||
+            countDirection === 'valley-to-peak') {
           const repSamples = repData.samples.filter(s => s.repNumber === newStats.repCount);
           console.log(`[WorkoutSession] Rep ${newStats.repCount} complete (${countDirection}), ${repSamples.length} samples`);
           
@@ -715,7 +720,7 @@ export function useWorkoutSession({
             });
           }
         } else {
-          // For other modes (valley-to-peak, peak-to-valley): defer until pitch returns
+          // For other modes: defer until pitch returns
           // *** QUATERNION-BASED DEFERRED COMPLETION ***
           // Don't call onRepDetected yet — the eccentric phase samples haven't arrived.
           // Record the starting orientation so we can detect when the arm returns.
@@ -940,7 +945,7 @@ export function useWorkoutSession({
       if (repStats.repCount >= recommendedReps && repStats.repCount > 0) {
         const countDirection = repCounterRef.current?.countDirection || 'both';
         const isDumbbell = /dumbbell/i.test(equipment) || /dumbbell/i.test(workout);
-        const needsLoweringDelay = countDirection === 'valley-to-peak';
+        
         // For dumbbell exercises in orientation-valley mode, force-complete the last rep at set end
         if (isDumbbell && repCounterRef.current.forceCompleteCurrentRep) {
           const forcedRep = repCounterRef.current.forceCompleteCurrentRep();
@@ -963,46 +968,46 @@ export function useWorkoutSession({
             }
           }
         }
-        // If we're currently waiting for the delay (timeout in progress), skip
-        if (finalRepDelayRef.current) {
-          return;
-        }
-        // If we need a delay and haven't started one yet, start it now
-        if (needsLoweringDelay && !awaitingFinalLoweringRef.current) {
-          console.log('[WorkoutSession] 🏋️ Final rep detected — waiting for full eccentric phase (pitch return)...');
-          awaitingFinalLoweringRef.current = true;
-          finalRepDelayRef.current = setTimeout(() => {
-            console.log('[WorkoutSession] ✅ Eccentric capture window complete — finalizing set');
-            finalRepDelayRef.current = null;
-            delayCompletedRef.current = true;
-            if (pendingRepCallbackRef.current) {
-              const pending = pendingRepCallbackRef.current;
-              const flushRepData = repCounterRef.current.exportData();
-              const flushSamples = flushRepData.samples.filter(s => s.repNumber === pending.repNumber);
-              if (onRepDetectedRef.current && flushSamples.length > 0) {
-                console.log(`[WorkoutSession] Flushing final pending rep ${pending.repNumber} at set end (${flushSamples.length} samples)`);
-                const startTime = pending.lastRepMeta?.actualStartTime ?? 0;
-                onRepDetectedRef.current({
-                  repNumber: pending.repNumber,
-                  duration: (flushSamples[flushSamples.length - 1]?.relativeTime ?? flushSamples[flushSamples.length - 1]?.timestamp ?? startTime) / 1000 - startTime / 1000,
-                  peakAcceleration: pending.lastRepMeta?.peakValue,
-                  startTime,
-                  samples: flushSamples
-                });
-              }
-              pendingRepCallbackRef.current = null;
-            }
-            setSetCompletionTrigger(prev => prev + 1);
-          }, FINAL_LOWERING_DELAY_MS);
-          return;
-        }
-        // Clear the delay states if they exist (either delay completed or not needed)
+        
+        // *** NO DELAY FOR VALLEY-TO-PEAK MODE ***
+        // RepCounter's pendingRep mechanism + finalizePendingReps() already handles
+        // capturing the full cycle. The 2-second delay is unnecessary and causes
+        // a poor user experience.
+        
+        // Clear any existing delay states
         if (finalRepDelayRef.current) {
           clearTimeout(finalRepDelayRef.current);
           finalRepDelayRef.current = null;
         }
         awaitingFinalLoweringRef.current = false;
         delayCompletedRef.current = false;
+        
+        // Flush any pending rep callback
+        if (pendingRepCallbackRef.current) {
+          const pending = pendingRepCallbackRef.current;
+          const flushRepData = repCounterRef.current.exportData();
+          const flushSamples = flushRepData.samples.filter(s => s.repNumber === pending.repNumber);
+          if (onRepDetectedRef.current && flushSamples.length > 0) {
+            console.log(`[WorkoutSession] Flushing final pending rep ${pending.repNumber} at set end (${flushSamples.length} samples)`);
+            const startTime = pending.lastRepMeta?.actualStartTime ?? 0;
+            onRepDetectedRef.current({
+              repNumber: pending.repNumber,
+              duration: (flushSamples[flushSamples.length - 1]?.relativeTime ?? flushSamples[flushSamples.length - 1]?.timestamp ?? startTime) / 1000 - startTime / 1000,
+              peakAcceleration: pending.lastRepMeta?.peakValue,
+              startTime,
+              samples: flushSamples
+            });
+          }
+          pendingRepCallbackRef.current = null;
+        }
+        
+        // *** FINALIZE PENDING REPS BEFORE SET COMPLETION ***
+        // For valley-to-peak mode (back squats, bench press), the last rep may be pending
+        // waiting for the lowering phase. Finalize it now to include all samples.
+        if (repCounterRef.current.finalizePendingReps) {
+          repCounterRef.current.finalizePendingReps();
+          console.log('[WorkoutSession] Finalized pending reps at set completion');
+        }
         
         // Track stats for this completed set
         const currentRepData = repCounterRef.current.exportData();
@@ -1125,6 +1130,13 @@ export function useWorkoutSession({
           
           setIsRecording(false);
           setIsPaused(false);
+          
+          // *** FINALIZE PENDING REPS BEFORE WORKOUT COMPLETION ***
+          // For valley-to-peak mode (back squats, bench press), the last rep may be pending
+          if (repCounterRef.current.finalizePendingReps) {
+            repCounterRef.current.finalizePendingReps();
+            console.log('[WorkoutSession] Finalized pending reps at workout completion');
+          }
           
           // *** USE REF TO AVOID STALE CLOSURE ***
           if (onWorkoutCompleteRef.current) {
@@ -1574,6 +1586,12 @@ export function useWorkoutSession({
       setIsRecording(false);
       setIsPaused(false);
 
+      // *** FINALIZE PENDING REPS BEFORE WORKOUT COMPLETION (SKIP SET) ***
+      if (repCounterRef.current.finalizePendingReps) {
+        repCounterRef.current.finalizePendingReps();
+        console.log('[WorkoutSession] Finalized pending reps at workout completion (skip set)');
+      }
+
       if (onWorkoutCompleteRef.current) {
         onWorkoutCompleteRef.current({
           workoutStats: {
@@ -1594,6 +1612,12 @@ export function useWorkoutSession({
     } else {
       // More sets — take a break
       const updatedTotalTime = workoutStats.totalTime + elapsedTime;
+
+      // *** FINALIZE PENDING REPS BEFORE SET COMPLETION (SKIP SET) ***
+      if (repCounterRef.current.finalizePendingReps) {
+        repCounterRef.current.finalizePendingReps();
+        console.log('[WorkoutSession] Finalized pending reps at set completion (skip set)');
+      }
 
       setWorkoutStats({
         totalReps: updatedTotalReps,

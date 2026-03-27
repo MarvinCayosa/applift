@@ -80,7 +80,19 @@ export class RepCounter {
     this.lastRepEndTime = 0;
     
     // Peak detection for slow movements (balanced sensitivity)
-    this.minPeakProminence = config.minPeakProminence || 0.08; // Lowered from 0.15 - allows slow controlled reps to count
+    // Prominence is in absolute m/s² units (gravity ≈ 9.81 m/s²)
+    // For back squats and other exercises, typical prominence is 2-5 m/s²
+    // Barbell exercises (squats, bench press) have lower prominence due to controlled movement
+    // Dumbbell exercises have higher prominence due to more dynamic movement
+    
+    // Exercise-specific prominence thresholds
+    const exerciseCode = config.exerciseCode ?? 0;
+    const isBarbellExercise = exerciseCode === 2 || exerciseCode === 3; // Bench press or Back squats
+    
+    // Much lower threshold for barbell exercises (0.5 m/s²) to catch controlled movements
+    // Default to barbell threshold (0.5) since most exercises are controlled
+    this.minPeakProminence = config.minPeakProminence || (isBarbellExercise ? 0.5 : 0.5);
+    
     this.minPeakDistance = config.minPeakDistance || 8; // Reduced from 10 - faster recovery after missed rep (0.4s at 20Hz)
     this.minRepDuration = config.minRepDuration || 0.5; // Restored from 0.6 - allows faster reps
     this.maxRepDuration = config.maxRepDuration || 12.0; // Increased from 10.0 - allows very slow controlled reps

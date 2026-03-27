@@ -638,7 +638,8 @@ export function WorkoutLoggingProvider({ children }) {
                 action: 'completeWorkout',
                 userId: user.uid,
                 workoutId: result.workoutId,
-                metadata: result.metadata
+                metadata: result.metadata,
+                workoutData: result.workoutData, // Include detailed set/rep data for calorie calculation
               }),
               signal: controller.signal,
             });

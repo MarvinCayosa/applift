@@ -199,11 +199,13 @@ export default function Splash() {
   }
 
   const handleTouchStart = (e) => {
-    touchStartX.current = e.touches[0].clientX
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX
+    touchStartX.current = clientX
   }
 
   const handleTouchMove = (e) => {
-    touchEndX.current = e.touches[0].clientX
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX
+    touchEndX.current = clientX
   }
 
   const handleTouchEnd = () => {
@@ -221,6 +223,23 @@ export default function Splash() {
     
     touchStartX.current = 0
     touchEndX.current = 0
+  }
+
+  const handleMouseDown = (e) => {
+    e.preventDefault()
+    touchStartX.current = e.clientX
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+  }
+
+  const handleMouseMove = (e) => {
+    touchEndX.current = e.clientX
+  }
+
+  const handleMouseUp = () => {
+    handleTouchEnd()
+    document.removeEventListener('mousemove', handleMouseMove)
+    document.removeEventListener('mouseup', handleMouseUp)
   }
 
   const currentSlideData = SPLASH_SLIDES[currentSlide]
@@ -336,6 +355,7 @@ export default function Splash() {
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
+      onMouseDown={handleMouseDown}
     >
       <Head>
         <title>AppLift — Achieve strength with insights</title>

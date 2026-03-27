@@ -319,7 +319,7 @@ export default async function handler(req, res) {
     }
 
     return res.status(200).json({
-      feedback: (parsed.feedback || '').slice(0, 300),
+      feedback: (parsed.feedback || '').slice(0, 400), // Increased from 300 to 400
       generatedAt: new Date().toISOString(),
     });
   } catch (error) {

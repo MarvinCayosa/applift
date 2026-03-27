@@ -125,7 +125,7 @@ export default function EquipmentDistributionCard({
     <div className="rounded-2xl p-3 h-[380px] flex flex-col bg-white/10 overflow-hidden">
       {/* Header */}
       <div className="mb-1 flex-shrink-0">
-        <h3 className="text-xs font-semibold text-white tracking-wide">
+        <h3 className="text-sm font-bold text-white md:text-lg">
           Equipment Distribution
         </h3>
         <p className="text-[10px] text-white/60">{period}</p>

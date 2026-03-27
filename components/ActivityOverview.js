@@ -286,8 +286,8 @@ export default function ActivityOverview({
       {/* Header with toggle */}
       <div className="flex items-center justify-between mb-4">
         <h3 className={isDesktop 
-          ? "text-xl font-semibold text-white/90 uppercase tracking-wide" 
-          : "text-xl font-semibold text-white/90"
+          ? "text-lg font-bold text-white" 
+          : "text-base font-bold text-white"
         }>
           Activity Overview
         </h3>

@@ -188,7 +188,9 @@ export function transformAnalysisForUI(analysis) {
   // The real wall-clock workout time comes from the workout monitor's totalTime query param.
   // We store this as activeTime for reference, but don't use it as totalTime.
   const activeTime = Math.round((summary?.totalDurationMs || 0) / 1000);
-  const calories = Math.round(activeTime * 0.15 * totalReps); // Rough estimate
+  // Calories are calculated server-side in imu-stream API using MET formula
+  // This is just a placeholder that will be overridden by Firestore data
+  const calories = 0;
 
   return {
     // Summary data
