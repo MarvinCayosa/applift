@@ -6,7 +6,8 @@
  * Accepts external selectedSet filter from parent.
  */
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import ReactDOM from 'react-dom';
 
 // Color mapping for labels — prediction 0=green, 1=yellow, 2=red
 // Defined outside component to avoid temporal dead zone issues
@@ -17,6 +18,74 @@ const PREDICTION_2_LABELS_WF = [
 ];
 
 export default function ClassificationDistribution({ setsData, analysisData, selectedSet = 'all' }) {
+  const [selectedLabel, setSelectedLabel] = useState(null);
+  const [isClosingInfo, setIsClosingInfo] = useState(false);
+
+  const closeInfo = () => {
+    setIsClosingInfo(true);
+    setTimeout(() => { setSelectedLabel(null); setIsClosingInfo(false); }, 250);
+  };
+
+  // Classification descriptions in plain language
+  const classificationInfo = {
+    'Clean': {
+      title: 'Clean Rep',
+      color: '#22c55e',
+      description: 'Your movement was smooth and controlled throughout the rep. The sensor detected no sudden jerks or uneven motion.',
+      tip: 'Keep it up! Clean reps mean you\'re building strength safely and effectively.',
+    },
+    'Uncontrolled Movement': {
+      title: 'Uncontrolled Movement',
+      color: '#f59e0b',
+      description: 'The weight moved too fast or unevenly during this rep. This usually happens when you let gravity take over instead of controlling the movement.',
+      tip: 'Try slowing down the lowering phase. Count 2-3 seconds as you lower the weight.',
+    },
+    'Uncontrolled': {
+      title: 'Uncontrolled Movement',
+      color: '#f59e0b',
+      description: 'The weight moved too fast or unevenly during this rep. This usually happens when you let gravity take over instead of controlling the movement.',
+      tip: 'Try slowing down the lowering phase. Count 2-3 seconds as you lower the weight.',
+    },
+    'Pulling Too Fast': {
+      title: 'Pulling Too Fast',
+      color: '#f59e0b',
+      description: 'You pulled or lifted the weight too quickly. Fast reps reduce muscle engagement and can increase injury risk.',
+      tip: 'Focus on a controlled, steady pull. Speed should come from strength, not momentum.',
+    },
+    'Abrupt Initiation': {
+      title: 'Abrupt Start',
+      color: '#ef4444',
+      description: 'The rep started with a sudden jerk or snap instead of a smooth, controlled movement. This puts extra stress on your joints.',
+      tip: 'Pause briefly at the bottom of each rep and start the movement slowly before accelerating.',
+    },
+    'Inclination Asymmetry': {
+      title: 'Uneven Movement',
+      color: '#ef4444',
+      description: 'The sensor detected that the weight was tilting or moving unevenly — one side more than the other.',
+      tip: 'Check that both sides are doing equal work. Focus on keeping the movement straight and balanced.',
+    },
+    'Releasing Too Fast': {
+      title: 'Releasing Too Fast',
+      color: '#ef4444',
+      description: 'You lowered the weight too quickly. The lowering phase is just as important as lifting — it\'s where a lot of muscle growth happens.',
+      tip: 'Slow down the lowering phase. Aim for 2-3 seconds going down.',
+    },
+    'Poor Form': {
+      title: 'Form Issue',
+      color: '#ef4444',
+      description: 'The sensor detected irregular movement patterns that suggest your form broke down during this rep.',
+      tip: 'Consider reducing the weight to maintain better control throughout the full rep.',
+    },
+  };
+
+  const getClassInfo = (label) => {
+    return classificationInfo[label] || {
+      title: label,
+      color: '#6b7280',
+      description: 'Movement pattern detected by the sensor during this rep.',
+      tip: 'Focus on controlled, consistent movement throughout each rep.',
+    };
+  };
   // Calculate distribution from setsData filtered by selectedSet
   const distribution = useMemo(() => {
     if (!setsData || setsData.length === 0) {
@@ -162,13 +231,22 @@ export default function ClassificationDistribution({ setsData, analysisData, sel
             const pct = distribution.distributionPercent[label] || 0;
             const colors = getLabelColor(label, index);
             return (
-              <div key={label} className="flex items-center justify-between">
+              <button
+                key={label}
+                onClick={() => setSelectedLabel(label)}
+                className="w-full flex items-center justify-between active:bg-white/5 rounded-lg px-1 py-0.5 transition-colors"
+              >
                 <div className="flex items-center gap-2">
                   <div className={`w-2.5 h-2.5 rounded-full ${colors.dot}`} />
                   <span className="text-xs text-gray-300">{label}</span>
                 </div>
-                <span className={`text-xs font-semibold ${colors.text}`}>{count} ({pct}%)</span>
-              </div>
+                <div className="flex items-center gap-1.5">
+                  <span className={`text-xs font-semibold ${colors.text}`}>{count} ({pct}%)</span>
+                  <svg className="w-3 h-3 text-white/20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 100 20 10 10 0 000-20z" />
+                  </svg>
+                </div>
+              </button>
             );
           })}
           {distribution.totalReps > 0 && (
@@ -195,6 +273,57 @@ export default function ClassificationDistribution({ setsData, analysisData, sel
                   : 'Consider reducing weight to improve execution quality.'}
           </p>
         </div>
+      )}
+
+      {/* Classification Info Modal */}
+      {selectedLabel && typeof document !== 'undefined' && ReactDOM.createPortal(
+        <div
+          className="fixed inset-0 z-[9999] flex items-end justify-center"
+          onClick={closeInfo}
+        >
+          <div className={`absolute inset-0 bg-black/60 transition-opacity duration-250 ${isClosingInfo ? 'opacity-0' : 'opacity-100'}`} />
+          <div
+            className={`relative w-full max-w-lg rounded-t-2xl bg-[#1e1e1e] border-t border-white/10 pb-8 ${isClosingInfo ? 'animate-slideDown' : 'animate-slideUp'}`}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex justify-center pt-3 pb-2 cursor-grab" onClick={closeInfo}>
+              <div className="w-10 h-1 rounded-full bg-white/20" />
+            </div>
+            <div className="px-5 overflow-y-auto" style={{ maxHeight: '65vh' }}>
+              {(() => {
+                const info = getClassInfo(selectedLabel);
+                return (
+                  <>
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: info.color }} />
+                      <h4 className="text-[16px] font-bold text-white">{info.title}</h4>
+                    </div>
+                    <p className="text-[13px] text-white/60 leading-relaxed mb-4">{info.description}</p>
+                    <div className="rounded-xl bg-white/[0.04] p-3 mb-2">
+                      <p className="text-[12px] text-white/50 leading-relaxed">
+                        <span className="text-white/70 font-medium">Tip: </span>{info.tip}
+                      </p>
+                    </div>
+                    {/* Show percentage for this label */}
+                    <div className="mt-4 flex items-center justify-between px-1">
+                      <span className="text-[12px] text-white/40">This session</span>
+                      <span className="text-[14px] font-bold" style={{ color: info.color }}>
+                        {distribution.distribution[selectedLabel] || 0} reps ({distribution.distributionPercent[selectedLabel] || 0}%)
+                      </span>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+          <style jsx global>{`
+            @keyframes slideUp { from { opacity: 0; transform: translateY(100%); } to { opacity: 1; transform: translateY(0); } }
+            @keyframes slideDown { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(100%); } }
+            .animate-slideUp { animation: slideUp 0.3s cubic-bezier(0.32, 0.72, 0, 1); }
+            .animate-slideDown { animation: slideDown 0.25s cubic-bezier(0.32, 0.72, 0, 1) forwards; }
+          `}</style>
+        </div>,
+        document.body
       )}
     </div>
   );

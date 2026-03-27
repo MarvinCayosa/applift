@@ -484,10 +484,42 @@ export default function SelectedWorkout() {
   const [customReps, setCustomReps] = useState(null);
   const [customWeightUnit, setCustomWeightUnit] = useState('kg');
   const [customRestTime, setCustomRestTime] = useState(30); // Rest time in seconds
-  const [customBarWeight, setCustomBarWeight] = useState(0); // Bar/handle weight for breakdown
+  const [customBarWeight, setCustomBarWeight] = useState(0); // Bar/handle weight for breakdown (custom card only)
   const [customSetError, setCustomSetError] = useState('');
   const [errorVisible, setErrorVisible] = useState(false);
   const [isPillExpanded, setIsPillExpanded] = useState(false);
+
+  // Bar weight for barbell exercises — persisted in localStorage, separate from calibration
+  // This is the "current" bar weight used for AI and custom card display
+  const isBarbell = equipment?.toLowerCase() === 'barbell';
+  const isFemale = userProfile?.gender?.toLowerCase()?.includes('female') || userProfile?.gender?.toLowerCase()?.includes('woman');
+  const defaultBarWeight = isFemale ? 15 : 20;
+  const [selectedBarWeight, setSelectedBarWeight] = useState(defaultBarWeight);
+  const [showBarWeightPicker, setShowBarWeightPicker] = useState(false);
+  const [customBarInput, setCustomBarInput] = useState('');
+
+  // Load persisted bar weight from localStorage on mount
+  useEffect(() => {
+    if (!isBarbell || !user?.uid) return;
+    try {
+      const key = `barWeight_${user.uid}`;
+      const stored = localStorage.getItem(key);
+      if (stored) {
+        const parsed = parseFloat(stored);
+        if (!isNaN(parsed) && parsed > 0) setSelectedBarWeight(parsed);
+      }
+    } catch (_) {}
+  }, [isBarbell, user?.uid]);
+
+  // Persist bar weight to localStorage whenever it changes
+  const handleBarWeightChange = useCallback((weight) => {
+    setSelectedBarWeight(weight);
+    if (user?.uid) {
+      try {
+        localStorage.setItem(`barWeight_${user.uid}`, String(weight));
+      } catch (_) {}
+    }
+  }, [user?.uid]);
 
   // Past sessions for AI context
   const [pastSessions, setPastSessions] = useState([]);
@@ -663,12 +695,26 @@ export default function SelectedWorkout() {
     isFromCache,
     canRegenerate,
     regenerate: aiRegenerate,
+    loadRecommendation,
   } = useAIRecommendation({
     equipment,
     exerciseName: workout,
     pastSessions,
     enabled: aiEnabled && !!equipment && !!workout && sessionsLoaded && setupComplete,
+    barWeight: isBarbell ? selectedBarWeight : null,
   });
+
+  // Auto-load when bar weight changes — check cache first (doesn't count against regen limit)
+  const prevBarWeightRef = useRef(selectedBarWeight);
+  useEffect(() => {
+    if (!isBarbell || !aiEnabled || !setupComplete || !sessionsLoaded) return;
+    if (prevBarWeightRef.current !== selectedBarWeight) {
+      prevBarWeightRef.current = selectedBarWeight;
+      // Use loadRecommendation (cache-first) — switching bars uses cached result if available,
+      // only calls API if no cache exists for this bar weight. Never counts against regen limit.
+      loadRecommendation(false, 'bar_change');
+    }
+  }, [selectedBarWeight, isBarbell, aiEnabled, setupComplete, sessionsLoaded, loadRecommendation]);
 
   // Update rest time when AI provides a recommendation
   useEffect(() => {
@@ -874,12 +920,12 @@ export default function SelectedWorkout() {
           <RecommendedSetCard
             equipment={equipment}
             workout={workout}
-            recommendedSets={aiRec?.sets ?? details.recommendedSets}
-            recommendedReps={aiRec?.reps ?? details.recommendedReps}
-            weight={aiRec?.weight ?? 5}
+            recommendedSets={aiRec?.sets ?? null}
+            recommendedReps={aiRec?.reps ?? null}
+            weight={aiRec?.weight ?? null}
             weightBreakdown={aiRec?.weightBreakdown || ''}
-            time={aiRec?.restTimeSeconds ?? 45}
-            burnCalories={aiRec?.estimatedCalories ?? 45}
+            time={aiRec?.restTimeSeconds ?? null}
+            burnCalories={aiRec?.estimatedCalories ?? null}
             image={workoutImage}
             equipmentColor={equipmentColor}
             customWeight={customWeight}
@@ -900,6 +946,109 @@ export default function SelectedWorkout() {
             maxRegen={maxRegen}
           />
         </div>
+
+        {/* Bar Weight Picker — barbell exercises only, always accessible */}
+        {isBarbell && carouselActiveIndex === 0 && (
+          <div className="flex-shrink-0 px-1 content-fade-up-2" style={{ animationDelay: '0.5s' }}>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowBarWeightPicker(v => !v)}
+                className="w-full flex items-center justify-between rounded-2xl px-4 py-3 bg-white/6 border border-white/5 hover:bg-white/10 transition-colors"
+              >
+                <div className="flex items-center gap-2.5">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(139,92,246,0.9)" strokeWidth="2" strokeLinecap="round">
+                    <line x1="2" y1="12" x2="22" y2="12" />
+                    <rect x="4" y="8" width="3" height="8" rx="1" fill="rgba(139,92,246,0.25)" />
+                    <rect x="17" y="8" width="3" height="8" rx="1" fill="rgba(139,92,246,0.25)" />
+                  </svg>
+                  <span className="text-sm font-medium text-white/80">Bar Weight</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-violet-400">{selectedBarWeight}kg</span>
+                  <svg className={`w-4 h-4 text-white/40 transition-transform duration-200 ${showBarWeightPicker ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+              </button>
+
+              {/* Dropdown picker */}
+              {showBarWeightPicker && (
+                <div className="mt-1 rounded-2xl overflow-hidden border border-white/5 animate-dropdownSlideIn origin-top" style={{ backgroundColor: 'rgb(30,30,30)' }}>
+                  {[
+                    { label: 'Olympic Bar', weight: 20, desc: '20kg / 45lb' },
+                    { label: "Women's Olympic Bar", weight: 15, desc: '15kg / 33lb' },
+                    { label: 'EZ Curl Bar', weight: 8, desc: '8kg / 18lb' },
+                  ].map((opt) => (
+                    <button
+                      key={opt.weight}
+                      type="button"
+                      onClick={() => {
+                        handleBarWeightChange(opt.weight);
+                        setCustomBarInput('');
+                        setShowBarWeightPicker(false);
+                      }}
+                      className={`w-full flex items-center justify-between px-4 py-3 transition-colors ${
+                        selectedBarWeight === opt.weight && customBarInput === ''
+                          ? 'bg-violet-500/15 text-violet-300'
+                          : 'hover:bg-white/6 text-white/70'
+                      }`}
+                    >
+                      <div className="text-left">
+                        <p className="text-sm font-semibold">{opt.label}</p>
+                        <p className="text-xs text-white/40">{opt.desc}</p>
+                      </div>
+                      {selectedBarWeight === opt.weight && customBarInput === '' && (
+                        <svg className="w-4 h-4 text-violet-400" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </button>
+                  ))}
+                  {/* Custom bar weight */}
+                  <div className="flex items-center justify-between px-4 py-3 border-t border-white/8">
+                    <div className="text-left">
+                      <p className="text-sm font-semibold text-white/70">Custom</p>
+                      <p className="text-xs text-white/40">Enter bar weight</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        className="w-14 text-right text-base font-bold text-white bg-transparent border-b-2 border-violet-500 outline-none appearance-none"
+                        style={{ MozAppearance: 'textfield' }}
+                        placeholder="kg"
+                        value={customBarInput}
+                        onChange={(e) => setCustomBarInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            const parsed = parseFloat(customBarInput);
+                            if (!isNaN(parsed) && parsed > 0) {
+                              handleBarWeightChange(parsed);
+                              setShowBarWeightPicker(false);
+                            }
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const parsed = parseFloat(customBarInput);
+                          if (!isNaN(parsed) && parsed > 0) {
+                            handleBarWeightChange(parsed);
+                            setShowBarWeightPicker(false);
+                          }
+                        }}
+                        className="text-xs font-bold text-violet-400 px-2 py-1 rounded-lg bg-violet-500/15 hover:bg-violet-500/25 transition-colors"
+                      >
+                        Set
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* AI Reasoning Panel - auto-collapse with smooth animation */}
         {aiEnabled && aiReasoning && !aiLoading && (
@@ -1052,14 +1201,14 @@ export default function SelectedWorkout() {
                 const finalRestTime = isCustomSet ? customRestTime : aiRestTime;
                 
                 // Calculate final weight for custom sets:
-                // For barbell/dumbbell, add bar/handle weight to plate weight
-                // User selects plate weight (e.g., 2.5kg) and bar/handle weight (e.g., 2kg)
-                // Total weight = plate weight + bar weight (e.g., 4.5kg)
+                // customWeight = plates only (from modal ruler)
+                // customBarWeight = bar/handle weight (from modal bar picker)
+                // Total = plates + bar
                 const eqLower = equipment.toLowerCase();
                 const hasBaseWeight = eqLower === 'barbell' || eqLower === 'dumbbell';
-                const customTotalWeight = isCustomSet && hasBaseWeight 
-                  ? customWeight + (customBarWeight || (eqLower === 'barbell' ? 20 : 2))
-                  : customWeight;
+                const customTotalWeight = isCustomSet && hasBaseWeight
+                  ? (customWeight || 0) + (customBarWeight || (eqLower === 'barbell' ? 20 : 2))
+                  : (customWeight || 0);
                 const finalWeight = isCustomSet ? customTotalWeight : aiWeight;
                 
                 // Generate weight breakdown for custom sets
@@ -1068,12 +1217,12 @@ export default function SelectedWorkout() {
                   const unit = finalWeightUnit;
                   
                   if (eqLower === 'barbell') {
-                    const barW = customBarWeight || 20;
+                    // Use selectedBarWeight (global bar picker) for barbell
+                    const barW = isBarbell ? selectedBarWeight : (customBarWeight || 20);
                     const plateW = customWeight || 0;
                     if (plateW <= 0) return `Bar only (${barW}${unit})`;
                     return `${barW}${unit} bar + ${plateW}${unit} plates`;
                   } else if (eqLower === 'dumbbell') {
-                    // Show handle + plates for dumbbell
                     const handleW = customBarWeight || 2;
                     const plateW = customWeight || 0;
                     if (plateW <= 0) return `Handle only (${handleW}${unit})`;
@@ -1106,6 +1255,15 @@ export default function SelectedWorkout() {
                   weightUnit: finalWeightUnit,
                   weightBreakdown: finalWeightBreakdown,
                   setType: setType,
+                  // Snapshot calibration and bar weight at the moment of starting
+                  // These are stored immutably with the session so past data is never affected
+                  calibrationSnapshot: savedCalibrationData ? {
+                    targetROM: savedCalibrationData.targetROM,
+                    romType: savedCalibrationData.romType,
+                    unit: savedCalibrationData.unit,
+                    snapshotAt: new Date().toISOString(),
+                  } : null,
+                  barWeightSnapshot: isBarbell ? selectedBarWeight : null,
                 });
 
                 // Navigate to workout monitor with workout context
@@ -1170,6 +1328,7 @@ export default function SelectedWorkout() {
           setSetupComplete(false);
         }}
         onBarWeightSelect={(barWeight) => {
+          handleBarWeightChange(barWeight);
           setCustomBarWeight(barWeight);
           setSetupComplete(true);
         }}

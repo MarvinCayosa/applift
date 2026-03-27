@@ -273,8 +273,14 @@ function getVertexAIClient() {
 // ============================================================
 // BUILD USER CONTEXT PROMPT (COMPACT)
 // ============================================================
-function buildUserPrompt({ userProfile, equipment, exerciseName, pastSessions, sessionContext }) {
+function buildUserPrompt({ userProfile, equipment, exerciseName, pastSessions, sessionContext, barWeight }) {
   let prompt = `EXERCISE: ${exerciseName} (${equipment})\n`;
+
+  // If barbell and bar weight is known, tell the AI explicitly
+  const isBarbell = (equipment || '').toLowerCase().includes('barbell');
+  if (isBarbell && barWeight != null) {
+    prompt += `BAR WEIGHT: ${barWeight}kg (this is the bar the user is using — recommend PLATE weight on top of this)\n`;
+  }
 
   // User basics — include activityLevel with description
   const experience = userProfile.strengthExperience || 'beginner';
@@ -359,16 +365,15 @@ function buildUserPrompt({ userProfile, equipment, exerciseName, pastSessions, s
 }
 
 // ─── Helper: Generate weight breakdown for response ───
-function generateWeightBreakdown(totalWeight, equipment) {
+function generateWeightBreakdown(totalWeight, equipment, barWeight = null) {
   const eq = equipment.toLowerCase();
   if (eq.includes('barbell')) {
-    const bar = 20;
+    const bar = barWeight ?? 20;
     if (totalWeight <= bar) return `Bar only (${totalWeight}kg)`;
     const platePerSide = (totalWeight - bar) / 2;
     return `${bar}kg bar + ${platePerSide}kg per side`;
   }
   if (eq.includes('dumbbell')) {
-    // Assume ~2kg handle for adjustable dumbbells
     const handle = 2;
     if (totalWeight <= handle) return `Handle only (${totalWeight}kg)`;
     const plates = totalWeight - handle;
@@ -450,14 +455,14 @@ export default async function handler(req, res) {
     }
 
     // Validate request body
-    const { userProfile, equipment, exerciseName, pastSessions, triggeredBy, sessionContext } = req.body;
+    const { userProfile, equipment, exerciseName, pastSessions, triggeredBy, sessionContext, barWeight } = req.body;
 
     if (!equipment || !exerciseName) {
       return res.status(400).json({ error: 'Missing required fields: equipment, exerciseName' });
     }
 
     // Build the user prompt
-    const userPrompt = buildUserPrompt({ userProfile: userProfile || {}, equipment, exerciseName, pastSessions, sessionContext });
+    const userPrompt = buildUserPrompt({ userProfile: userProfile || {}, equipment, exerciseName, pastSessions, sessionContext, barWeight });
     console.log('📝 [AI API] Generated prompt length:', userPrompt.length);
 
     // Call Vertex AI Gemini 2.5 Flash
@@ -548,7 +553,7 @@ export default async function handler(req, res) {
 
     // Weight breakdown — always generate server-side to ensure consistent format
     // AI sometimes returns just a number (e.g. "25kg") instead of the handle+plates breakdown
-    let weightBreakdown = generateWeightBreakdown(weight, equipment);
+    let weightBreakdown = generateWeightBreakdown(weight, equipment, barWeight ?? null);
 
     console.log('[AI API] Parsed recommendation:', { weight, sets, reps, restTimeSeconds, estimatedCalories, recommendedRestDays, weightBreakdown });
 

@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import ReactDOM from 'react-dom';
+import ROMInfoModal from '../shared/ROMInfoModal';
 
 export default function RepInsightCard({ repData, repNumber, targetROM, romUnit: propRomUnit, romCalibrated }) {
   const { time, rom, peakVelocity, meanVelocity, chartData, liftingTime, loweringTime, classification, smoothnessScore, romFulfillment, romUnit, peakTimePercent } = repData;
   const [showConfidenceOverlay, setShowConfidenceOverlay] = useState(false);
   const [showVelocityInfo, setShowVelocityInfo] = useState(false);
+  const [showROMInfo, setShowROMInfo] = useState(false);
   
   // Drag-to-dismiss state for Velocity overlay
   const [dragStartY, setDragStartY] = useState(0);
@@ -432,13 +434,22 @@ export default function RepInsightCard({ repData, repNumber, targetROM, romUnit:
         <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:gap-5">
           {/* Left Card - Range of Motion with circular progress */}
           <div className="relative bg-black/30 rounded-xl sm:rounded-2xl overflow-hidden p-3 sm:p-5 lg:p-6 flex flex-col justify-between" style={{ minHeight: 'clamp(140px, 40vw, 280px)' }}>
-            <div className="relative z-10">
+            <div className="relative z-10 flex items-center gap-1.5">
               <span className="text-[10px] sm:text-xs lg:text-sm font-medium text-gray-300">Range of Motion</span>
               {romDesc && (
-                <span className="ml-1.5 text-[9px] sm:text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ color: romDesc.color, backgroundColor: `${romDesc.color}15` }}>
+                <span className="text-[9px] sm:text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ color: romDesc.color, backgroundColor: `${romDesc.color}15` }}>
                   {romDesc.text}
                 </span>
               )}
+              <button
+                onClick={() => setShowROMInfo(true)}
+                className="ml-auto w-5 h-5 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors flex-shrink-0"
+                aria-label="ROM Information"
+              >
+                <svg className="w-3 h-3 text-white/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </button>
             </div>
             <div className="relative z-10 flex items-center justify-center flex-1 min-h-0 py-2 sm:py-3">
               {romProgress != null ? (
@@ -701,6 +712,7 @@ export default function RepInsightCard({ repData, repNumber, targetROM, romUnit:
         </div>,
         document.body
       )}
+      {showROMInfo && <ROMInfoModal onClose={() => setShowROMInfo(false)} />}
     </div>
   );
 }

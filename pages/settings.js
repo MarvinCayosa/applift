@@ -238,6 +238,7 @@ export default function Settings() {
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showClearDataModal, setShowClearDataModal] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deletePassword, setDeletePassword] = useState('');
   const [clearDataConfirmText, setClearDataConfirmText] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
   const [isClearingData, setIsClearingData] = useState(false);
@@ -880,10 +881,14 @@ export default function Settings() {
   };
 
   const handleDeleteAccount = async () => {
-    if (deleteConfirmText !== 'DELETE') return;
+    if (!deletePassword) return;
     
     setIsDeleting(true);
     try {
+      // Re-authenticate with password before deleting
+      const credential = EmailAuthProvider.credential(user.email, deletePassword);
+      await reauthenticateWithCredential(user, credential);
+
       // Delete user data from Firestore
       if (user?.uid) {
         await deleteDoc(doc(db, 'users', user.uid));
@@ -896,7 +901,9 @@ export default function Settings() {
       router.replace('/splash');
     } catch (error) {
       console.error('Error deleting account:', error);
-      if (error.code === 'auth/requires-recent-login') {
+      if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+        alert('Incorrect password. Please try again.');
+      } else if (error.code === 'auth/requires-recent-login') {
         alert('For security, please sign out and sign back in before deleting your account.');
       } else {
         alert('Failed to delete account. Please try again.');
@@ -904,6 +911,7 @@ export default function Settings() {
     } finally {
       setIsDeleting(false);
       setShowDeleteModal(false);
+      setDeletePassword('');
     }
   };
 
@@ -1258,19 +1266,18 @@ export default function Settings() {
             >
               {isEditingBody ? (
                 <div className="p-5 space-y-4 animate-fadeIn">
-                  {/* Birth Month & Year - iOS-style scroll picker */}
+                  {/* Birth Month & Year - read-only, cannot be changed after signup */}
                   <div>
                     <label className="block text-xs font-medium text-white/60 mb-3 uppercase tracking-wide text-center">
                       Birth Month & Year
                     </label>
-                    <BirthdayPicker
-                      months={months}
-                      years={years}
-                      selectedMonth={bodyForm.birthMonth || months[0]}
-                      selectedYear={bodyForm.birthYear ? parseInt(bodyForm.birthYear) : years[0]}
-                      onMonthChange={(month) => setBodyForm(prev => ({ ...prev, birthMonth: month }))}
-                      onYearChange={(year) => setBodyForm(prev => ({ ...prev, birthYear: year }))}
-                    />
+                    <div className="flex items-center justify-center gap-2 py-3 px-4 rounded-2xl bg-white/5 opacity-50">
+                      <svg className="w-4 h-4 text-white/40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                        <path d="M3 9H21M7 3V5M17 3V5M6.2 21H17.8C18.9201 21 19.4802 21 19.908 20.782C20.2843 20.5903 20.5903 20.2843 20.782 19.908C21 19.4802 21 18.9201 21 17.8V8.2C21 7.07989 21 6.51984 20.782 6.09202C20.5903 5.71569 20.2843 5.40973 19.908 5.21799C19.4802 5 18.9201 5 17.8 5H6.2C5.0799 5 4.51984 5 4.09202 5.21799C3.71569 5.40973 3.40973 5.71569 3.21799 6.09202C3 6.51984 3 7.07989 3 8.2V17.8C3 18.9201 3 19.4802 3.21799 19.908C3.40973 20.2843 3.71569 20.5903 4.09202 20.782C4.51984 21 5.07989 21 6.2 21Z" />
+                      </svg>
+                      <span className="text-sm text-white/60">{getBirthdateDisplay()}</span>
+                    </div>
+                    <p className="text-[10px] text-white/30 mt-1.5 text-center">Birthday cannot be changed after signup</p>
                   </div>
 
                   {/* Weight - same style as signup */}
@@ -1458,25 +1465,21 @@ export default function Settings() {
                   {/* Gender */}
                   <div>
                     <label className="block text-xs font-medium text-white/60 mb-2 uppercase tracking-wide">Gender</label>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 opacity-50 pointer-events-none">
                       {[{ value: 'male', label: 'Male' }, { value: 'female', label: 'Female' }, { value: 'other', label: 'Other' }].map((opt) => {
                         const selected = gender === opt.value;
                         return (
-                          <button
+                          <div
                             key={opt.value}
-                            type="button"
-                            onClick={() => setGender(opt.value)}
-                            className={`flex-1 text-center rounded-2xl transition-all ${selected ? 'bg-[#8b5cf6] text-white' : 'text-white/80 bg-black/30 hover:bg-white/10'}`}
-                            style={{
-                              fontSize: '0.875rem',
-                              padding: '0.75rem 1rem',
-                            }}
+                            className={`flex-1 text-center rounded-2xl ${selected ? 'bg-[#8b5cf6] text-white' : 'text-white/80 bg-black/30'}`}
+                            style={{ fontSize: '0.875rem', padding: '0.75rem 1rem' }}
                           >
                             {opt.label}
-                          </button>
+                          </div>
                         );
                       })}
                     </div>
+                    <p className="text-[10px] text-white/30 mt-1.5 text-center">Gender cannot be changed after signup</p>
                   </div>
 
                   <div className="flex gap-3 pt-2">
@@ -2205,7 +2208,7 @@ export default function Settings() {
             backdropFilter: 'blur(12px)',
             WebkitBackdropFilter: 'blur(12px)',
           }}
-          onClick={() => setShowDeleteModal(false)}
+          onClick={() => { setShowDeleteModal(false); setDeletePassword(''); }}
         >
           <div
             className="relative max-w-sm w-full p-6 rounded-2xl bg-white/10  shadow-xl modal-content-fade-in"
@@ -2217,9 +2220,9 @@ export default function Settings() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="text-center mb-5">
-              <div className="w-14 h-14 rounded-full bg-yellow-500/20 flex items-center justify-center mx-auto mb-4">
-                <svg className="w-7 h-7 text-yellow-400" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M19.5099 5.85L13.5699 2.42C12.5999 1.86 11.3999 1.86 10.4199 2.42L4.48992 5.85C3.51992 6.41 2.91992 7.45 2.91992 8.58V15.42C2.91992 16.54 3.51992 17.58 4.48992 18.15L10.4299 21.58C11.3999 22.14 12.5999 22.14 13.5799 21.58L19.5199 18.15C20.4899 17.59 21.0899 16.55 21.0899 15.42V8.58C21.0799 7.45 20.4799 6.42 19.5099 5.85ZM11.2499 7.75C11.2499 7.34 11.5899 7 11.9999 7C12.4099 7 12.7499 7.34 12.7499 7.75V13C12.7499 13.41 12.4099 13.75 11.9999 13.75C11.5899 13.75 11.2499 13.41 11.2499 13V7.75ZM12.9199 16.63C12.8699 16.75 12.7999 16.86 12.7099 16.96C12.5199 17.15 12.2699 17.25 11.9999 17.25C11.8699 17.25 11.7399 17.22 11.6199 17.17C11.4899 17.12 11.3899 17.05 11.2899 16.96C11.1999 16.86 11.1299 16.75 11.0699 16.63C11.0199 16.51 10.9999 16.38 10.9999 16.25C10.9999 15.99 11.0999 15.73 11.2899 15.54C11.3899 15.45 11.4899 15.38 11.6199 15.33C11.9899 15.17 12.4299 15.26 12.7099 15.54C12.7999 15.64 12.8699 15.74 12.9199 15.87C12.9699 15.99 12.9999 16.12 12.9999 16.25C12.9999 16.38 12.9699 16.51 12.9199 16.63Z" />
+              <div className="w-14 h-14 rounded-full bg-red-500/20 flex items-center justify-center mx-auto mb-4">
+                <svg className="w-7 h-7 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                 </svg>
               </div>
               <h3 className="text-lg font-semibold text-white mb-2">Delete Account</h3>
@@ -2227,37 +2230,34 @@ export default function Settings() {
                 This action cannot be reverted
               </p>
               <p className="text-sm text-white/60 leading-relaxed">
-                Deleting your account will permanently remove all your data, including workout history, settings, and personal information. This cannot be undone.
+                Deleting your account will permanently remove all your data, including workout history, settings, and personal information.
               </p>
             </div>
             
             <div className="mb-5">
-              <label className="block text-xs font-medium text-white/60 mb-2 text-center">
-                Type <span className="text-red-400 font-semibold">DELETE</span> to confirm
+              <label className="block text-xs font-medium text-white/60 mb-2 text-center uppercase tracking-wide">
+                Enter your password to confirm
               </label>
               <input
-                type="text"
-                value={deleteConfirmText}
-                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                type="password"
+                value={deletePassword}
+                onChange={(e) => setDeletePassword(e.target.value)}
                 className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/30 focus:outline-none focus:border-red-500/50 transition-colors text-center"
-                placeholder="DELETE"
+                placeholder="••••••••"
               />
             </div>
             
             <div className="flex items-center gap-3">
               <button
-                onClick={() => {
-                  setShowDeleteModal(false);
-                  setDeleteConfirmText('');
-                }}
-                className="flex-1 px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-medium transition-colors"
+                onClick={() => { setShowDeleteModal(false); setDeletePassword(''); }}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/90 font-medium transition-colors border border-white/10"
               >
                 Cancel
               </button>
               <button
                 onClick={handleDeleteAccount}
-                disabled={deleteConfirmText !== 'DELETE' || isDeleting}
-                className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/90 font-medium transition-colors border border-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={!deletePassword || isDeleting}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isDeleting ? 'Deleting...' : 'Delete Forever'}
               </button>

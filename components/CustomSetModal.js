@@ -446,7 +446,18 @@ export default function CustomSetModal({
   if (!isOpen) return null;
 
   const handleSave = () => {
-    onSave({ value, weightUnit, fieldType, barWeight: hasBaseWeight ? barWeight : 0, barOnly });
+    // Flush any uncommitted bar weight input before saving
+    // (user may tap Done without blurring the input on mobile)
+    let finalBarWeight = barWeight;
+    if (editingBarWeight && barWeightInput !== '') {
+      const parsed = parseFloat(barWeightInput);
+      if (!isNaN(parsed) && parsed > 0) {
+        finalBarWeight = parsed;
+      }
+    }
+    // When barOnly, plates = 0, total = bar weight only
+    const finalValue = barOnly ? 0 : value;
+    onSave({ value: finalValue, weightUnit, fieldType, barWeight: hasBaseWeight ? finalBarWeight : 0, barOnly });
     handleClose();
   };
 

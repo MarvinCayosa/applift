@@ -215,7 +215,6 @@ async function saveWorkoutToFirestore(userId, workoutId, metadata) {
       exercise: {
         name: metadata.exercise,
         equipment: metadata.equipment,
-        // Sanitized versions for querying
         namePath: exercise,
         equipmentPath: equipment,
       },
@@ -241,6 +240,10 @@ async function saveWorkoutToFirestore(userId, workoutId, metadata) {
         started: metadata.startTime ? new Date(metadata.startTime) : null,
         completed: metadata.endTime ? new Date(metadata.endTime) : null,
       },
+      // Immutable snapshots — these never change after the session is recorded
+      // Changing calibration or bar weight later does NOT affect past sessions
+      calibrationSnapshot: metadata.calibrationSnapshot || null,
+      barWeightSnapshot: metadata.barWeightSnapshot ?? null,
       updatedAt: new Date(),
     };
 

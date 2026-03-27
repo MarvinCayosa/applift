@@ -102,7 +102,9 @@ export function WorkoutLoggingProvider({ children }) {
         weight: config.weight,
         weightUnit: config.weightUnit,
         weightBreakdown: config.weightBreakdown || '',
-        setType: config.setType || 'recommended'
+        setType: config.setType || 'recommended',
+        calibrationSnapshot: config.calibrationSnapshot || null,
+        barWeightSnapshot: config.barWeightSnapshot ?? null,
       });
 
       if (result.success) {
@@ -207,7 +209,12 @@ export function WorkoutLoggingProvider({ children }) {
       });
 
       // ── CHECK NETWORK STATUS BEFORE ATTEMPTING CLASSIFICATION ──
-      const offline = isNetworkOffline() || (typeof navigator !== 'undefined' && !navigator.onLine);
+      // Use multiple signals for more reliable offline detection
+      const navigatorOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+      const knownOffline = isNetworkOffline();
+      const offline = navigatorOffline || knownOffline;
+
+      console.log(`[WorkoutLogging] Network check for Set ${setNumber}: navigator.onLine=${!navigatorOffline}, isNetworkOffline=${knownOffline}, treating as offline=${offline}`);
 
       if (offline) {
         // STORE-AND-FORWARD: Queue set data in IndexedDB for later upload
@@ -823,7 +830,9 @@ export function WorkoutLoggingProvider({ children }) {
         weight: details.weight,
         weightUnit: details.weightUnit,
         weightBreakdown: details.weightBreakdown || '',
-        setType: details.setType || 'recommended'
+        setType: details.setType || 'recommended',
+        calibrationSnapshot: details.calibrationSnapshot || null,
+        barWeightSnapshot: details.barWeightSnapshot ?? null,
       });
       return { logId: 'pending', sessionId: 'pending' };
     },

@@ -214,7 +214,9 @@ export const initializeStreaming = async (config) => {
     weight,
     weightUnit,
     weightBreakdown = '',
-    setType = 'recommended'
+    setType = 'recommended',
+    calibrationSnapshot = null,
+    barWeightSnapshot = null,
   } = config;
 
   userId = odUSerId;
@@ -242,6 +244,8 @@ export const initializeStreaming = async (config) => {
     weightUnit: weightUnit || 'kg',
     weightBreakdown,
     setType,
+    calibrationSnapshot,   // immutable snapshot of calibration at session start
+    barWeightSnapshot,     // immutable snapshot of bar weight at session start (barbell only)
     startTime: new Date().toISOString(),
     sets: [
       {
@@ -271,6 +275,8 @@ export const initializeStreaming = async (config) => {
     startTime: new Date().toISOString(),
     endTime: null,
     setType,
+    calibrationSnapshot,   // immutable snapshot of calibration at session start
+    barWeightSnapshot,     // immutable snapshot of bar weight at session start (barbell only)
     sets: {} // Will store set completion info
   };
 

@@ -87,8 +87,14 @@ export default function SetBreakOverlay({
   weightUnit = 'kg'
 }) {
   // ── Phase state ──────────────────────────────────────────────
-  const [phase, setPhase] = useState('circle'); // 'circle' | 'warping' | 'details'
+  const [phase, setPhase] = useState('circle'); // 'circle' | 'details'
   const [isClosing, setIsClosing] = useState(false);
+
+  // ── Swipe state: which view is showing ───────────────────────
+  // 'timer' = circular timer fullscreen, 'info' = set details
+  const [view, setView] = useState('timer');
+  const swipeDragRef = useRef(null);
+  const [swipeDelta, setSwipeDelta] = useState(0);
 
   // ── Classification polling ───────────────────────────────────
   const [classifiedReps, setClassifiedReps] = useState([]);
@@ -111,10 +117,11 @@ export default function SetBreakOverlay({
   useEffect(() => {
     if (!isOpen) return;
     setPhase('circle');
+    setView('timer');
     const warpTimer = setTimeout(() => {
-      setPhase('warping');
-      setTimeout(() => setPhase('details'), 600);
-    }, CIRCLE_PHASE_DURATION);
+      setPhase('details');
+      setView('info');
+    }, 3000);
     return () => clearTimeout(warpTimer);
   }, [isOpen]);
 
@@ -235,6 +242,7 @@ export default function SetBreakOverlay({
       setAiFeedbackLoading(false);
       setIsAIGenerated(false);
       setPhase('circle');
+      setView('timer');
       setIsClosing(false);
       if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; }
     }
@@ -246,6 +254,28 @@ export default function SetBreakOverlay({
     setIsClosing(true);
     if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; }
     setTimeout(() => onSkip(), 300);
+  };
+
+  // ── Swipe handlers ───────────────────────────────────────────
+  // timer view: swipe UP → go to info. info view: swipe DOWN → go back to timer
+  const handleSwipeStart = (e) => {
+    swipeDragRef.current = { startY: e.touches[0].clientY, view };
+    setSwipeDelta(0);
+  };
+  const handleSwipeMove = (e) => {
+    if (!swipeDragRef.current) return;
+    const dy = e.touches[0].clientY - swipeDragRef.current.startY;
+    if (swipeDragRef.current.view === 'timer' && dy < 0) setSwipeDelta(dy);
+    else if (swipeDragRef.current.view === 'info' && dy > 0) setSwipeDelta(dy);
+    else setSwipeDelta(dy * 0.15);
+  };
+  const handleSwipeEnd = () => {
+    if (!swipeDragRef.current) return;
+    const threshold = 60;
+    if (swipeDragRef.current.view === 'timer' && swipeDelta < -threshold) setView('info');
+    else if (swipeDragRef.current.view === 'info' && swipeDelta > threshold) setView('timer');
+    setSwipeDelta(0);
+    swipeDragRef.current = null;
   };
 
   if (!isOpen) return null;
@@ -261,217 +291,167 @@ export default function SetBreakOverlay({
   const circumference = 2 * Math.PI * 110;
   const progressPercent = totalTime > 0 ? ((totalTime - timeRemaining) / totalTime) * 100 : 0;
 
+  // Two full-screen pages stacked vertically.
+  // Timer page = Y:0, Info page = Y:100vh (below).
+  // When view='info', both shift up by 100vh.
+  const pageShift = view === 'info'
+    ? -window.innerHeight + Math.max(0, swipeDelta)   // info visible; swipe down = positive = going back
+    : Math.min(0, swipeDelta);                         // timer visible; swipe up = negative = going to info
+  const isAnimating = swipeDelta !== 0;
+  const pageTransition = isAnimating ? 'none' : 'transform 0.45s cubic-bezier(0.32, 0.72, 0, 1)';
+
   return (
     <div className={`fixed inset-0 z-[100] bg-black text-white overflow-hidden ${isClosing ? 'animate-fadeOut' : ''}`}>
 
-      {/* ═══════════════════════════════════════════════════════════
-          PHASE 1 — Original Circular Timer
-          Keep the original design: large circle with glow,
-          motivational message, pause/end buttons
-          ═══════════════════════════════════════════════════════════ */}
-      <div className={`absolute inset-0 flex flex-col items-center justify-center transition-all duration-[600ms] ease-in-out ${
-        phase === 'circle' ? 'opacity-100 scale-100'
-        : phase === 'warping' ? 'opacity-0 scale-[0.3] -translate-y-[60%]'
-        : 'hidden'
-      }`}>
-        <div className="text-3xl font-bold text-white mb-4">Take a break!</div>
-        <div className="text-lg text-white/70 mb-8">{motivationalMessage}</div>
+      {/* Outer container that slides both pages together */}
+      <div
+        className="absolute inset-x-0"
+        style={{ top: 0, height: '200vh', transform: `translateY(${pageShift}px)`, transition: pageTransition }}
+      >
+        {/* ── PAGE 1: Circular Timer (top half) ── */}
+        <div
+          className="h-screen flex flex-col items-center justify-center relative"
+          onTouchStart={handleSwipeStart}
+          onTouchMove={handleSwipeMove}
+          onTouchEnd={handleSwipeEnd}
+        >
+          <div className="text-3xl font-bold text-white mb-4">Take a break!</div>
+          <div className="text-lg text-white/70 mb-8">{motivationalMessage}</div>
 
-        {/* Large circular timer — original design */}
-        <div className="relative w-64 h-64">
-          <svg className="w-full h-full transform -rotate-90" viewBox="0 0 256 256">
-            <circle cx="128" cy="128" r="110" stroke="rgba(255,255,255,0.1)" strokeWidth="16" fill="none" />
-            <circle
-              cx="128" cy="128" r="110"
-              stroke="url(#breakGradientCircle)"
-              strokeWidth="16" fill="none"
-              strokeLinecap="round"
-              strokeDasharray={circumference}
-              strokeDashoffset={circumference * (1 - progress)}
-              style={{
-                transition: isPaused ? 'none' : 'stroke-dashoffset 1s linear',
-                filter: 'drop-shadow(0 0 8px rgba(168,85,247,0.8))',
-              }}
-            />
-            <defs>
-              <linearGradient id="breakGradientCircle" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#c084fc" />
-                <stop offset="100%" stopColor="#7c3aed" />
-              </linearGradient>
-            </defs>
-          </svg>
-          <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-6xl font-bold text-white">{timeStr}</span>
-          </div>
-        </div>
-
-        {/* Controls — original layout */}
-        <div className="flex items-center gap-8 mt-8">
-          <button onClick={onTogglePause} className="flex flex-col items-center gap-2">
-            <div className="w-16 h-16 rounded-full bg-white/10 flex items-center justify-center">
-              {isPaused ? (
-                <svg className="w-8 h-8 text-white ml-1" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-              ) : (
-                <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/></svg>
-              )}
-            </div>
-            <span className="text-sm text-white/80">{isPaused ? 'Resume' : 'Pause'}</span>
-          </button>
-          <button onClick={handleClose} className="flex flex-col items-center gap-2">
-            <div className="w-16 h-16 rounded-full bg-white/10 flex items-center justify-center">
-              <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
-            </div>
-            <span className="text-sm text-white/80">End</span>
-          </button>
-        </div>
-      </div>
-
-      {/* ═══════════════════════════════════════════════════════════
-          PHASE 2 — Set Details (warps in from circle)
-          ═══════════════════════════════════════════════════════════ */}
-      <div className={`absolute inset-0 flex flex-col transition-all duration-500 ease-out ${
-        phase === 'details' ? 'opacity-100 translate-y-0'
-        : phase === 'warping' ? 'opacity-0 translate-y-[30%] scale-95'
-        : 'opacity-0 translate-y-full pointer-events-none'
-      }`}>
-
-        {/* ── One-line timer bar (inherits circular timer aesthetic) ── */}
-        <div className="w-full p-6 pb-4">
-          <div className="flex items-center justify-between gap-4">
-            {/* Set indicator */}
-            <span className="text-xs font-semibold text-purple-400 uppercase tracking-wider whitespace-nowrap">
-              Set {currentSet} of {totalSets}
-            </span>
-
-            {/* Progress bar — purple gradient glow like the circular timer */}
-            <div className="flex-1 flex items-center gap-3">
-              <div className="flex-1 h-2 bg-white/10 rounded-full overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all duration-1000"
-                  style={{
-                    width: `${progressPercent}%`,
-                    background: 'linear-gradient(90deg, #c084fc, #7c3aed)',
-                    boxShadow: '0 0 8px rgba(168,85,247,0.6)',
-                  }}
-                />
-              </div>
-              <span className="text-3xl font-bold text-white tabular-nums min-w-[75px] text-right">
-                {timeStr}
-              </span>
-            </div>
-
-            {/* Controls */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={onTogglePause}
-                className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors"
-                aria-label={isPaused ? 'Resume' : 'Pause'}
-              >
-                {isPaused ? (
-                  <svg className="w-4 h-4 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-                ) : (
-                  <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/></svg>
-                )}
-              </button>
-              <button
-                onClick={handleClose}
-                className="px-4 py-2 rounded-full bg-purple-500/20 text-purple-300 text-xs font-semibold hover:bg-purple-500/30 transition-colors"
-              >
-                Skip
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* ── Scrollable content ── */}
-        <div className="flex-1 overflow-y-auto px-6 pb-6 space-y-4">
-          {/* Rep Carousel — no outer card for more space */}
-          {hasSetData && (
-            <div
-              className="animate-slideUp"
-              style={{ animationDelay: '0.05s', animationFillMode: 'backwards' }}
-            >
-              <SetRepCarousel
-                repsData={displayReps}
-                isClassifying={isClassifying}
-                targetROM={setData.targetROM}
-                romUnit={setData.romUnit}
+          <div className="relative w-64 h-64">
+            <svg className="w-full h-full transform -rotate-90" viewBox="0 0 256 256">
+              <circle cx="128" cy="128" r="110" stroke="rgba(255,255,255,0.1)" strokeWidth="16" fill="none" />
+              <circle
+                cx="128" cy="128" r="110"
+                stroke="url(#breakGradientCircle)"
+                strokeWidth="16" fill="none"
+                strokeLinecap="round"
+                strokeDasharray={circumference}
+                strokeDashoffset={circumference * (1 - progress)}
+                style={{ transition: isPaused ? 'none' : 'stroke-dashoffset 1s linear', filter: 'drop-shadow(0 0 8px rgba(168,85,247,0.8))' }}
               />
-            </div>
-          )}
-
-          {/* Velocity Analysis Card — no border */}
-          {hasSetData && (
-            <div
-              className="rounded-2xl bg-white/[0.06] overflow-hidden animate-slideUp"
-              style={{ animationDelay: '0.15s', animationFillMode: 'backwards' }}
-            >
-              <div className="p-4">
-                <SetVelocityOverview
-                  repsData={displayReps}
-                  setNumber={currentSet}
-                  isLoading={false}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* AI Feedback Card — gradient bg, no border */}
-          <div
-            className="rounded-2xl overflow-hidden animate-slideUp"
-            style={{
-              background: 'linear-gradient(135deg, rgba(139,92,246,0.08) 0%, rgba(59,130,246,0.06) 100%)',
-              animationDelay: '0.25s',
-              animationFillMode: 'backwards',
-            }}
-          >
-            <div className="p-4">
-              {/* Header */}
-              <div className="flex items-center gap-2.5 mb-3">
-                <div
-                  className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                  style={{ background: 'linear-gradient(135deg, #8B5CF6, #6366F1)' }}
-                >
-                  <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-white leading-tight">AI Set Feedback</h3>
-                  <p className="text-[10px] text-white/40">
-                    {aiFeedbackLoading ? 'Generating…' : isAIGenerated ? 'Powered by Gemini' : 'Based on your data'}
-                  </p>
-                </div>
-              </div>
-
-              {/* Content */}
-              {aiFeedbackLoading ? (
-                <div className="space-y-2">
-                  <div className="ai-shimmer-bar h-3.5 w-full" />
-                  <div className="ai-shimmer-bar h-3.5 w-[88%]" />
-                  <div className="ai-shimmer-bar h-3.5 w-[72%]" />
-                </div>
-              ) : aiFeedback ? (
-                <p className="text-[13px] leading-relaxed text-white/80 ai-fade-in">
-                  {aiFeedback}
-                </p>
-              ) : (
-                <p className="text-xs text-white/30">Waiting for set data…</p>
-              )}
+              <defs>
+                <linearGradient id="breakGradientCircle" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#c084fc" />
+                  <stop offset="100%" stopColor="#7c3aed" />
+                </linearGradient>
+              </defs>
+            </svg>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="text-6xl font-bold text-white">{timeStr}</span>
             </div>
           </div>
 
-          {/* No data fallback */}
-          {!hasSetData && (
-            <div className="flex flex-col items-center justify-center py-12 animate-slideUp">
-              <div className="w-6 h-6 border-2 border-purple-400 border-t-transparent rounded-full animate-spin mb-3" />
-              <span className="text-xs text-white/40">Loading set data...</span>
+          <div className="flex items-center gap-8 mt-8">
+            <button onClick={onTogglePause} className="flex flex-col items-center gap-2">
+              <div className="w-16 h-16 rounded-full bg-white/10 flex items-center justify-center">
+                {isPaused
+                  ? <svg className="w-8 h-8 text-white ml-1" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                  : <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/></svg>
+                }
+              </div>
+              <span className="text-sm text-white/80">{isPaused ? 'Resume' : 'Pause'}</span>
+            </button>
+            <button onClick={handleClose} className="flex flex-col items-center gap-2">
+              <div className="w-16 h-16 rounded-full bg-white/10 flex items-center justify-center">
+                <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+              </div>
+              <span className="text-sm text-white/80">End</span>
+            </button>
+          </div>
+
+          {/* Swipe-up tab — pill only, pinned to bottom */}
+          {phase === 'details' && (
+            <div className="absolute bottom-8 left-0 right-0 flex justify-center select-none pointer-events-none">
+              <div className="w-12 h-1.5 rounded-full bg-white" />
             </div>
           )}
         </div>
 
-        {/* Bottom safe area */}
-        <div className="h-8" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }} />
+        {/* ── PAGE 2: Info (bottom half) ── */}
+        <div className="h-screen flex flex-col bg-black" onTouchStart={e => e.stopPropagation()} onTouchMove={e => e.stopPropagation()} onTouchEnd={e => e.stopPropagation()}>
+          {/* Swipe-down tab — pill only, touch handlers only here */}
+          <div
+            className="flex justify-center pt-4 pb-5 shrink-0 select-none"
+            onTouchStart={handleSwipeStart}
+            onTouchMove={handleSwipeMove}
+            onTouchEnd={handleSwipeEnd}
+          >
+            <div className="w-12 h-1.5 rounded-full bg-white" />
+          </div>
+
+          {/* Bar timer */}
+          <div className="px-6 pb-4 shrink-0">
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-xs font-semibold text-purple-400 uppercase tracking-wider whitespace-nowrap">
+                Set {currentSet} of {totalSets}
+              </span>
+              <div className="flex-1 flex items-center gap-3">
+                <div className="flex-1 h-2 bg-white/10 rounded-full overflow-hidden">
+                  <div className="h-full rounded-full transition-all duration-1000" style={{ width: `${progressPercent}%`, background: 'linear-gradient(90deg, #c084fc, #7c3aed)', boxShadow: '0 0 8px rgba(168,85,247,0.6)' }} />
+                </div>
+                <span className="text-3xl font-bold text-white tabular-nums min-w-[75px] text-right">{timeStr}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={onTogglePause} className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors">
+                  {isPaused
+                    ? <svg className="w-4 h-4 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                    : <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/></svg>
+                  }
+                </button>
+                <button onClick={handleClose} className="px-4 py-2 rounded-full bg-purple-500/20 text-purple-300 text-xs font-semibold hover:bg-purple-500/30 transition-colors">Skip</button>
+              </div>
+            </div>
+          </div>
+
+          {/* Scrollable content */}
+          <div className="flex-1 overflow-y-auto px-6 pb-6 space-y-4">
+            {hasSetData && (
+              <div className="animate-slideUp" style={{ animationDelay: '0.05s', animationFillMode: 'backwards' }}>
+                <SetRepCarousel repsData={displayReps} isClassifying={isClassifying} targetROM={setData.targetROM} romUnit={setData.romUnit} />
+              </div>
+            )}
+            {hasSetData && (
+              <div className="rounded-2xl bg-white/[0.06] overflow-hidden animate-slideUp" style={{ animationDelay: '0.15s', animationFillMode: 'backwards' }}>
+                <div className="p-4">
+                  <SetVelocityOverview repsData={displayReps} setNumber={currentSet} isLoading={false} />
+                </div>
+              </div>
+            )}
+            <div className="rounded-2xl overflow-hidden animate-slideUp" style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.08) 0%, rgba(59,130,246,0.06) 100%)', animationDelay: '0.25s', animationFillMode: 'backwards' }}>
+              <div className="p-4">
+                <div className="flex items-center gap-2.5 mb-3">
+                  <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg, #8B5CF6, #6366F1)' }}>
+                    <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white leading-tight">AI Set Feedback</h3>
+                    <p className="text-[10px] text-white/40">{aiFeedbackLoading ? 'Generating…' : isAIGenerated ? 'Powered by Gemini' : 'Based on your data'}</p>
+                  </div>
+                </div>
+                {aiFeedbackLoading ? (
+                  <div className="space-y-2">
+                    <div className="ai-shimmer-bar h-3.5 w-full" />
+                    <div className="ai-shimmer-bar h-3.5 w-[88%]" />
+                    <div className="ai-shimmer-bar h-3.5 w-[72%]" />
+                  </div>
+                ) : aiFeedback ? (
+                  <p className="text-[13px] leading-relaxed text-white/80 ai-fade-in">{aiFeedback}</p>
+                ) : (
+                  <p className="text-xs text-white/30">Waiting for set data…</p>
+                )}
+              </div>
+            </div>
+            {!hasSetData && (
+              <div className="flex flex-col items-center justify-center py-12 animate-slideUp">
+                <div className="w-6 h-6 border-2 border-purple-400 border-t-transparent rounded-full animate-spin mb-3" />
+                <span className="text-xs text-white/40">Loading set data...</span>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* ═════════ Global Styles ═════════ */}
@@ -480,16 +460,12 @@ export default function SetBreakOverlay({
           from { opacity: 0; transform: translateY(24px); }
           to { opacity: 1; transform: translateY(0); }
         }
-        .animate-slideUp {
-          animation: slideUp 0.45s cubic-bezier(0.32, 0.72, 0, 1);
-        }
+        .animate-slideUp { animation: slideUp 0.45s cubic-bezier(0.32, 0.72, 0, 1); }
         @keyframes fadeOut {
           from { opacity: 1; }
           to { opacity: 0; }
         }
-        .animate-fadeOut {
-          animation: fadeOut 0.3s ease-out forwards;
-        }
+        .animate-fadeOut { animation: fadeOut 0.3s ease-out forwards; }
         @keyframes ai-shimmer {
           0% { background-position: -200% 0; }
           100% { background-position: 200% 0; }
@@ -504,9 +480,7 @@ export default function SetBreakOverlay({
           animation: ai-shimmer 1.8s ease-in-out infinite;
           border-radius: 6px;
         }
-        .ai-fade-in {
-          animation: ai-fade-in 0.45s ease-out both;
-        }
+        .ai-fade-in { animation: ai-fade-in 0.45s ease-out both; }
       `}</style>
     </div>
   );

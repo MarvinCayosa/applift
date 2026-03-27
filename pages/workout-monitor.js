@@ -756,7 +756,10 @@ export default function WorkoutMonitor() {
   const {
     isReconnecting,
     reconnectFailed,
+    reconnectAttempt,
+    maxAttempts,
     attemptReconnect,
+    cancelAutoReconnect,
   } = useBleConnectionWatcher({
     connected,
     isRecording,
@@ -764,6 +767,7 @@ export default function WorkoutMonitor() {
     connectToDevice,
     onDisconnect: handleBleDisconnect,
     onReconnect: handleBleReconnect,
+    autoReconnect: true, // Enable automatic reconnection
   });
 
   // ── Offline upload helper (reusable by both flush and startup) ─────
@@ -1046,15 +1050,21 @@ export default function WorkoutMonitor() {
   // ── Network Connection Watcher ─────────────────────────────────────
   const handleNetworkOffline = useCallback(() => {
     const currentState = sessionStateRef.current;
-    console.log('[WorkoutMonitor] Network offline detected, isRecording:', isRecording, 'state:', currentState);
+    console.log('[WorkoutMonitor] 🔴 Network offline detected, isRecording:', isRecording, 'state:', currentState);
 
     // Act on offline for ANY non-IDLE state (including when isRecording is
     // already false during the completion flow — that was the old bug).
-    if (currentState === SESSION_STATES.IDLE) return;
+    if (currentState === SESSION_STATES.IDLE) {
+      console.log('[WorkoutMonitor] ⚠️ Ignoring offline - state is IDLE');
+      return;
+    }
 
     // Only transition if we're not already handling a BLE disconnect, cancel, or waiting
     if (currentState === SESSION_STATES.ACTIVE) {
+      console.log('[WorkoutMonitor] ✅ Transitioning ACTIVE → ACTIVE_OFFLINE');
       transition(SESSION_STATES.ACTIVE_OFFLINE);
+    } else {
+      console.log('[WorkoutMonitor] ⚠️ Not transitioning - current state:', currentState);
     }
   }, [transition]);
 
@@ -1297,7 +1307,12 @@ export default function WorkoutMonitor() {
         visible={isState(SESSION_STATES.PAUSED_BLE_DISCONNECTED)}
         isReconnecting={isReconnecting}
         reconnectFailed={reconnectFailed}
+        reconnectAttempt={reconnectAttempt}
+        maxAttempts={maxAttempts}
+        currentRep={repStats.repCount}
+        plannedReps={recommendedReps}
         onReconnect={attemptReconnect}
+        onCancelAutoReconnect={cancelAutoReconnect}
         onCancel={handleRequestCancel}
       />
 

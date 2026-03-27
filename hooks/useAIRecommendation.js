@@ -18,7 +18,20 @@ import {
 
 const MAX_REGEN = 5;
 
-export function useAIRecommendation({ equipment, exerciseName, pastSessions = [], enabled = true }) {
+// Build a simple hash of the profile fields that affect recommendations
+function profileHash(profile) {
+  if (!profile) return '';
+  return [
+    profile.fitnessGoal,
+    profile.strengthExperience,
+    profile.activityLevel,
+    profile.bodyType,
+    profile.weightResponse,
+    profile.trainingPriority,
+  ].join('|');
+}
+
+export function useAIRecommendation({ equipment, exerciseName, pastSessions = [], enabled = true, barWeight = null }) {
   const { user, userProfile } = useAuth();
   
   const [recommendation, setRecommendation] = useState(null); // { weight, sets, reps, restTimeSeconds }
@@ -32,6 +45,8 @@ export function useAIRecommendation({ equipment, exerciseName, pastSessions = []
   const fetchingRef = useRef(false);
   const mountedRef = useRef(true);
   const pendingRetryRef = useRef(false);
+  // Track profile hash to detect goal/skill changes
+  const prevProfileHashRef = useRef('');
 
   useEffect(() => {
     mountedRef.current = true;
@@ -74,7 +89,7 @@ export function useAIRecommendation({ equipment, exerciseName, pastSessions = []
     try {
       // Step 1: Check Firestore cache (unless forcing regeneration)
       if (!forceGenerate) {
-        const cached = await getCachedRecommendation(user.uid, equipment, exerciseName);
+        const cached = await getCachedRecommendation(user.uid, equipment, exerciseName, barWeight);
         
         if (cached.exists && cached.recommendation) {
           const cachedSessionCount = cached.sessionCountAtGeneration ?? 0;
@@ -110,7 +125,7 @@ export function useAIRecommendation({ equipment, exerciseName, pastSessions = []
       // Step 2: Check if offline
       if (!navigator.onLine) {
         // Try cache as fallback even if forceGenerate was requested
-        const cached = await getCachedRecommendation(user.uid, equipment, exerciseName);
+        const cached = await getCachedRecommendation(user.uid, equipment, exerciseName, barWeight);
         if (cached.exists && cached.recommendation) {
           if (mountedRef.current) {
             setRecommendation(cached.recommendation);
@@ -193,6 +208,7 @@ export function useAIRecommendation({ equipment, exerciseName, pastSessions = []
         pastSessions,
         triggeredBy: trigger,
         sessionContext,
+        barWeight,
       });
 
       console.log('✅ [AI Hook] API result:', {
@@ -208,15 +224,15 @@ export function useAIRecommendation({ equipment, exerciseName, pastSessions = []
         setRecommendation(result.recommendation);
         setReasoning(result.reasoning);
         setIsFromCache(false);
-        // Refresh regen count
-        const count = await getRegenCount(user.uid, equipment, exerciseName);
+        // Refresh regen count (per bar weight)
+        const count = await getRegenCount(user.uid, equipment, exerciseName, barWeight);
         setRegenCount(count);
       } else {
         setError(result.error || 'Failed to generate recommendation');
         
         // If API failed, try cache as fallback
         if (!result.limitReached) {
-          const cached = await getCachedRecommendation(user.uid, equipment, exerciseName);
+          const cached = await getCachedRecommendation(user.uid, equipment, exerciseName, barWeight);
           if (cached.exists && cached.recommendation) {
             setRecommendation(cached.recommendation);
             setReasoning(cached.reasoning);
@@ -248,7 +264,7 @@ export function useAIRecommendation({ equipment, exerciseName, pastSessions = []
         }, 50);
       }
     }
-  }, [user, userProfile, equipment, exerciseName, pastSessions, enabled]);
+  }, [user, userProfile, equipment, exerciseName, pastSessions, enabled, barWeight]);
 
   /**
    * Regenerate recommendation (manual button press).
@@ -272,32 +288,38 @@ export function useAIRecommendation({ equipment, exerciseName, pastSessions = []
   const prevPastSessionsLengthRef = useRef(0);
 
   // Auto-load when enabled flips to true (sessionsLoaded) or pastSessions increases
+  // Also force-regenerate when goal/skill profile fields change
   useEffect(() => {
     if (enabled && equipment && exerciseName && user?.uid) {
       const prevLength = prevPastSessionsLengthRef.current;
       const currentLength = pastSessions.length;
       const isInitial = prevLength === 0 && !recommendation;
       const sessionsGrew = currentLength > prevLength;
+
+      // Detect profile changes that should bust the cache
+      const currentHash = profileHash(userProfile);
+      const profileChanged = prevProfileHashRef.current !== '' && prevProfileHashRef.current !== currentHash;
+      prevProfileHashRef.current = currentHash;
       
-      if (isInitial || sessionsGrew) {
+      if (isInitial || sessionsGrew || profileChanged) {
         console.log('🔄 [AI Hook] useEffect trigger:', {
           prevLength,
           currentLength,
-          reason: isInitial ? 'initial' : 'sessions_changed'
+          reason: isInitial ? 'initial' : profileChanged ? 'profile_changed' : 'sessions_changed'
         });
 
         if (fetchingRef.current) {
-          // A call is in flight — mark pending so it retries after completion
           pendingRetryRef.current = true;
           console.log('⏳ [AI Hook] Call in flight, queued retry');
         } else {
-          loadRecommendation(false, isInitial ? 'initial' : 'new_session');
+          // Force regenerate if profile changed so stale cache is bypassed
+          loadRecommendation(profileChanged, isInitial ? 'initial' : profileChanged ? 'profile_changed' : 'new_session');
         }
       }
       
       prevPastSessionsLengthRef.current = currentLength;
     }
-  }, [enabled, equipment, exerciseName, user?.uid, pastSessions.length, loadRecommendation, recommendation]);
+  }, [enabled, equipment, exerciseName, user?.uid, pastSessions.length, userProfile, loadRecommendation, recommendation]);
 
   return {
     recommendation,
@@ -311,5 +333,6 @@ export function useAIRecommendation({ equipment, exerciseName, pastSessions = []
     regenerate,
     refreshAfterSession,
     reload: () => loadRecommendation(false, 'initial'),
+    loadRecommendation,
   };
 }

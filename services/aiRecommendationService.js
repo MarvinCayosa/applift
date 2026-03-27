@@ -17,9 +17,10 @@ import {
  * Get cached AI recommendation for a specific exercise from Firestore.
  * Path: users/{uid}/aiRecommendations/{equipment}_{exerciseName}
  */
-export async function getCachedRecommendation(uid, equipment, exerciseName) {
+export async function getCachedRecommendation(uid, equipment, exerciseName, barWeight = null) {
   try {
-    const docId = `${equipment}_${exerciseName}`.replace(/\s+/g, '_');
+    const barSuffix = barWeight != null ? `_bar${barWeight}` : '';
+    const docId = `${equipment}_${exerciseName}${barSuffix}`.replace(/\s+/g, '_');
     const docRef = doc(db, 'users', uid, 'aiRecommendations', docId);
     const docSnap = await getDoc(docRef);
 
@@ -47,9 +48,10 @@ export async function getCachedRecommendation(uid, equipment, exerciseName) {
  * Save AI recommendation to Firestore cache.
  * @param {number} sessionCount - Number of past sessions at time of generation (for cache invalidation)
  */
-export async function cacheRecommendation(uid, equipment, exerciseName, recommendation, reasoning, triggeredBy = 'initial', sessionCount = 0) {
+export async function cacheRecommendation(uid, equipment, exerciseName, recommendation, reasoning, triggeredBy = 'initial', sessionCount = 0, barWeight = null) {
   try {
-    const docId = `${equipment}_${exerciseName}`.replace(/\s+/g, '_');
+    const barSuffix = barWeight != null ? `_bar${barWeight}` : '';
+    const docId = `${equipment}_${exerciseName}${barSuffix}`.replace(/\s+/g, '_');
     const docRef = doc(db, 'users', uid, 'aiRecommendations', docId);
     const existing = await getDoc(docRef);
 
@@ -89,9 +91,10 @@ export async function cacheRecommendation(uid, equipment, exerciseName, recommen
 /**
  * Get the regeneration count for a specific exercise recommendation.
  */
-export async function getRegenCount(uid, equipment, exerciseName) {
+export async function getRegenCount(uid, equipment, exerciseName, barWeight = null) {
   try {
-    const docId = `${equipment}_${exerciseName}`.replace(/\s+/g, '_');
+    const barSuffix = barWeight != null ? `_bar${barWeight}` : '';
+    const docId = `${equipment}_${exerciseName}${barSuffix}`.replace(/\s+/g, '_');
     const docRef = doc(db, 'users', uid, 'aiRecommendations', docId);
     const docSnap = await getDoc(docRef);
 
@@ -143,7 +146,7 @@ const MAX_REGEN_COUNT = 5;
  * @returns {Object} { success, recommendation, reasoning, error }
  */
 export async function generateRecommendation({ 
-  uid, idToken, userProfile, equipment, exerciseName, pastSessions = [], triggeredBy = 'initial', sessionContext = null 
+  uid, idToken, userProfile, equipment, exerciseName, pastSessions = [], triggeredBy = 'initial', sessionContext = null, barWeight = null
 }) {
   console.log('🚀 [AI Service] Generate recommendation:', {
     uid: uid?.slice(0, 8) + '...',
@@ -193,6 +196,7 @@ export async function generateRecommendation({
         pastSessions,
         triggeredBy,
         sessionContext,
+        barWeight: barWeight ?? null,
       }),
     });
 
@@ -214,13 +218,17 @@ export async function generateRecommendation({
       hasReasoning: !!data.reasoning
     });
 
+    // Signal network OK
+    try { const { signalFetchOk } = await import('../hooks/useNetworkConnectionWatcher'); signalFetchOk(); } catch (_) {}
+
     // Cache the result with session count for future cache invalidation
     await cacheRecommendation(
       uid, equipment, exerciseName,
       data.recommendation,
       data.reasoning,
       triggeredBy,
-      pastSessions.length // Store current session count
+      pastSessions.length, // Store current session count
+      barWeight,           // Cache is keyed per bar weight
     );
 
     return {
@@ -230,6 +238,10 @@ export async function generateRecommendation({
     };
   } catch (error) {
     console.error('Error generating recommendation:', error);
+    const msg = error.message || '';
+    if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('aborted')) {
+      try { const { signalFetchFailed } = await import('../hooks/useNetworkConnectionWatcher'); signalFetchFailed(); } catch (_) {}
+    }
     return { 
       success: false, 
       error: error.message || 'Failed to generate recommendation',

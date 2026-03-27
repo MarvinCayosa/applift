@@ -32,11 +32,11 @@ export default function RecommendedSetCard({
   recommendedReps, 
   image, 
   equipmentColor,
-  weight = 5,
+  weight = null,
   weightUnit = 'kg',
-  time = 45,
+  time = null,
   timeUnit = 'Secs',
-  burnCalories = 45,
+  burnCalories = null,
   // Custom set values from parent
   customWeight = null,
   customSets = null,
@@ -113,9 +113,11 @@ export default function RecommendedSetCard({
   // For barbell: show total weight as-is (bar is heavy, keep included)
   // For others: show as-is
   const DUMBBELL_HANDLE_WEIGHT = 2;
-  const recommendedDisplayWeight = isDumbbell
-    ? Math.max(0, weight - DUMBBELL_HANDLE_WEIGHT)
-    : weight;
+  const recommendedDisplayWeight = weight == null
+    ? null
+    : isDumbbell
+      ? Math.max(0, weight - DUMBBELL_HANDLE_WEIGHT)
+      : weight;
 
   // Custom set: barbell adds bar weight to plates, dumbbell shows plates only, others as-is
   const customDisplayWeight = customWeight != null 
@@ -342,29 +344,29 @@ export default function RecommendedSetCard({
                             <div className="flex-1 py-0.5 text-center">
                               <p className="text-xs text-white/70 mb-0.5">Weight</p>
                               <div className="flex items-baseline justify-center gap-1">
-                                <p className="text-4xl font-bold leading-none" style={{ color: equipmentColor }}>
-                                  {card.weight}
+                                <p className="text-4xl font-bold leading-none" style={{ color: card.weight != null ? equipmentColor : 'rgba(255,255,255,0.4)' }}>
+                                  {card.weight != null ? card.weight : '-'}
                                 </p>
-                                <p className="text-xs text-white/70 leading-none">{card.weightUnit}</p>
+                                {card.weight != null && <p className="text-xs text-white/70 leading-none">{card.weightUnit}</p>}
                               </div>
-                              {isDumbbell && card.type === 'recommended' ? (
+                              {card.weight != null && isDumbbell && card.type === 'recommended' ? (
                                 <p className="text-[9px] text-white/40 mt-0.5 leading-tight">plates only</p>
-                              ) : card.weightBreakdown ? (
+                              ) : card.weight != null && card.weightBreakdown ? (
                                 <p className="text-[9px] text-white/40 mt-0.5 leading-tight">{card.weightBreakdown}</p>
                               ) : null}
                             </div>
                             <span className="text-white/50 text-xl font-light">|</span>
                             <div className="flex-1 py-0.5 text-center">
                               <p className="text-xs text-white/70 mb-0.5">Sets</p>
-                              <p className="text-4xl font-bold leading-none" style={{ color: equipmentColor }}>
-                                {card.sets}
+                              <p className="text-4xl font-bold leading-none" style={{ color: card.sets != null ? equipmentColor : 'rgba(255,255,255,0.4)' }}>
+                                {card.sets != null ? card.sets : '-'}
                               </p>
                             </div>
                             <span className="text-white/50 text-xl font-light">|</span>
                             <div className="flex-1 py-0.5 text-center">
                               <p className="text-xs text-white/70 mb-0.5">Reps</p>
-                              <p className="text-4xl font-bold leading-none" style={{ color: equipmentColor }}>
-                                {card.reps}
+                              <p className="text-4xl font-bold leading-none" style={{ color: card.reps != null ? equipmentColor : 'rgba(255,255,255,0.4)' }}>
+                                {card.reps != null ? card.reps : '-'}
                               </p>
                             </div>
                           </>
@@ -387,7 +389,7 @@ export default function RecommendedSetCard({
                                 <div className="h-3 w-8 rounded bg-white/10 animate-pulse" />
                               ) : (
                                 <p className="text-xs font-semibold text-white leading-tight">
-                                  {formatRestTime(card.time)}
+                                  {card.time != null ? formatRestTime(card.time) : '-'}
                                 </p>
                               )}
                             </div>
@@ -404,7 +406,7 @@ export default function RecommendedSetCard({
                                 <div className="h-3 w-10 rounded bg-white/10 animate-pulse" style={{ animationDelay: '200ms' }} />
                               ) : (
                                 <p className="text-xs font-semibold text-white leading-tight">
-                                  {`${card.burnCalories} kcal`}
+                                  {card.burnCalories != null ? `${card.burnCalories} kcal` : '-'}
                                 </p>
                               )}
                             </div>
@@ -597,29 +599,29 @@ export default function RecommendedSetCard({
                             <div className="flex-1 py-1 text-center">
                               <p className="text-xs text-white/70 mb-0.5">Weight</p>
                               <div className="flex items-baseline justify-center gap-1">
-                                <p className="text-5xl font-bold leading-none" style={{ color: equipmentColor }}>
-                                  {card.weight}
+                                <p className="text-5xl font-bold leading-none" style={{ color: card.weight != null ? equipmentColor : 'rgba(255,255,255,0.4)' }}>
+                                  {card.weight != null ? card.weight : '-'}
                                 </p>
-                                <p className="text-xs text-white/70 leading-none">{card.weightUnit}</p>
+                                {card.weight != null && <p className="text-xs text-white/70 leading-none">{card.weightUnit}</p>}
                               </div>
-                              {isDumbbell && card.type === 'recommended' ? (
+                              {card.weight != null && isDumbbell && card.type === 'recommended' ? (
                                 <p className="text-[10px] text-white/40 mt-1 leading-tight">plates only</p>
-                              ) : card.weightBreakdown ? (
+                              ) : card.weight != null && card.weightBreakdown ? (
                                 <p className="text-[10px] text-white/40 mt-1 leading-tight">{card.weightBreakdown}</p>
                               ) : null}
                             </div>
                             <span className="text-white/50 text-3xl font-light">|</span>
                             <div className="flex-1 py-1 text-center">
                               <p className="text-xs text-white/70 mb-0.5">Sets</p>
-                              <p className="text-5xl font-bold leading-none" style={{ color: equipmentColor }}>
-                                {card.sets}
+                              <p className="text-5xl font-bold leading-none" style={{ color: card.sets != null ? equipmentColor : 'rgba(255,255,255,0.4)' }}>
+                                {card.sets != null ? card.sets : '-'}
                               </p>
                             </div>
                             <span className="text-white/50 text-3xl font-light">|</span>
                             <div className="flex-1 py-1 text-center">
                               <p className="text-xs text-white/70 mb-0.5">Reps</p>
-                              <p className="text-5xl font-bold leading-none" style={{ color: equipmentColor }}>
-                                {card.reps}
+                              <p className="text-5xl font-bold leading-none" style={{ color: card.reps != null ? equipmentColor : 'rgba(255,255,255,0.4)' }}>
+                                {card.reps != null ? card.reps : '-'}
                               </p>
                             </div>
                           </>
@@ -642,7 +644,7 @@ export default function RecommendedSetCard({
                                 <div className="h-3.5 w-10 rounded bg-white/10 animate-pulse" />
                               ) : (
                                 <p className="text-sm font-semibold text-white leading-tight">
-                                  {formatRestTime(card.time)}
+                                  {card.time != null ? formatRestTime(card.time) : '-'}
                                 </p>
                               )}
                             </div>
@@ -659,7 +661,7 @@ export default function RecommendedSetCard({
                                 <div className="h-3.5 w-12 rounded bg-white/10 animate-pulse" style={{ animationDelay: '200ms' }} />
                               ) : (
                                 <p className="text-sm font-semibold text-white leading-tight">
-                                  {`${card.burnCalories} kcal`}
+                                  {card.burnCalories != null ? `${card.burnCalories} kcal` : '-'}
                                 </p>
                               )}
                             </div>

@@ -40,6 +40,15 @@ export function BluetoothProvider({ children }) {
     try {
       const imuService = await server.getPrimaryService(IMU_SERVICE_UUID);
       const battChar = await imuService.getCharacteristic(BATTERY_CHARACTERISTIC_UUID);
+
+      // Read the current value immediately so the UI shows battery right away
+      try {
+        const initialVal = await battChar.readValue();
+        if (initialVal.byteLength >= 1) {
+          setBatteryPercent(initialVal.getUint8(0));
+        }
+      } catch (_) {}
+
       await battChar.startNotifications();
 
       const onBatteryData = (event) => {
@@ -64,7 +73,11 @@ export function BluetoothProvider({ children }) {
     if (batteryCharRef.current && batteryListenerRef.current) {
       try {
         batteryCharRef.current.removeEventListener('characteristicvaluechanged', batteryListenerRef.current);
-        batteryCharRef.current.stopNotifications();
+        // Only call stopNotifications if GATT is still connected
+        const dev = deviceRef.current;
+        if (dev?.gatt?.connected) {
+          batteryCharRef.current.stopNotifications().catch(() => {});
+        }
       } catch (_) {}
     }
     batteryCharRef.current = null;
@@ -246,6 +259,23 @@ export function BluetoothProvider({ children }) {
     setDevicesFound((prev) => prev.filter((d) => d.id !== currentDevice?.id));
     try { window.localStorage.removeItem('bleDevice'); } catch (_) {}
   };
+
+  // ── BLE keepalive — read battery every 4s to prevent supervision timeout ──
+  useEffect(() => {
+    if (!connected) return;
+    const interval = setInterval(async () => {
+      const dev = deviceRef.current;
+      if (!dev?.gatt?.connected) return;
+      try {
+        if (batteryCharRef.current) {
+          await batteryCharRef.current.readValue();
+        }
+      } catch (_) {
+        // Silently ignore — disconnect event will handle state cleanup
+      }
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [connected]);
 
   // Restore connection on mount
   useEffect(() => {

@@ -183,7 +183,10 @@ export function useIMUData(onIMUData, onNFCData) {
       if (nfcCharacteristicRef.current) {
         try {
           nfcCharacteristicRef.current.removeEventListener('characteristicvaluechanged', handleNFCData);
-          nfcCharacteristicRef.current.stopNotifications();
+          // Only stop notifications if GATT is still connected
+          if (device?.gatt?.connected) {
+            nfcCharacteristicRef.current.stopNotifications().catch(() => {});
+          }
         } catch (e) {
           console.error('Error cleaning up NFC characteristic:', e);
         }

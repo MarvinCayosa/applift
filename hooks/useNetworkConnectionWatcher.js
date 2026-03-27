@@ -20,7 +20,8 @@ let _isKnownOffline = false;
 // ── Consecutive failure threshold ────────────────────────────────────
 // A single request timeout does NOT mean we're offline. We require
 // CONSECUTIVE_FAILURE_THRESHOLD failures before declaring offline.
-const CONSECUTIVE_FAILURE_THRESHOLD = 2;
+// REDUCED TO 1 for instant detection during workouts
+const CONSECUTIVE_FAILURE_THRESHOLD = 1;
 let _consecutiveFailures = 0;
 
 /**
@@ -94,6 +95,13 @@ export function useNetworkConnectionWatcher({ onOffline, onOnline, activeProbe =
       onOnlineRef.current?.();
     };
 
+    // CRITICAL: Check initial state on mount
+    // If navigator.onLine is false on mount, trigger offline immediately
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      console.log('[NetworkWatcher] 🚀 Initial mount: navigator.onLine=false, setting offline');
+      goOffline();
+    }
+
     // Signal 1: Browser events
     window.addEventListener('online', goOnline);
     window.addEventListener('offline', goOffline);
@@ -102,9 +110,9 @@ export function useNetworkConnectionWatcher({ onOffline, onOnline, activeProbe =
     window.addEventListener('applift:fetch-failed', goOffline);
     window.addEventListener('applift:fetch-ok', goOnline);
 
-    // Signal 3: Active probe — lightweight HEAD request every 4s
-    //   On localhost, probing '/' always succeeds, so we probe an
-    //   external Google connectivity-check URL instead.
+    // Signal 3: Active probe — lightweight HEAD request every 2s (reduced from 4s)
+    //   CRITICAL: On localhost, we must also check navigator.onLine because
+    //   probing localhost APIs will always succeed even when internet is down.
     let probeTimer = null;
     if (activeProbe) {
       // Probe our own API — always passes CSP and tests the real path.
@@ -114,9 +122,20 @@ export function useNetworkConnectionWatcher({ onOffline, onOnline, activeProbe =
       let probeFailures = 0;
 
       const probe = async () => {
+        // CRITICAL FIX: Check navigator.onLine FIRST on localhost
+        // If browser says offline, don't even try the probe
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          console.log('[NetworkWatcher] 🔍 Probe: navigator.onLine=false, triggering offline');
+          probeFailures++;
+          if (probeFailures >= CONSECUTIVE_FAILURE_THRESHOLD) {
+            goOffline();
+          }
+          return;
+        }
+
         try {
           const ctrl = new AbortController();
-          const tid = setTimeout(() => ctrl.abort(), 3000);
+          const tid = setTimeout(() => ctrl.abort(), 2000); // Reduced timeout from 3s to 2s
           const resp = await fetch(PROBE_URL, {
             method: 'HEAD',
             signal: ctrl.signal,
@@ -129,7 +148,8 @@ export function useNetworkConnectionWatcher({ onOffline, onOnline, activeProbe =
           _consecutiveFailures = 0; // reset module-level counter
           _isKnownOffline = false;  // CRITICAL: reset so classifyReps / uploadToGCS don't short-circuit
           goOnline();
-        } catch (_) {
+        } catch (err) {
+          console.log('[NetworkWatcher] 🔍 Probe failed:', err.name, err.message);
           probeFailures++;
           // Only declare offline after consecutive probe failures
           if (probeFailures >= CONSECUTIVE_FAILURE_THRESHOLD) {
@@ -137,7 +157,10 @@ export function useNetworkConnectionWatcher({ onOffline, onOnline, activeProbe =
           }
         }
       };
-      probeTimer = setInterval(probe, 4000);
+      
+      // Run initial probe immediately
+      probe();
+      probeTimer = setInterval(probe, 2000); // Reduced interval from 4s to 2s
     }
 
     return () => {

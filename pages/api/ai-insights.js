@@ -204,7 +204,7 @@ function buildMetricsPrompt(data) {
       let line = `  Set${i + 1}: ${reps.length} reps [${distStr}]`;
       if (avgVel > 0) line += `, vel ${avgVel.toFixed(2)}m/s`;
       if (avgROM > 0) line += `, ROM ${avgROM.toFixed(1)}${romUnit}`;
-      if (avgLift > 0) line += `, conc ${avgLift.toFixed(2)}s ecc ${avgLower.toFixed(2)}s`;
+      if (avgLift > 0) line += `, lifting ${avgLift.toFixed(2)}s lowering ${avgLower.toFixed(2)}s`;
       prompt += line + '\n';
     });
 

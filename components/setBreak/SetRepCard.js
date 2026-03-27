@@ -6,6 +6,8 @@
  */
 
 import { useMemo, useState, useEffect, useRef } from 'react';
+import ReactDOM from 'react-dom';
+import ROMInfoModal from '../shared/ROMInfoModal';
 
 // Classification display configuration — colors by severity, not label
 // Labels come from the ML API and vary by exercise/equipment type:
@@ -133,33 +135,7 @@ export default function SetRepCard({
       {/* Metrics Grid */}
       <div className="grid grid-cols-2 gap-2.5">
         {/* ROM */}
-        <div className="bg-white/[0.06] rounded-xl p-3">
-          <div className="text-[9px] text-gray-500 uppercase tracking-wide mb-0.5">ROM</div>
-          <div className="flex items-baseline gap-0.5">
-            {displayRom !== null ? (
-              <>
-                <span className="text-lg font-bold text-white">{displayRom}</span>
-                <span className="text-xs text-gray-400">{displayRomUnit}</span>
-              </>
-            ) : (
-              <span className="text-base text-gray-500">--</span>
-            )}
-          </div>
-          {romPercent !== null && (
-            <div className="mt-1">
-              <div className="h-1 bg-white/10 rounded-full overflow-hidden">
-                <div 
-                  className="h-full rounded-full transition-all"
-                  style={{ 
-                    width: `${Math.min(100, romPercent)}%`,
-                    backgroundColor: romPercent >= 85 ? '#22c55e' : romPercent >= 70 ? '#f59e0b' : '#ef4444'
-                  }}
-                />
-              </div>
-              <span className="text-[9px] text-gray-500">{Math.round(romPercent)}% of target</span>
-            </div>
-          )}
-        </div>
+        <ROMCard displayRom={displayRom} displayRomUnit={displayRomUnit} romPercent={romPercent} targetROM={targetROM} />
 
         {/* Duration */}
         <div className="bg-white/[0.06] rounded-xl p-3">
@@ -180,35 +156,12 @@ export default function SetRepCard({
 
       {/* Phase Breakdown - Compact */}
       {hasPhaseData && (
-        <div className="bg-white/[0.06] rounded-xl p-3">
-          <div className="text-[9px] text-gray-500 uppercase tracking-wide mb-1.5">Movement Phases</div>
-          
-          {/* Phase bar */}
-          <div className="h-1.5 rounded-full overflow-hidden flex">
-            <div 
-              className="bg-cyan-500 transition-all"
-              style={{ width: `${liftingPercent}%` }}
-            />
-            <div 
-              className="bg-purple-500 transition-all"
-              style={{ width: `${loweringPercent}%` }}
-            />
-          </div>
-          
-          {/* Phase labels - More compact */}
-          <div className="flex justify-between mt-1.5 text-[10px]">
-            <div className="flex items-center gap-1">
-              <div className="w-1.5 h-1.5 rounded-full bg-cyan-500" />
-              <span className="text-gray-400">Concentric</span>
-              <span className="text-white font-medium">{liftingTime?.toFixed(1)}s</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="w-1.5 h-1.5 rounded-full bg-purple-500" />
-              <span className="text-gray-400">Eccentric</span>
-              <span className="text-white font-medium">{loweringTime?.toFixed(1)}s</span>
-            </div>
-          </div>
-        </div>
+        <MovementPhasesCard
+          liftingTime={liftingTime}
+          loweringTime={loweringTime}
+          liftingPercent={liftingPercent}
+          loweringPercent={loweringPercent}
+        />
       )}
       
       {/* Animation styles */}
@@ -223,5 +176,157 @@ export default function SetRepCard({
         }
       `}</style>
     </div>
+  );
+}
+
+// ── ROM Card with info modal ──────────────────────────────────
+function ROMCard({ displayRom, displayRomUnit, romPercent }) {
+  const [showInfo, setShowInfo] = useState(false);
+
+  return (
+    <>
+      <div className="bg-white/[0.06] rounded-xl p-3">
+        <div className="flex items-center justify-between mb-0.5">
+          <div className="text-[9px] text-gray-500 uppercase tracking-wide">ROM</div>
+          <button
+            onClick={() => setShowInfo(true)}
+            className="w-5 h-5 rounded-full bg-white/[0.08] flex items-center justify-center text-white/30 active:text-white/60 transition-colors"
+            aria-label="About ROM"
+          >
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 100 20 10 10 0 000-20z" />
+            </svg>
+          </button>
+        </div>
+        <div className="flex items-baseline gap-0.5">
+          {displayRom !== null ? (
+            <>
+              <span className="text-lg font-bold text-white">{displayRom}</span>
+              <span className="text-xs text-gray-400">{displayRomUnit}</span>
+            </>
+          ) : (
+            <span className="text-base text-gray-500">--</span>
+          )}
+        </div>
+        {romPercent !== null && (
+          <div className="mt-1">
+            <div className="h-1 bg-white/10 rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all"
+                style={{
+                  width: `${Math.min(100, romPercent)}%`,
+                  backgroundColor: romPercent >= 85 ? '#22c55e' : romPercent >= 70 ? '#f59e0b' : '#ef4444'
+                }}
+              />
+            </div>
+            <span className="text-[9px] text-gray-500">{Math.round(romPercent)}% of target</span>
+          </div>
+        )}
+      </div>
+
+      {showInfo && <ROMInfoModal onClose={() => setShowInfo(false)} />}
+    </>
+  );
+}
+
+// ── Movement Phases sub-component with info modal ─────────────────────
+function MovementPhasesCard({ liftingTime, loweringTime, liftingPercent, loweringPercent }) {
+  const [showInfo, setShowInfo] = useState(false);
+  const [isClosingInfo, setIsClosingInfo] = useState(false);
+  const [dragStartY, setDragStartY] = useState(0);
+  const [dragCurrentY, setDragCurrentY] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const closeInfo = () => {
+    setIsClosingInfo(true);
+    setTimeout(() => { setShowInfo(false); setIsClosingInfo(false); setDragCurrentY(0); }, 250);
+  };
+  const handleTouchStart = (e) => { setDragStartY(e.touches[0].clientY); setIsDragging(true); };
+  const handleTouchMove = (e) => {
+    if (!isDragging) return;
+    const diff = e.touches[0].clientY - dragStartY;
+    if (diff > 0) setDragCurrentY(diff);
+  };
+  const handleTouchEnd = () => {
+    setIsDragging(false);
+    if (dragCurrentY > 80) closeInfo(); else setDragCurrentY(0);
+  };
+
+  return (
+    <>
+      <div className="bg-white/[0.06] rounded-xl p-3">
+        <div className="flex items-center justify-between mb-1.5">
+          <div className="text-[9px] text-gray-500 uppercase tracking-wide">Movement Phases</div>
+          <button
+            onClick={() => setShowInfo(true)}
+            className="w-5 h-5 rounded-full bg-white/[0.08] flex items-center justify-center text-white/30 active:text-white/60 transition-colors"
+            aria-label="About movement phases"
+          >
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 100 20 10 10 0 000-20z" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Phase bar */}
+        <div className="h-1.5 rounded-full overflow-hidden flex">
+          <div className="bg-cyan-500 transition-all" style={{ width: `${liftingPercent}%` }} />
+          <div className="bg-purple-500 transition-all" style={{ width: `${loweringPercent}%` }} />
+        </div>
+
+        {/* Phase labels */}
+        <div className="flex justify-between mt-1.5 text-[10px]">
+          <div className="flex items-center gap-1">
+            <div className="w-1.5 h-1.5 rounded-full bg-cyan-500" />
+            <span className="text-gray-400">Lifting</span>
+            <span className="text-white font-medium">{liftingTime?.toFixed(1)}s</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-1.5 h-1.5 rounded-full bg-purple-500" />
+            <span className="text-gray-400">Lowering</span>
+            <span className="text-white font-medium">{loweringTime?.toFixed(1)}s</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Info bottom sheet */}
+      {showInfo && typeof document !== 'undefined' && ReactDOM.createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-end justify-center" onClick={closeInfo}>
+          <div className={`absolute inset-0 bg-black/60 transition-opacity duration-250 ${isClosingInfo ? 'opacity-0' : 'opacity-100'}`} />
+          <div
+            className={`relative w-full max-w-lg rounded-t-2xl bg-[#1e1e1e] border-t border-white/10 pb-8 ${isClosingInfo ? 'animate-slideDown' : 'animate-slideUp'}`}
+            style={{ transform: isDragging ? `translateY(${dragCurrentY}px)` : undefined }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex justify-center pt-3 pb-2 cursor-grab" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
+              <div className="w-10 h-1 rounded-full bg-white/20" />
+            </div>
+            <div className="px-5 pb-2">
+              <h4 className="text-[16px] font-bold text-white mb-3">Movement Phases</h4>
+              <p className="text-[13px] text-white/60 leading-relaxed mb-4">
+                Each rep has two phases — lifting and lowering. The time you spend on each tells a lot about your control and technique.
+              </p>
+              <div className="space-y-3">
+                <div className="flex items-start gap-3 rounded-xl bg-cyan-500/10 p-3">
+                  <div className="w-2.5 h-2.5 rounded-full bg-cyan-500 mt-1 shrink-0" />
+                  <div>
+                    <p className="text-[13px] font-semibold text-white/80">Lifting Phase</p>
+                    <p className="text-[12px] text-white/40 leading-relaxed">The concentric phase — when you push or pull the weight against gravity. Faster here means more power output.</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3 rounded-xl bg-purple-500/10 p-3">
+                  <div className="w-2.5 h-2.5 rounded-full bg-purple-500 mt-1 shrink-0" />
+                  <div>
+                    <p className="text-[13px] font-semibold text-white/80">Lowering Phase</p>
+                    <p className="text-[12px] text-white/40 leading-relaxed">The eccentric phase — when you lower the weight back down. Controlling this phase builds more muscle and reduces injury risk.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
   );
 }
