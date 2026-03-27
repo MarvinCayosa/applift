@@ -5,6 +5,7 @@ import { useRouter } from 'next/router';
 import dynamic from 'next/dynamic';
 import { UserProfileProvider } from '../utils/userProfileStore';
 import { isPWA, logPWAStatus } from '../utils/pwaDetection';
+import PWAInstallPrompt from '../components/PWAInstallPrompt';
 
 const AppProviders = dynamic(() => import('../components/AppProviders'));
 
@@ -93,7 +94,12 @@ function MyApp({ Component, pageProps }) {
     return splashTree;
   }
 
-  return <AppProviders><Component {...pageProps} /></AppProviders>;
+  return (
+    <AppProviders>
+      <Component {...pageProps} />
+      <PWAInstallPrompt />
+    </AppProviders>
+  );
 }
 
 export default MyApp;
