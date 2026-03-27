@@ -233,7 +233,7 @@ export default function useSessionDetailsData({ logId, equipment, exercise }) {
     const weightUnit = log.planned?.weightUnit || 'kg';
     const calories = log.results?.calories || analysisUI?.calories || 0;
     const totalTimeSec = log.results?.totalTime || 0;
-    const durationMs = log.results?.durationMs || 0;
+    const durationMs = log.results?.durationMs || log.results?.totalDurationMs || 0;
     const totalTime = durationMs ? Math.round(durationMs / 1000) : totalTimeSec;
     const restTimeSec = log.results?.restTime || 40; // default 40s 
 

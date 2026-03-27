@@ -622,13 +622,15 @@ export function WorkoutLoggingProvider({ children }) {
 
       // Save to Firestore via API (skip when offline)
       if (user && online) {
+        console.log('[WorkoutLogging] 🔥 Starting Firestore save for workoutId:', result.workoutId);
         const saveToFirestore = async (attempt = 1) => {
           try {
+            console.log(`[WorkoutLogging] 📤 Sending save request (attempt ${attempt})...`);
             const token = await user.getIdToken();
             const controller = new AbortController();
             // 15s timeout (Vercel cold starts can take 5-10s)
             const tid = setTimeout(() => controller.abort(), 15000);
-            await fetch('/api/imu-stream', {
+            const response = await fetch('/api/imu-stream', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -644,15 +646,17 @@ export function WorkoutLoggingProvider({ children }) {
               signal: controller.signal,
             });
             clearTimeout(tid);
-            console.log(`[WorkoutLogging] Firestore save succeeded (attempt ${attempt})`);
+            console.log(`[WorkoutLogging] ✅ Firestore save succeeded (attempt ${attempt}), status:`, response.status);
+            const responseData = await response.json();
+            console.log('[WorkoutLogging] 📄 Save response:', responseData);
           } catch (fsErr) {
-            console.warn(`[WorkoutLogging] Firestore save failed (attempt ${attempt}):`, fsErr.message);
+            console.warn(`[WorkoutLogging] ❌ Firestore save failed (attempt ${attempt}):`, fsErr.message);
             if (attempt < 3) {
               // Retry after a short delay
               await new Promise(r => setTimeout(r, 1000 * attempt));
               return saveToFirestore(attempt + 1);
             }
-            console.error('[WorkoutLogging] Firestore save failed after 3 attempts');
+            console.error('[WorkoutLogging] 🚫 Firestore save failed after 3 attempts');
           }
         };
         await saveToFirestore();

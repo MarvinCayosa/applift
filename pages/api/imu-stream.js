@@ -226,7 +226,7 @@ async function saveWorkoutToFirestore(userId, workoutId, metadata, workoutData =
     // and saved via saveRichSetDataToFirestore() - no server-side calculation needed
     
     // Document data
-    const workoutData = {
+    const docData = {
       odUSerId: userId,
       odWorkoutId: workoutId,
       exercise: {
@@ -285,12 +285,17 @@ async function saveWorkoutToFirestore(userId, workoutId, metadata, workoutData =
 
     // Save workout to logs subcollection
     const workoutRef = exerciseDocRef.collection('logs').doc(workoutId);
-    await workoutRef.set(workoutData, { merge: true });
+    await workoutRef.set(docData, { merge: true });
 
     console.log(`[IMU Stream API] Saved workout to: userWorkouts/${userId}/${equipment}/${exercise}/logs/${workoutId}`);
     return true;
   } catch (error) {
-    console.error('[IMU Stream API] Firestore save error:', error);
+    console.error('[IMU Stream API] ❌ Firestore save error:', error);
+    console.error('[IMU Stream API] Error details:', {
+      message: error.message,
+      code: error.code,
+      stack: error.stack,
+    });
     return false;
   }
 }
