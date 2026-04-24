@@ -462,6 +462,14 @@ export function useWorkoutSession({
   const [elapsedTime, setElapsedTime] = useState(0);
   const timerIntervalRef = useRef(null);
   
+  // Inactivity detection state
+  const [showInactivityModal, setShowInactivityModal] = useState(false);
+  const lastActivityTimeRef = useRef(Date.now());
+  const inactivityCheckIntervalRef = useRef(null);
+  const lastAccelMagRef = useRef(0);
+  const INACTIVITY_THRESHOLD_MS = 10000; // 10 seconds
+  const ACCEL_CHANGE_THRESHOLD = 0.05; // m/s² - minimum change to count as activity
+  
   // Final rep lowering phase delay (for valley-to-peak exercises like bench press)
   // When target reps are reached at the peak, we delay completion to capture lowering phase
   const finalRepDelayRef = useRef(null);
@@ -576,6 +584,17 @@ export function useWorkoutSession({
     if (isRecordingRef.current && !isPausedRef.current && !countdownActiveRef.current) {
       if (recordingStartTime.current === 0) {
         recordingStartTime.current = data.timestamp;
+      }
+      
+      // *** INACTIVITY DETECTION ***
+      // Track significant acceleration changes to detect if user is still active
+      const currentAccelMag = data.filteredMagnitude || data.accelMag || 0;
+      const accelChange = Math.abs(currentAccelMag - lastAccelMagRef.current);
+      
+      if (accelChange > ACCEL_CHANGE_THRESHOLD) {
+        // Significant movement detected - update last activity time
+        lastActivityTimeRef.current = Date.now();
+        lastAccelMagRef.current = currentAccelMag;
       }
       
       const relativeTime = data.timestamp - recordingStartTime.current;
@@ -880,18 +899,75 @@ export function useWorkoutSession({
     countdownActiveRef.current = countdownActive;
   }, [isRecording, isPaused, countdownActive]);
 
+  // Inactivity detection effect
+  useEffect(() => {
+    if (isRecording && !isPaused && !countdownActive && !showInactivityModal) {
+      // Check for inactivity every 2 seconds
+      inactivityCheckIntervalRef.current = setInterval(() => {
+        const timeSinceLastActivity = Date.now() - lastActivityTimeRef.current;
+        
+        if (timeSinceLastActivity >= INACTIVITY_THRESHOLD_MS) {
+          console.log('[WorkoutSession] Inactivity detected - pausing session');
+          // Pause the session
+          setIsPaused(true);
+          isPausedRef.current = true;
+          // Show inactivity modal
+          setShowInactivityModal(true);
+          // Clear the check interval
+          if (inactivityCheckIntervalRef.current) {
+            clearInterval(inactivityCheckIntervalRef.current);
+            inactivityCheckIntervalRef.current = null;
+          }
+        }
+      }, 2000);
+    } else {
+      if (inactivityCheckIntervalRef.current) {
+        clearInterval(inactivityCheckIntervalRef.current);
+        inactivityCheckIntervalRef.current = null;
+      }
+    }
+
+    return () => {
+      if (inactivityCheckIntervalRef.current) {
+        clearInterval(inactivityCheckIntervalRef.current);
+      }
+    };
+  }, [isRecording, isPaused, countdownActive, showInactivityModal]);
+
+  // Inactivity modal handlers
+  const handleInactivityResume = useCallback(() => {
+    console.log('[WorkoutSession] User resumed from inactivity');
+    setShowInactivityModal(false);
+    setIsPaused(false);
+    isPausedRef.current = false;
+    // Reset activity tracking
+    lastActivityTimeRef.current = Date.now();
+  }, []);
+
+  const handleInactivityEndSession = useCallback(() => {
+    console.log('[WorkoutSession] User ended session from inactivity modal');
+    setShowInactivityModal(false);
+    // End the workout
+    completeWorkout();
+  }, []);
+
   // Timer effect - manages timer based on state changes
   // Note: Timer is also started directly in runCountdown() for precise timing
   useEffect(() => {
     if (isRecording && !isPaused && !countdownActive) {
       // Only start if not already running (runCountdown may have started it)
       if (!timerIntervalRef.current) {
+        console.log('[WorkoutSession] Timer effect: Starting timer');
         timerIntervalRef.current = setInterval(() => {
           setElapsedTime(prev => prev + 1);
         }, 1000);
       }
     } else {
-      if (timerIntervalRef.current) {
+      // Only clear if we're truly stopping (not just during countdown)
+      // During countdown, isRecording=true but countdownActive=true, so timer should stay off
+      // After countdown, both isRecording=true and countdownActive=false, so timer should run
+      if (timerIntervalRef.current && (!isRecording || isPaused)) {
+        console.log('[WorkoutSession] Timer effect: Clearing timer (isRecording:', isRecording, 'isPaused:', isPaused, ')');
         clearInterval(timerIntervalRef.current);
         timerIntervalRef.current = null;
       }
@@ -1751,6 +1827,7 @@ export function useWorkoutSession({
     dataRate,
     isSubscribed: imuSubscribed,
     restTime, // Export rest time for UI progress calculation
+    showInactivityModal,
     
     // Chart data
     timeData,
@@ -1769,6 +1846,8 @@ export function useWorkoutSession({
     resetCurrentSet,
     formatTime,
     truncateToCheckpoint,
+    handleInactivityResume,
+    handleInactivityEndSession,
     
     // Refs for advanced use
     repCounterRef,

@@ -8,6 +8,7 @@ import OfflineBanner from '../components/workoutMonitor/OfflineBanner';
 import CancelConfirmModal from '../components/workoutMonitor/CancelConfirmModal';
 import ResumeCountdown from '../components/workoutMonitor/ResumeCountdown';
 import WaitingForInternetModal from '../components/workoutMonitor/WaitingForInternetModal';
+import InactivityModal from '../components/InactivityModal';
 import ConnectPill from '../components/ConnectPill';
 import SetBreakOverlay from '../components/setBreak/SetBreakOverlay';
 import { useBluetooth } from '../context/BluetoothProvider';
@@ -224,6 +225,7 @@ export default function WorkoutMonitor() {
     filteredAccelData,
     isSubscribed,
     restTime: sessionRestTime,
+    showInactivityModal,
     startRecording: startRecordingSession,
     stopRecording: stopSession,
     togglePause,
@@ -235,6 +237,8 @@ export default function WorkoutMonitor() {
     resetCurrentSet,
     formatTime,
     truncateToCheckpoint,
+    handleInactivityResume,
+    handleInactivityEndSession,
     repCounterRef,
     rawDataLog
   } = useWorkoutSession({
@@ -1375,6 +1379,13 @@ export default function WorkoutMonitor() {
         visible={isState(SESSION_STATES.CANCEL_CONFIRM)}
         onKeep={handleKeepWorkout}
         onDiscard={handleDiscardWorkout}
+      />
+
+      {/* Inactivity Modal */}
+      <InactivityModal
+        isOpen={showInactivityModal}
+        onResume={handleInactivityResume}
+        onEndSession={handleInactivityEndSession}
       />
 
       {/* Waiting for Internet Modal (workout complete but offline) */}

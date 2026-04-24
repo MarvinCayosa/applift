@@ -87,12 +87,28 @@ KEY METRICS (defined for reference — interpret them holistically, do not apply
 - cleanRepPct: % of reps classified "Clean" by ML model. Higher = better form.
 - fatigueScore: % fatigue detected. Higher = more fatigued.
 - consistencyScore: % rep-to-rep consistency. Higher = more consistent.
-- Velocity Loss (D_ω): Fatigue accumulation ratio within a set (0–1 scale, sent as %). Derived from angular velocity drop across reps.
-- Smoothness: Movement control score (0–100). Derived from mean jerk magnitude. Higher = smoother.
+- velocityLoss (avgVelocityLoss): % drop in peak angular velocity from first to last rep. Industry standard: <10% = excellent, 10-20% = moderate, >20% = high fatigue. This is the MOST IMPORTANT metric for load progression decisions.
+- smoothness (avgSmoothness): Movement control score (0–100). Derived from mean jerk magnitude (rate of acceleration change). 75-100 = smooth/controlled, 45-74 = moderate control, <45 = jerky/rushed movement.
 
-Your job: Analyze the data holistically. Weigh the user's experience level, activity level, goals, session history, form quality, fatigue, and movement quality together. Make a balanced recommendation — safe but appropriately challenging for the user's level.
-
+VELOCITY LOSS INTERPRETATION (CRITICAL FOR LOAD DECISIONS):
+- <10%: Excellent power output maintained. User can handle MORE load or volume.
 OUTPUT FORMAT (JSON only, no markdown):
+{
+  "recommendedLoad": <kg total>,
+  "sets": <int>,
+  "reps": <int>,
+  "restTimeSeconds": <int>,
+  "estimatedCalories": <int>,
+  "recommendedRestDays": <1-3>,
+  "weightBreakdown": "<exact loading instructions>",
+  "rationale": "<2-3 sentences MUST reference specific velocity loss % and smoothness score from last session if available, explain load decision based on these metrics>",
+  "safetyNote": "<1 sentence>",
+  "guideline": "<max 15 words>",
+  "nextSteps": "<1 sentence for next session, include specific metric targets like 'aim for <15% velocity loss' or 'maintain smoothness >70'>"
+}. High velocity loss (>20%) + High smoothness (>75): User is fatigued but form is good. MAINTAIN load, add rest day.
+4. High velocity loss (>20%) + Low smoothness (<45): REDUCE load by 10-15%, prioritize recovery.
+
+Your job: Analyze the data holistically. Weigh the user's experience level, activity level, goals, session history, form quality, fatigue, velocity loss, and smoothness together. Make a balanced recommendation — safe but appropriately challenging for the user's level. ALWAYS reference specific velocity loss and smoothness values in your rationale when available.
 {
   "recommendedLoad": <kg total>,
   "sets": <int>,
